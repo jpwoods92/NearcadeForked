@@ -17,7 +17,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Auto Translate
-        uses: action-translate-readme/auto-translate-readme@v2
+        uses: JunXiangLin/action-translate-readme@v2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           languages: es, fr, de, pt, ja # Your target ISO codes (excluding 'en')
