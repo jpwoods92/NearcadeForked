@@ -5,28 +5,40 @@ const fs = require('fs');
 const { powerSaveBlocker } = require('electron');
 powerSaveBlocker.start('prevent-app-suspension');
 
+// ── CRITICAL FIX: Detect Arcade Worker immediately ──
+const isArcadeWorker = process.argv.includes('--arcade-worker');
+const gotTheLock = isArcadeWorker ? true : app.requestSingleInstanceLock();
+
+if (!gotTheLock) {
+  app.quit();
+  process.exit(0);
+}
+
 process.on('uncaughtException', (e) => console.error('\n[electron] ⚠ Uncaught Exception:', e));
-process.on('unhandledRejection', (e) => console.error('\n[electron] ⚠ Unhandled Rejection:', e));
+process.on('unhandledRejection', (e) => {
+  if (!e.message?.includes('could not be cloned') && !e.message?.includes('no video stream')) {
+    console.error('\n[electron] ⚠ Unhandled Rejection:', e);
+  }
+});
+
+if (process.platform === 'darwin') app.dock.setIcon(path.join(__dirname, 'assets/NearsecTogether.png'));
+
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 
 // ── RESTORE SMART WAYLAND & PIPEWIRE DETECTION ──
-if (process.platform === 'linux' && (process.env.WAYLAND_DISPLAY || process.env.XDG_SESSION_TYPE === 'wayland')) {
+if (isArcadeWorker && process.platform === 'linux') {
+  app.commandLine.appendSwitch('ozone-platform-hint', 'x11');
+} else if (process.platform === 'linux' && (process.env.WAYLAND_DISPLAY || process.env.XDG_SESSION_TYPE === 'wayland')) {
   app.commandLine.appendSwitch('enable-features', 'WebRTCPipeWireCapturer');
   app.commandLine.appendSwitch('ozone-platform-hint', 'auto');
 }
 
-if (process.platform === 'darwin') app.dock.setIcon(path.join(__dirname, 'assets/NearsecTogether.png'));
-
-// ── CRITICAL FIX: Bypass Chromium's requirement for physical clicks to start capture ──
-app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
-
-// ── GPU / Performance flags ───────────────────────────────────────────────────
 app.commandLine.appendSwitch('ignore-gpu-blocklist');
 app.commandLine.appendSwitch('disable-gpu-vsync');
 app.commandLine.appendSwitch('disable-frame-rate-limit');
 app.commandLine.appendSwitch('disable-software-rasterizer');
 app.commandLine.appendSwitch('force-color-profile', 'srgb');
 
-// ── Settings ──────────────────────────────────────────────────────────────────
 const CONFIG_DIR = path.join(app.getPath('userData'), 'NearsecTogether');
 const CONFIG_FILE = path.join(CONFIG_DIR, 'settings.json');
 const DEFAULTS = { encoder: 'gpu', codec: 'h264', preset: 'fast', alwaysOnTop: false, w: 1280, h: 800 };
@@ -46,7 +58,6 @@ function saveSettings(s) {
 }
 let settings = loadSettings();
 
-// ── Start server in-process ───────────────────────────────────────────────────
 let serverPort = null;
 let serverCore = null;
 
@@ -72,7 +83,6 @@ function startServer() {
   });
 }
 
-// ── Window ────────────────────────────────────────────────────────────────────
 let win = null;
 let tray = null;
 
@@ -92,13 +102,11 @@ async function createWindow() {
                           show: false,
                           webPreferences: {
                             nodeIntegration: false,
-                            contextIsolation: true,
-                            preload: path.join(__dirname, 'electron-preload.js'),
+                          contextIsolation: true,
+                          preload: path.join(__dirname, 'electron-preload.js'),
                           },
                           autoHideMenuBar: true,
   });
-
-  const isArcadeWorker = process.argv.includes('--arcade-worker');
 
   win.once('ready-to-show', () => {
     if (!isArcadeWorker) win.show();
@@ -129,7 +137,7 @@ async function createWindow() {
       }, 1000);
     });
 
-    // ── ON-SCREEN BACK BUTTON INJECTION ──
+    // ── Dashboard Button Injection ──
     win.webContents.on('did-finish-load', () => {
       const currentURL = win.webContents.getURL();
       if (currentURL.includes('/host')) {
@@ -148,7 +156,6 @@ async function createWindow() {
       }
     });
 
-    // ── Auto-Capture Handler (Grabs displays natively) ──
     win.webContents.session.setPermissionCheckHandler(() => true);
     win.webContents.session.setPermissionRequestHandler((wc, permission, callback) => {
       callback(true);
@@ -163,9 +170,13 @@ async function createWindow() {
             callback({ video: sources[0] });
           }
         } else {
-          callback({});
+          console.log('[electron] Capture blocked or no sources found. Cancelling.');
+          callback();
         }
-      }).catch(err => { callback({}); });
+      }).catch(err => {
+        console.error('[electron] Capturer error:', err);
+        callback();
+      });
     });
 
     win.on('resize', () => {
@@ -230,8 +241,14 @@ async function createWindow() {
       if (win && !win.isDestroyed()) win.loadURL(`http://localhost:${serverPort}/host`);
     });
 
-    ipcMain.on('back-to-dashboard', () => {
+    // CRITICAL FIX: Fixed IPC event name to match preload script
+    ipcMain.on('back-to-dashboard-from-host', () => {
       if (win && !win.isDestroyed()) win.loadFile(path.join(__dirname, 'src', 'pages', 'dashboard.html'), { query: { port: String(serverPort) } });
+    });
+
+    // CRITICAL FIX: Add listener for the Headless suicide switch
+    ipcMain.on('window-close', () => {
+      if (win && !win.isDestroyed()) win.close();
     });
 }
 
@@ -260,17 +277,10 @@ app.on('will-quit', () => {
 
 app.on('window-all-closed', () => app.quit());
 
-const isArcadeWorker = process.argv.includes('--arcade-worker');
-const gotTheLock = isArcadeWorker ? true : app.requestSingleInstanceLock();
-
-if (!gotTheLock) {
-  app.quit();
-} else {
-  app.on('second-instance', () => {
-    if (win) {
-      if (win.isMinimized()) win.restore();
-      if (!win.isVisible()) win.show();
-      win.focus();
-    }
-  });
-}
+app.on('second-instance', () => {
+  if (win) {
+    if (win.isMinimized()) win.restore();
+    if (!win.isVisible()) win.show();
+    win.focus();
+  }
+});

@@ -52,8 +52,17 @@ async function createPC() {
         if (track.kind === 'video') {
             startFrameProcessor(track);
         } else if (track.kind === 'audio') {
-            if (!video.srcObject) video.srcObject = new MediaStream();
-            video.srcObject.addTrack(track);
+            // THE FLUSH: Instead of just appending the track, forcefully reset the srcObject
+            // This tricks the browser into resetting its decoding timeline for late-joiners.
+            const newStream = new MediaStream();
+            if (video.srcObject) {
+                video.srcObject.getTracks().forEach(t => newStream.addTrack(t));
+            }
+            newStream.addTrack(track);
+            video.srcObject = newStream;
+
+            // Force playback initialization
+            video.play().catch(e => console.log("Audio auto-play prevented until interaction"));
         }
     };
 

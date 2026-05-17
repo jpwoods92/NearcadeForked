@@ -170,7 +170,6 @@ function preferVideoCodec(pc) {
     return used;
 }
 
-// ── DYNAMIC FRAMERATE BINDING ──
 async function setLowLatencyParams(pc) {
     const sender = pc.getSenders().find(s => s.track?.kind === 'video');
     if (!sender) return;
@@ -445,7 +444,10 @@ function connectWS() {
         if (msg.type === 'answer') {
             const pc = peerConnections[msg._viewerId];
             if (pc) {
-                if (pc.signalingState !== 'have-local-offer') return;
+                if (pc.signalingState !== 'have-local-offer') {
+                    console.log(`[webrtc] Stale answer dropped. State is: ${pc.signalingState}`);
+                    return;
+                }
                 try { await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp)); } catch (e) { log('answer err: ' + e.message, 'err'); }
             }
         }
@@ -479,12 +481,18 @@ function connectWS() {
 
 async function sendOfferToViewer(viewerId) {
     if (!currentStream) return;
+
+    // 1. THE BOUNCER: Brutally destroy any ghost connections for this viewer
     if (peerConnections[viewerId]) {
-        try { peerConnections[viewerId].close(); } catch { }
+        try {
+            peerConnections[viewerId].onicecandidate = null;
+            peerConnections[viewerId].onconnectionstatechange = null;
+            peerConnections[viewerId].close();
+        } catch { }
         delete peerConnections[viewerId];
     }
+
     const pc = new RTCPeerConnection({
-        // ── CRITICAL FIX: Removed dead TURN servers causing 15-second hang loops ──
         iceServers: [
             { urls: 'stun:stun.l.google.com:19302' },
             { urls: 'stun:stun1.l.google.com:19302' },
@@ -494,16 +502,25 @@ async function sendOfferToViewer(viewerId) {
         rtcpMuxPolicy: 'require',
         sdpSemantics: 'unified-plan',
     });
+
     peerConnections[viewerId] = pc;
 
+    // 2. THE PIPELINE: Add tracks, but explicitly request a fresh sync
     currentStream.getTracks().forEach(track => {
-        pc.addTrack(track, currentStream);
+        const sender = pc.addTrack(track, currentStream);
+        // Hint to the encoder to prioritize a new keyframe for this specific track
+        if (track.kind === 'video' && sender.setParameters) {
+            const params = sender.getParameters();
+            if (params.encodings && params.encodings.length > 0) {
+                params.encodings[0].networkPriority = 'high';
+            }
+            sender.setParameters(params).catch(()=>{});
+        }
     });
 
     const codec = preferVideoCodec(pc);
     if (codec) document.getElementById('codecBadge').textContent = codec.split('/')[1];
 
-    // ── CRITICAL FIX: 3-Second Fast Retry Handshake (Bypasses 15-second ICE fails) ──
     let connectTimeout = setTimeout(() => {
         if (pc.connectionState !== 'connected' && peerConnections[viewerId] === pc) {
             log('Handshake timeout for ' + viewerId + ', fast retrying...', 'warn');
@@ -516,26 +533,31 @@ async function sendOfferToViewer(viewerId) {
             ws.send(JSON.stringify({ type: 'ice-host', candidate: e.candidate, _viewerId: viewerId }));
         }
     };
+
     pc.onconnectionstatechange = () => {
         const s = pc.connectionState;
         log('Viewer ' + viewerId + ': ' + s, s === 'connected' ? 'ok' : s === 'failed' ? 'err' : '');
+
         if (s === 'connected') {
             clearTimeout(connectTimeout);
             setLowLatencyParams(pc);
             monitorCongestion(pc, viewerId);
         }
+
+        // 3. CLEAN RETRY: If it fails, instantly purge the bad connection from memory
         if (s === 'failed' || s === 'disconnected') {
             clearTimeout(connectTimeout);
             if (peerConnections[viewerId] === pc) {
                 log('Retrying offer to ' + viewerId, 'warn');
                 delete peerConnections[viewerId];
-                setTimeout(() => sendOfferToViewer(viewerId), 1000);
+                setTimeout(() => sendOfferToViewer(viewerId), 500); // Faster 0.5s retry
             }
         }
     };
 
     try {
-        const offer = await pc.createOffer();
+        // Force the connection to explicitly offer 'recvonly' for the viewer
+        const offer = await pc.createOffer({ offerToReceiveAudio: false, offerToReceiveVideo: false });
         await pc.setLocalDescription({ type: offer.type, sdp: offer.sdp });
         ws.send(JSON.stringify({ type: 'offer', sdp: pc.localDescription, _viewerId: viewerId }));
         log('Offer → viewer ' + viewerId, 'ok');
@@ -624,11 +646,9 @@ async function startCapture() {
     Object.values(peerConnections).forEach(pc => pc.close());
     peerConnections = {};
 
-    // ── CRITICAL FIX: Safe Audio Config to prevent "Capture Cancelled" on Windows ──
     const isLinux = navigator.userAgent.includes('Linux') || navigator.platform.toLowerCase().includes('linux');
     const sysAudioConfig = isLinux ? false : audioSettings.forceAudioEnabled;
 
-    // ── CRITICAL FIX: Direct UI binding without Abort-crashing constraints ──
     const fpsVal = parseInt(document.getElementById('fpsSelect')?.value) || 60;
     const resVal = document.getElementById('resSelect')?.value || '1080p';
 
@@ -643,7 +663,6 @@ async function startCapture() {
 
         if (selectedSourceId && window.electronAPI) {
             try {
-                // Window Capture MUST use getUserMedia, not getDisplayMedia
                 screenStream = await navigator.mediaDevices.getUserMedia({
                     audio: isLinux ? false : (audioSettings.forceAudioEnabled ? {
                         mandatory: { chromeMediaSource: 'desktop' }
@@ -685,7 +704,6 @@ async function startCapture() {
         const combined = new MediaStream();
         combined.addTrack(vTrack);
 
-        // Linux System Audio Virtual Sink Logic
         let aTrack = screenStream.getAudioTracks()[0] || null;
         if (isLinux) {
             try {
@@ -750,7 +768,26 @@ async function startCapture() {
 
         if (settings.width && settings.height) prev.style.aspectRatio = settings.width + '/' + settings.height;
         document.getElementById('prevOverlay').classList.add('hidden');
+        const finalAudioTracks = currentStream.getAudioTracks();
+
         document.getElementById('trackInfo').innerHTML =
+        '<strong>' + (vTrack.label || 'Screen') + '</strong><br>' +
+        settings.width + '×' + settings.height + ' @ ' + Math.round(settings.frameRate || 0) + 'fps<br>' +
+        (finalAudioTracks.length > 0 ? 'Audio Mixed via Null Sink' : 'No system audio forward');
+
+        setCapDot('live');
+
+        // CRITICAL FIX: Check the final combined stream for audio to correctly update the UI
+        if (finalAudioTracks.length > 0) {
+            setAudDot('live', 'Audio active');
+            startAudioMeter(currentStream);
+        } else {
+            setAudDot('warn', 'No audio — Check source');
+        }
+
+        ws.send(JSON.stringify({ type: 'host-stream-ready' }));
+        sysChat('Stream started.');
+        [...knownViewers].forEach(id => sendOfferToViewer(id));
         '<strong>' + (vTrack.label || 'Screen') + '</strong><br>' +
         settings.width + '×' + settings.height + ' @ ' + Math.round(settings.frameRate || 0) + 'fps<br>' +
         (aTrack ? 'Audio Mixed via Null Sink' : 'No system audio forward');
@@ -812,6 +849,15 @@ function stopCapture() {
 
     log('Capture stopped');
     sysChat('Host stopped sharing.');
+
+    // ── CRITICAL FIX: Arcade Worker Suicide Switch ──
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('auto') === '1') {
+        console.log('[Headless] Stream terminated. Executing suicide protocol to restart worker.');
+        if (window.electronAPI && window.electronAPI.close) {
+            window.electronAPI.close();
+        }
+    }
 }
 
 function updateKbmPanicButton() {
@@ -1285,24 +1331,64 @@ function createVirtualAudioCable() {
 applyCtrlSettingsUI();
 connectWS();
 
+// ── AUTOMATED HEADLESS BOOT (Arcade Worker) ───────────────────────────
+// ── AUTOMATED HEADLESS BOOT (Arcade Worker) ───────────────────────────
 const urlParams = new URLSearchParams(window.location.search);
 if (urlParams.get('auto') === '1') {
-    const autoTitle = urlParams.get('title') || 'Arcade Game';
+    let autoTitle = urlParams.get('title') || 'Arcade Game';
     const autoTunnel = urlParams.get('tunnel') || 'cloudflared';
 
     console.log(`[Headless] Initializing automated boot for: ${autoTitle}`);
 
-    document.getElementById('arcadeGameTitle').value = autoTitle;
-    document.getElementById('arcadeMaxPlayers').value = "4";
-    document.getElementById('arcadeRequirePin').checked = false;
+    // 1. Force creation of the virtual audio cable so the game has a place to pipe audio!
+    const isLinux = navigator.userAgent.includes('Linux') || navigator.platform.toLowerCase().includes('linux');
+    if (isLinux) {
+        console.log('[Headless] Auto-generating virtual audio sink...');
+        fetch('/api/create-virtual-audio', { method: 'POST' }).catch(()=>{});
+    }
 
-    fetch('/api/config', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tunnelProvider: autoTunnel, neverAsk: true })
-    }).then(() => {
-        setTimeout(() => {
-            startArcadeSession();
-        }, 2000);
-    });
+    // 2. Wait 1.5s for OS to register the audio cable, then proceed with the boot
+    setTimeout(() => {
+        fetch('/api/config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tunnelProvider: autoTunnel, neverAsk: true })
+        }).then(() => {
+            fetch('/api/config').then(r => r.json()).then(cfg => {
+                let target = (cfg.autoHosts || []).find(h => h.name === autoTitle);
+                if (!target && cfg.autoHosts && cfg.autoHosts.length > 0) {
+                    target = cfg.autoHosts[0];
+                    autoTitle = target.name;
+                    console.log(`[Headless] Target title not found, defaulting to: ${target.name}`);
+                }
+
+                document.getElementById('arcadeGameTitle').value = autoTitle;
+                document.getElementById('arcadeMaxPlayers').value = target?.maxPlayers || "4";
+                document.getElementById('arcadeRequirePin').checked = false;
+
+                if (target && target.cmd) {
+                    console.log(`[Headless] Launching game process: ${target.cmd}`);
+                    fetch('/api/restart-game', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ command: target.cmd })
+                    });
+                }
+
+                setTimeout(async () => {
+                    if (window.electronAPI) {
+                        try {
+                            const sources = await window.electronAPI.getWindowSources();
+                            let gameSource = sources.find(s => !s.isScreen && !s.name.includes('NearsecTogether') && !s.name.includes('mutter'));
+                            if (gameSource) {
+                                console.log(`[Headless] Locked onto specific game window: ${gameSource.name}`);
+                                selectedSourceId = gameSource.id;
+                            }
+                        } catch (e) { }
+                    }
+                    startArcadeSession();
+                }, 4000);
+            });
+        });
+    }, 1500);
 }

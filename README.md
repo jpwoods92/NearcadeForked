@@ -2,6 +2,8 @@
   <img src="assets/NearsecTogether.png" width="160" height="140">
 <h1>NearsecTogether</h1>
 
+[English](README.md) | [Español](README.es.md) | [Français](README.fr.md) | [Deutsch](README.de.md) | [Português](README.pt.md) | [日本語](README.ja.md)
+
 ## Screenshots -- Dashboard, Viewer Page, Arcade
 
 <div align="center">

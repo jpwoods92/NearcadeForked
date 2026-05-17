@@ -529,7 +529,32 @@ async function main() {
   app.get("/api/arcade/sessions", (req, res) => {
     res.json([...arcadeSessions.values()]);
   });
+  let activeGameProc = null;
+  app.post("/api/restart-game", express.json(), (req, res) => {
+    if (activeGameProc) {
+      try { process.kill(-activeGameProc.pid); } catch(e){}
+      try { activeGameProc.kill(); } catch(e){}
+      activeGameProc = null;
+    }
+    if (req.body && req.body.command && req.body.command !== 'KILL_ONLY') {
+      const parts = req.body.command.split(' ');
+      const cmd = parts.shift();
+      console.log("  \x1b[35m~\x1b[0m Launching game process:", req.body.command);
 
+      // ── CRITICAL AUDIO ROUTING: Force game audio into the virtual sink ──
+      const spawnEnv = Object.assign({}, process.env);
+      spawnEnv.PULSE_SINK = "NearsecAppAudio";
+
+      // Detached execution allows the game to run independently of the Node thread
+      activeGameProc = spawn(cmd, parts, {
+        stdio: 'ignore',
+        detached: true,
+        env: spawnEnv
+      });
+      activeGameProc.unref();
+    }
+    res.json({ success: true });
+  });
   app.post("/api/start-tunnel", express.json(), async (req, res) => {
     if (tunnelUrl) {
       const msg = JSON.stringify({ type: "tunnel-url", url: tunnelUrl });
