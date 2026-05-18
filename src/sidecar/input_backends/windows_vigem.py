@@ -68,11 +68,11 @@ def run():
     """
     EXPERIMENTAL (Windows): Main input loop for vgamepad backend.
     Handles Xbox and DualShock 4 via ViGEmBus virtual controllers.
-    
+
     REQUIREMENTS:
     - ViGEmBus driver: https://github.com/nefarius/ViGEmBus/releases
     - vgamepad Python package: pip install vgamepad
-    
+
     PLATFORM NOTES:
     - KBM input forwarding is NOT supported on Windows vgamepad backend
     - Motion controls are NOT supported (XInput limitation)
@@ -171,57 +171,46 @@ def run():
                 axes = msg.get("axes", [])
 
                 try:
-                    # Buttons (simplified mapping for vgamepad)
-                    if len(btns) > 0:
-                        gp.press_button(button="A" if btns[0]["pressed"] else None)
-                    if len(btns) > 1:
-                        gp.press_button(button="B" if btns[1]["pressed"] else None)
-                    if len(btns) > 2:
-                        gp.press_button(button="X" if btns[2]["pressed"] else None)
-                    if len(btns) > 3:
-                        gp.press_button(button="Y" if btns[3]["pressed"] else None)
-                    if len(btns) > 4:
-                        gp.press_button(button="LB" if btns[4]["pressed"] else None)
-                    if len(btns) > 5:
-                        gp.press_button(button="RB" if btns[5]["pressed"] else None)
-                    if len(btns) > 6:
-                        gp.press_button(button="BACK" if btns[6]["pressed"] else None)
-                    if len(btns) > 7:
-                        gp.press_button(button="START" if btns[7]["pressed"] else None)
-                    if len(btns) > 8:
-                        gp.press_button(button="LTHUMB" if btns[8]["pressed"] else None)
-                    if len(btns) > 9:
-                        gp.press_button(button="RTHUMB" if btns[9]["pressed"] else None)
-                    if len(btns) > 10:
-                        gp.press_button(button="GUIDE" if btns[10]["pressed"] else None)
+                    def apply_btn(idx, const):
+                        if len(btns) > idx:
+                            if btns[idx]["pressed"]: gp.press_button(button=const)
+                            else: gp.release_button(button=const)
 
-                    # Axes (normalized -1.0 to 1.0 for vgamepad)
+                    # Buttons (Strict W3C API Mapping -> vgamepad Hex Constants)
+                    apply_btn(0, vg.XUSB_BUTTON.XUSB_GAMEPAD_A)
+                    apply_btn(1, vg.XUSB_BUTTON.XUSB_GAMEPAD_B)
+                    apply_btn(2, vg.XUSB_BUTTON.XUSB_GAMEPAD_X)
+                    apply_btn(3, vg.XUSB_BUTTON.XUSB_GAMEPAD_Y)
+                    apply_btn(4, vg.XUSB_BUTTON.XUSB_GAMEPAD_LEFT_SHOULDER)
+                    apply_btn(5, vg.XUSB_BUTTON.XUSB_GAMEPAD_RIGHT_SHOULDER)
+                    # Indices 6 & 7 are analog triggers handled by axes
+                    apply_btn(8, vg.XUSB_BUTTON.XUSB_GAMEPAD_BACK)
+                    apply_btn(9, vg.XUSB_BUTTON.XUSB_GAMEPAD_START)
+                    apply_btn(10, vg.XUSB_BUTTON.XUSB_GAMEPAD_LEFT_THUMB)
+                    apply_btn(11, vg.XUSB_BUTTON.XUSB_GAMEPAD_RIGHT_THUMB)
+                    apply_btn(12, vg.XUSB_BUTTON.XUSB_GAMEPAD_DPAD_UP)
+                    apply_btn(13, vg.XUSB_BUTTON.XUSB_GAMEPAD_DPAD_DOWN)
+                    apply_btn(14, vg.XUSB_BUTTON.XUSB_GAMEPAD_DPAD_LEFT)
+                    apply_btn(15, vg.XUSB_BUTTON.XUSB_GAMEPAD_DPAD_RIGHT)
+                    apply_btn(16, vg.XUSB_BUTTON.XUSB_GAMEPAD_GUIDE)
+
+                    # Joysticks (normalized -1.0 to 1.0 for vgamepad, Y-axis inverted for XInput standard)
                     if len(axes) >= 2:
                         lx = min(1.0, max(-1.0, axes[0] / 32767.0))
                         ly = min(1.0, max(-1.0, axes[1] / 32767.0))
-                        gp.left_trigger_float(lx)
-                        gp.left_trigger_float(ly)
+                        gp.left_joystick_float(x_value_float=lx, y_value_float=-ly)
 
                     if len(axes) >= 4:
                         rx = min(1.0, max(-1.0, axes[2] / 32767.0))
                         ry = min(1.0, max(-1.0, axes[3] / 32767.0))
-                        gp.right_trigger_float(rx)
-                        gp.right_trigger_float(ry)
+                        gp.right_joystick_float(x_value_float=rx, y_value_float=-ry)
 
-                    # Triggers (axes[4], axes[5])
+                    # Triggers (mapped strictly from axis 4 and 5)
                     if len(axes) >= 6:
                         lt = min(1.0, max(0.0, axes[4] / 255.0))
                         rt = min(1.0, max(0.0, axes[5] / 255.0))
-                        gp.left_trigger(lt)
-                        gp.right_trigger(rt)
-
-                    # D-Pad (axes[6], axes[7])
-                    if len(btns) >= 16:
-                        dpad_x = -1 if btns[14]["pressed"] else (1 if btns[15]["pressed"] else 0)
-                        dpad_y = -1 if btns[12]["pressed"] else (1 if btns[13]["pressed"] else 0)
-                        if dpad_x != 0 or dpad_y != 0:
-                            # vgamepad dpad handling varies; we use button presses
-                            pass
+                        gp.left_trigger_float(value_float=lt)
+                        gp.right_trigger_float(value_float=rt)
 
                     gp.update()
                 except Exception as e:

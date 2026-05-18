@@ -18,7 +18,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Auto Translate Markdown
-        uses: offensive-vk/auto-translate@v1.0.0
+        uses: offensive-vk/auto-translate@master
         with:
           # Your language array (excluding English)
           languages: '["es", "fr", "de", "pt", "ja"]'
