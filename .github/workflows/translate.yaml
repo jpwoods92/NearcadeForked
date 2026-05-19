@@ -47,21 +47,11 @@ jobs:
           file: 'README.md'
           language: 'ja'
 
-      # ── NEW TRANSLATED LOCALE REDIRECTOR ──
-      - name: Re-route Readmes to Asset Directory
-        run: |
-          mkdir -p assets/locales/readmes
-          for f in README.*.md; do
-            if [ -f "$f" ]; then
-              # Moves README.es.md -> assets/locales/readmes/README.es.md
-              mv "$f" "assets/locales/readmes/$f"
-            fi
-          done
-
+      # THIS IS THE MISSING STEP THAT SAVES THE FILES
       - name: Commit and Push Changes
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add assets/locales/readmes/README.*.md
-          git commit -m "docs: auto-translate readmes and update asset localization directory [skip ci]" || echo "No changes to commit"
+          git add README.*.md
+          git commit -m "docs: add automated translations" || echo "No changes to commit"
           git push
