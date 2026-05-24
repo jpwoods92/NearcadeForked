@@ -21,6 +21,57 @@ process.on('unhandledRejection', (e) => {
   }
 });
 
+// ── REQ 3: Robust signal handlers for virtual audio teardown ─────────────────
+// These ensure the virtual sinks are immediately destroyed even on force-close,
+// preventing lingering tray icons and stolen system audio.
+function _electronSignalCleanup(signal) {
+  console.log(`\n[electron] Received ${signal} — triggering cleanup...`);
+  if (serverCore && serverCore.cleanup) {
+    serverCore.cleanup(false);
+  } else {
+    // If server hasn't loaded yet, still nuke any stale PA modules
+    const { execSync } = require('child_process');
+    if (process.platform === 'linux') {
+      try {
+        execSync(
+          "pactl list short modules | awk '/NearsecAppAudio|NearsecAppMic|NearsecVirtualCapture|NearsecVirtual/{print $1}' | xargs -r pactl unload-module",
+          { stdio: 'ignore' }
+        );
+      } catch (_) {}
+    }
+    process.exit(0);
+  }
+}
+process.on('SIGINT',  () => _electronSignalCleanup('SIGINT'));
+process.on('SIGTERM', () => _electronSignalCleanup('SIGTERM'));
+
+// ── REQ 3: Startup purge — destroy stale NearsecVirtual / loopback modules ───
+// Run synchronously before app.whenReady() so we never create duplicates.
+if (process.platform === 'linux') {
+  try {
+    const { execSync } = require('child_process');
+    const moduleList = execSync('pactl list short modules 2>/dev/null', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+    const staleIds = [];
+    for (const line of moduleList.split('\n')) {
+      if (
+        line.includes('NearsecVirtual') ||
+        line.includes('NearsecVirtualCapture') ||
+        line.includes('NearsecAppAudio') ||
+        line.includes('NearsecAppMic')
+      ) {
+        const id = line.trim().split(/\s+/)[0];
+        if (id && /^\d+$/.test(id)) staleIds.push(id);
+      }
+    }
+    if (staleIds.length > 0) {
+      console.log(`[electron] Startup purge: removing ${staleIds.length} stale PA module(s)`);
+      for (const id of staleIds) {
+        try { execSync(`pactl unload-module ${id}`, { stdio: 'ignore' }); } catch (_) {}
+      }
+    }
+  } catch (_) {}
+}
+
 if (process.platform === 'darwin') app.dock.setIcon(path.join(__dirname, 'assets/NearsecTogether.png'));
 
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');

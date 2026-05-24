@@ -424,7 +424,18 @@
     </div>
   </div>
 
-  <script src="/js/i18n.js"></script>
+  <!-- i18n.js: load relative to the page so GitHub Pages and production both work.
+       If the file is missing (network error, build path issue), the inline fallback
+       below provides a no-op I18N shim so the rest of the page still functions. -->
+  <script src="./js/i18n.js" onerror="
+    if (!window.I18N) {
+      window.I18N = {
+        changeLanguage: function(lang) { localStorage.setItem('ns_lang', lang); },
+        t: function(key) { return key; }
+      };
+      console.warn('[i18n] Could not load i18n.js — using no-op fallback');
+    }
+  "></script>
   <script src="arcade.js"></script>
   <script>
     // Mic UI Toggle

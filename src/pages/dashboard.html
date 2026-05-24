@@ -118,7 +118,11 @@
       width: var(--sidebar-width); background: var(--sidebar); border-right: 1px solid var(--border);
       display: flex; flex-direction: column; padding: 32px 16px; z-index: 100;
       transition: width 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
-      -webkit-app-region: drag; overflow: hidden; white-space: nowrap;
+      /* NOTE: -webkit-app-region:drag removed from sidebar container.
+         The fixed #titlebar at the top of the window is the only drag zone.
+         Having drag on the sidebar caused intermittent click failures on
+         Linux/Electron even when child buttons declared no-drag. */
+      overflow: hidden; white-space: nowrap;
     }
     #sidebar.collapsed { width: 76px; }
 
@@ -506,16 +510,33 @@
     function toggleSidebar() { document.getElementById('sidebar').classList.toggle('collapsed'); }
 
     function switchTab(name) {
+      // Null-safe panel swap — if a panel doesn't exist, log and bail rather than crash
+      const panel = document.getElementById('panel-' + name);
+      if (!panel) {
+        console.warn('[switchTab] No panel found for:', name);
+        return;
+      }
       document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
       document.querySelectorAll('.nav-btn').forEach(t => t.classList.remove('active'));
-      document.getElementById('panel-' + name).classList.add('active');
+      panel.classList.add('active');
       document.getElementById('tab-' + name)?.classList.add('active');
+
+      // Docs button: hide on arcade and settings panels (distracting in those contexts)
+      const docsBtn = document.getElementById('docsFloatBtn');
+      if (docsBtn) {
+        docsBtn.style.display = (name === 'arcade' || name === 'settings') ? 'none' : 'flex';
+      }
     }
 
     let appConfig = {};
 
+    function _getServerPort() {
+      return new URLSearchParams(window.location.search).get('port') || '3000';
+    }
+
     function syncToNode() {
-        fetch('http://localhost:3000/api/config', {
+        const port = _getServerPort();
+        fetch(`http://localhost:${port}/api/config`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(appConfig)
@@ -687,9 +708,25 @@
     }
 
     window.addEventListener('DOMContentLoaded', () => {
-      const savedLang = localStorage.getItem('ns_lang') || navigator.language.split('-')[0] || 'en';
-      document.getElementById('langSelect').value = savedLang;
+      // Populate language select with fallback options in case i18n.js hasn't run yet
+      const langSelect = document.getElementById('langSelect');
+      if (langSelect && langSelect.options.length === 0) {
+        [
+          ['en', 'English'], ['es', 'Español'], ['fr', 'Français'],
+          ['de', 'Deutsch'], ['pt', 'Português'], ['ja', '日本語'],
+          ['ko', '한국어'], ['zh', '中文'], ['ru', 'Русский'],
+        ].forEach(([val, label]) => {
+          const opt = document.createElement('option');
+          opt.value = val; opt.textContent = label;
+          langSelect.appendChild(opt);
+        });
+      }
 
+      const savedLang = localStorage.getItem('ns_lang') || navigator.language.split('-')[0] || 'en';
+      if (langSelect) langSelect.value = savedLang;
+
+      // Arcade panel iframe: always use the dynamic port and saved language
+      const port = _getServerPort();
       const arcadeFrame = document.querySelector('#panel-arcade iframe');
       if (arcadeFrame) {
         arcadeFrame.src = `https://nearsec.cutefame.net/arcade?electron=1&lang=${savedLang}`;
@@ -703,7 +740,8 @@
     let currentGameStatus = { running: false, command: null, tunnelUrl: null, log: '' };
 
     setInterval(() => {
-        fetch('/api/game-status').then(r => r.json()).then(status => {
+        const port = _getServerPort();
+        fetch(`http://localhost:${port}/api/game-status`).then(r => r.json()).then(status => {
             if (status.running !== currentGameStatus.running || status.log !== currentGameStatus.log) {
                 currentGameStatus = status;
                 renderAutoHosts();
@@ -841,7 +879,8 @@
 
     function killGame() {
         if(confirm("Stop the running game?")) {
-            fetch('/api/restart-game', {
+            const port = _getServerPort();
+            fetch(`http://localhost:${port}/api/restart-game`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ command: 'KILL_ONLY' })

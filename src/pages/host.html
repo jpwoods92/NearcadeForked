@@ -60,6 +60,15 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
     </button>
 
+    <!-- Master Audio Killswitch: zeroes the desktop gain node to cut audio from the WebRTC stream -->
+    <button class="rail-btn" id="btnMasterAudioKill" onclick="window.toggleMasterMute()" title="Cut Desktop Audio to Stream">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+        <line x1="23" y1="9" x2="17" y2="15"/>
+        <line x1="17" y1="9" x2="23" y2="15"/>
+      </svg>
+    </button>
+
     <button class="rail-btn" onclick="showAppSettings()" title="Settings">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
     </button>
@@ -363,10 +372,10 @@
           <option value="16">16 Players</option>
         </select>
       </div>
-      <label style="display:flex;align-items:center;gap:8px;font-size:11px;cursor:pointer;">
-        <input type="checkbox" id="arcadeRequirePin" style="width:16px;height:16px;accent-color:var(--accent);">
-        <span>Require PIN to join</span>
-      </label>
+      <!-- arcadeRequirePin is kept as a hidden element so host.js can safely read
+           .checked without throwing. The server hard-codes hasPin=false for all
+           arcade sessions regardless of this value, so it has no functional effect. -->
+      <input type="checkbox" id="arcadeRequirePin" style="display:none;" aria-hidden="true">
     </div>
     <div class="modal-footer">
       <div class="btn-row">
@@ -632,12 +641,20 @@
   let _desktopGainNode = null;
   let _hostMicGainNode = null;
 
+  // Master mute state — persists across gain node re-assignments
+  window._masterMuteActive = false;
+  window._savedDesktopGain = 1.0;
+  window._savedMicGain     = 1.0;
+
   function setDesktopVolume(val) {
     const v = parseInt(val, 10);
     const el = document.getElementById('desktopVolVal');
     if (el) el.textContent = v;
     localStorage.setItem('ns_host_desktop_vol', v);
-    if (_desktopGainNode) _desktopGainNode.gain.value = v / 100;
+    // Respect master mute — don't let the slider override an active kill
+    if (!window._masterMuteActive && _desktopGainNode) {
+      _desktopGainNode.gain.value = v / 100;
+    }
   }
 
   function setHostMicGain(val) {
@@ -645,7 +662,9 @@
     const el = document.getElementById('hostMicVal');
     if (el) el.textContent = v;
     localStorage.setItem('ns_host_mic_gain', v);
-    if (_hostMicGainNode) _hostMicGainNode.gain.value = v / 100;
+    if (!window._masterMuteActive && _hostMicGainNode) {
+      _hostMicGainNode.gain.value = v / 100;
+    }
   }
 
   function attachDesktopGain(stream) {
@@ -656,13 +675,59 @@
       const src  = ctx.createMediaStreamSource(new MediaStream([aTrack]));
       const gain = ctx.createGain();
       const dst  = ctx.createMediaStreamDestination();
-      gain.gain.value = (parseInt(localStorage.getItem('ns_host_desktop_vol') ?? '100', 10)) / 100;
+      // Apply saved volume, clamped to 0 if master mute is already active
+      const savedVol = parseInt(localStorage.getItem('ns_host_desktop_vol') ?? '100', 10) / 100;
+      gain.gain.value = window._masterMuteActive ? 0 : savedVol;
       src.connect(gain); gain.connect(dst);
       _desktopGainNode = gain;
       stream.removeTrack(aTrack);
       stream.addTrack(dst.stream.getAudioTracks()[0]);
     } catch(e) { console.warn('[HostAudio] Gain node failed:', e); }
   }
+
+  // ── MASTER AUDIO KILLSWITCH ───────────────────────────────────────────────
+  window.toggleMasterMute = function() {
+    window._masterMuteActive = !window._masterMuteActive;
+    const active = window._masterMuteActive;
+    const btn = document.getElementById('btnMasterAudioKill');
+
+    if (active) {
+      // 1. Save current gain values before zeroing
+      window._savedDesktopGain = _desktopGainNode ? _desktopGainNode.gain.value : 1.0;
+      window._savedMicGain     = _hostMicGainNode  ? _hostMicGainNode.gain.value  : 1.0;
+      if (_desktopGainNode) _desktopGainNode.gain.value = 0;
+      if (_hostMicGainNode)  _hostMicGainNode.gain.value  = 0;
+
+      // 2. Explicitly sever MediaStream active tracks
+      if (typeof currentStream !== 'undefined' && currentStream) {
+          currentStream.getAudioTracks().forEach(t => t.enabled = false);
+      }
+
+      if (btn) {
+        btn.title = 'Audio MUTED — click to restore';
+        // Remove inline styles, enforce the CSS class
+        btn.style.color = '';
+        btn.style.borderColor = '';
+        btn.classList.add('master-mic-kill');
+      }
+      if (typeof log === 'function') log('Master mute: desktop audio cut from WebRTC stream', 'warn');
+    } else {
+      // 1. Restore saved gains
+      if (_desktopGainNode) _desktopGainNode.gain.value = window._savedDesktopGain;
+      if (_hostMicGainNode)  _hostMicGainNode.gain.value  = window._savedMicGain;
+
+      // 2. Re-enable MediaStream tracks
+      if (typeof currentStream !== 'undefined' && currentStream) {
+          currentStream.getAudioTracks().forEach(t => t.enabled = true);
+      }
+
+      if (btn) {
+        btn.title = 'Cut Desktop Audio to Stream';
+        btn.classList.remove('master-mic-kill');
+      }
+      if (typeof log === 'function') log('Master mute: audio restored', 'ok');
+    }
+  };
 
   let globalViewerVolume = 1.0;
   window.setGlobalViewerVolume = function(val) {

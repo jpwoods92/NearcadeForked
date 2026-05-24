@@ -170,27 +170,62 @@ async function initVirtualAudio(callback) {
     return;
   }
 
-  console.log('[VirtualAudio] Initialising...');
+  console.log('[VirtualAudio] Initialising Native Global Mirroring...');
+  const _prevDefault = (await _pactlExec('pactl get-default-sink')).trim();
 
-  // Always wipe stale modules before creating new ones
   await cleanupStaleSinks();
 
-  _vAudioModules.sink    = await createSink();
-  if (!_vAudioModules.sink) {
-    if (callback) callback(false, 'null-sink creation failed');
-    return;
+  // 1. Create the Virtual Sink (New standard name)
+  _vAudioModules.sink = await _pactlExec(
+    'pactl load-module module-null-sink ' +
+    'sink_name=NearsecVirtual ' +
+    'sink_properties=device.description="NearsecVirtual"'
+  );
+
+  // 2. Create the WebRTC Monitor Remap
+  _vAudioModules.remap = await _pactlExec(
+    'pactl load-module module-remap-source ' +
+    'master=NearsecVirtual.monitor ' +
+    'source_name=NearsecVirtualCapture ' +
+    'source_properties=device.description="NearsecVirtualCapture"'
+  );
+
+  // 3. Resolve Hardware Sink for the Loopback
+  // If the previous default was already our virtual sink, find the actual physical hardware
+  let hwSink = _prevDefault;
+  if (!hwSink || hwSink.includes('Nearsec')) {
+    const sinksRaw = await _pactlExec('pactl list short sinks');
+    const fallback = (sinksRaw || '').split('\n').find(l => !l.includes('Nearsec') && l.trim() !== '');
+    if (fallback) hwSink = fallback.trim().split(/\s+/)[1];
   }
 
-  _vAudioModules.remap   = await createRemapSource();
-  _vAudioModules.loopback = await createLoopback();
+  // 4. Create the Loopback Mirror (Targeting the hardware sink specifically to prevent feedback loops)
+  if (hwSink) {
+    _vAudioModules.loopback = await _pactlExec(`pactl load-module module-loopback source=NearsecVirtual.monitor sink=${hwSink} latency_msec=30`);
+  } else {
+    console.warn('[VirtualAudio] No hardware sink found for loopback.');
+  }
 
-  console.log(
-    `[VirtualAudio] Ready. sink=${_vAudioModules.sink} ` +
-    `remap=${_vAudioModules.remap} loopback=${_vAudioModules.loopback}`
-  );
+  // 5. LOCK the System Default to the Virtual Sink
+  // All new applications will now natively spawn on the virtual sink
+  await new Promise(r => setTimeout(r, 400));
+  await _pactlExec('pactl set-default-sink NearsecVirtual');
+
+  // 6. Spin up the Background Daemon
+  try {
+    const path = require('path');
+    const daemonPath = path.join(__dirname, '..', 'sidecar', 'audio_blacklist_daemon.js');
+    const blacklistDaemon = require(daemonPath);
+
+    // THE FIX: Explicitly pass hwSink to the daemon so it knows EXACTLY where to send Discord/Spotify
+    _vAudioModules.daemonHandle = blacklistDaemon.startDaemon(blacklistDaemon.DEFAULT_BLACKLIST, hwSink);
+  } catch (err) {
+    console.error('\x1b[31m[VirtualAudio] Failed to load blacklist daemon:\x1b[0m', err.message);
+  }
+
+  console.log(`[VirtualAudio] Ready. Default locked to NearsecVirtual. Mirroring to: ${hwSink || 'None'}`);
   if (callback) callback(true);
 }
-
 /**
  * PUBLIC — Tear down every module we created, in reverse order.
  * Idempotent: safe to call multiple times (only runs once).
@@ -286,7 +321,7 @@ const globalArcadeChannel = pusher.subscribe('private-arcade-global');
 
 const AUDIO_BLACKLIST = [
   // Voice/chat apps — never route these
-  'discord', 'teamspeak', 'ts3client', 'mumble', 'slack',
+  'WEBRTC VoiceEngine', 'teamspeak', 'ts3client', 'mumble', 'slack',
   'Discord', 'telegram-desktop', 'discord_voice', 'vesktop',
   // Web browsers — their audio is their own business, not game audio
   'firefox', 'firefox-bin', 'firefox-esr',
@@ -453,7 +488,9 @@ function getLanIP() {
       return "127.0.0.1";
 }
 function shouldRequirePin(ip, hasTunnelHeader = false) {
-  return true;
+  // REQ 5: Arcade Mode PIN Stripping
+  if (process.argv.includes('--arcade-worker')) return false;
+
   if (!ip) return true;
   if (ip.startsWith('192.168.') || ip.startsWith('::ffff:192.168.')) return false;
   if (ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1') {
@@ -1711,14 +1748,6 @@ async function main() {
 
 main();
 
-// Keep scanning for new game audio every 3 seconds.
-// First scan is delayed 5s to let PipeWire register the new null-sink node.
-setTimeout(() => {
-  routeGameAudio("ALL_DESKTOP");
-  setInterval(() => {
-    routeGameAudio("ALL_DESKTOP");
-  }, 3000);
-}, 5000);
 
 function cleanup(isElectron = false) {
   if (_cleanupDone) return;
@@ -1739,13 +1768,19 @@ function cleanup(isElectron = false) {
 
   if (process.platform === 'linux') {
     const { execSync } = require('child_process');
-    for (const [key, id] of Object.entries(_vAudioModules)) {
+
+    // THE FIX: Unload loopback BEFORE the sink to prevent the audio buzz
+    const unloadOrder = ['loopback', 'remap', 'sink', 'daemonHandle'];
+    for (const key of unloadOrder) {
+      const id = _vAudioModules[key];
       if (id) {
         try { execSync(`pactl unload-module ${id}`, { stdio: 'ignore' }); } catch (_) {}
         console.log(`[VirtualAudio] Cleaned up ${key} module ${id}`);
       }
     }
-    try { execSync("pactl list short modules | awk '/NearsecAppAudio|NearsecAppMic/{print $1}' | xargs -r pactl unload-module", { stdio: 'ignore' }); } catch (_) {}
+
+    // Belt and braces cleanup
+    try { execSync("pactl list short modules | awk '/NearsecAppAudio|NearsecAppMic|NearsecVirtualCapture|NearsecVirtual/{print $1}' | xargs -r pactl unload-module", { stdio: 'ignore' }); } catch (_) {}
   }
 
   if (!isElectron) {

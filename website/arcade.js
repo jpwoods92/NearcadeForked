@@ -45,22 +45,27 @@ let currentLiveSession = null;
 
 const modal = document.getElementById('gamepadModal');
 
-// Grab all the category pills
+// Grab all the category pills — guard against null so the script doesn't
+// crash if loaded in a sandboxed iframe or extension context where some
+// elements may not exist yet.
 const categoryPills = document.querySelectorAll('.cat-pill');
 
-categoryPills.forEach(pill => {
+if (categoryPills && categoryPills.length) {
+  categoryPills.forEach(pill => {
     pill.addEventListener('click', (e) => {
         // 1. Visually update the active button
-        document.querySelector('.cat-pill.active').classList.remove('active');
+        const activePill = document.querySelector('.cat-pill.active');
+        if (activePill) activePill.classList.remove('active');
         e.target.classList.add('active');
 
         // 2. Get the category text (e.g., "Fighting", "All Sessions")
         const selectedCategory = e.target.innerText;
 
-        // 3. You will need to write a filter logic here to show/hide
-        //    cards in the clientGrid based on this selectedCategory!
+        // 3. Filter logic handled by filterCards() which reads the active pill
+        if (typeof filterCards === 'function') filterCards();
     });
-});
+  });
+}
 
 window.openGamepadTester = function() {
     const modal = document.getElementById('gamepadModal');

@@ -760,6 +760,12 @@ async function sendOfferToViewer(viewerId) {
                 const state = viewerAudioStates[viewerId] || { vol: 100, state: 0 };
                 audioEl.volume = state.vol / 100;
                 audioEl.muted = state.state >= 2 || _globalMicKillActive;
+
+                // ── THE FIX: Apply hardware route to new viewers ──
+                if (typeof audioEl.setSinkId === 'function' && selectedOutputDeviceId && selectedOutputDeviceId !== 'default') {
+                    audioEl.setSinkId(selectedOutputDeviceId).catch(err => console.warn('[Audio] setSinkId error on join:', err));
+                }
+
                 document.body.appendChild(audioEl);
             }
             audioEl.srcObject = e.streams[0];
@@ -979,11 +985,13 @@ async function startCapture() {
 
                 // Look for the system audio capture source
                 const loopbackDevice = audioInputs.find(d =>
-                  d.label.includes('Nearsec_App_Mic') ||
-                  d.label.includes('Nearsec_Virtual_Mic') ||
-                  d.label.includes('NearsecAppMic') ||
-                  d.label.includes('Nearsec_App_Audio') ||
-                  d.label.includes('NearsecAppAudio')
+                d.label.includes('NearsecVirtualCapture') || // NEW ARCHITECTURE
+                d.label.includes('NearsecVirtual') ||        // NEW ARCHITECTURE
+                d.label.includes('Nearsec_App_Mic') ||
+                d.label.includes('Nearsec_Virtual_Mic') ||
+                d.label.includes('NearsecAppMic') ||
+                d.label.includes('Nearsec_App_Audio') ||
+                d.label.includes('NearsecAppAudio')
                 );
 
                 if (loopbackDevice) {
@@ -1587,6 +1595,19 @@ function saveAudioDevice(type, deviceId) {
     } else {
         selectedOutputDeviceId = deviceId;
         localStorage.setItem('ns_audio_output', deviceId);
+
+        // ── THE FIX: Route viewer voices explicitly to hardware ──
+        // This forces the voice chat to bypass NearsecVirtual, preventing stream echo
+        document.querySelectorAll('audio[id^="remote-audio-"]').forEach(el => {
+            if (typeof el.setSinkId === 'function') {
+                const targetId = deviceId === 'default' ? '' : deviceId;
+                el.setSinkId(targetId).catch(e => console.warn('[Audio] setSinkId error:', e));
+            }
+        });
+
+        if (typeof log === 'function') {
+            log(deviceId === 'default' ? 'Viewer output set to Default (Warning: May cause echo)' : 'Viewer output securely routed to hardware', 'ok');
+        }
     }
 }
 
