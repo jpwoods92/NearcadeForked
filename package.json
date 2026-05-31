@@ -49,7 +49,8 @@
       "deleteAppDataOnUninstall": true
     },
     "publish": {
-      "provider": "github"
+      "provider": "github",
+      "releaseType": "release"
     },
     "directories": {
       "output": "dist"
