@@ -83,9 +83,13 @@ jobs:
           chmod +x ./gradlew
           ./gradlew assembleDebug
 
+      # ── FIX: Rename the APK before uploading ──
+      - name: Rename APK
+        run: mv android/app/build/outputs/apk/debug/app-debug.apk android/app/build/outputs/apk/debug/NearsecTogether-Android.apk
+
       - name: Upload APK to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: android/app/build/outputs/apk/debug/app-debug.apk
+          files: android/app/build/outputs/apk/debug/NearsecTogether-Android.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
