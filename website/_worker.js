@@ -64,9 +64,56 @@ export default {
     }
 
     // ==========================================
+    // ROUTE 2.5: Pusher Private Channel Auth
+    // ==========================================
+    if (url.pathname === "/api/pusher-auth") {
+      if (request.method !== "POST") {
+        return new Response("Method Not Allowed", { status: 405, headers: corsHeaders });
+      }
+
+      try {
+        // Pusher authentication sends raw form-urlencoded data: socket_id=XXXX&channel_name=XXXX
+        const formData = await request.formData();
+        const socketId = formData.get("socket_id");
+        const channelName = formData.get("channel_name");
+
+        if (!socketId || !channelName) {
+          return new Response("Bad Request", { status: 400, headers: corsHeaders });
+        }
+
+        // Generate the HMAC SHA-256 signature required by Pusher
+        const stringToSign = `${socketId}:${channelName}`;
+        const encoder = new TextEncoder();
+        const cryptoKey = await crypto.subtle.importKey(
+          "raw",
+          encoder.encode(env.PUSHER_SECRET), // Make sure PUSHER_SECRET is set in Worker env variables
+                                                        { name: "HMAC", hash: "SHA-256" },
+                                                        false,
+                                                        ["sign"]
+        );
+
+        const signatureBuffer = await crypto.subtle.sign("HMAC", cryptoKey, encoder.encode(stringToSign));
+        const signatureHex = Array.from(new Uint8Array(signatureBuffer))
+        .map(b => b.toString(16).padStart(2, "0"))
+        .join("");
+
+        const authResponse = {
+          auth: `${env.PUSHER_KEY}:${signatureHex}` // Make sure PUSHER_KEY matches your Pusher App Key
+        };
+
+        return new Response(JSON.stringify(authResponse), {
+          status: 200,
+          headers: { "Content-Type": "application/json", ...corsHeaders }
+        });
+      } catch (e) {
+        return new Response(JSON.stringify({ error: "Auth Failed", details: e.message }), { status: 500, headers: corsHeaders });
+      }
+    }
+
+    // ==========================================
     // ROUTE 3: Arcade Moderation API
     // ==========================================
-    if (url.pathname === "/api/mod") {
+    if (url.pathname.includes("/api/mod")) {
       // 1. Verify the Secret Token
       const authHeader = request.headers.get('Authorization');
       if (!authHeader || authHeader !== `Bearer ${env.MOD_SECRET_TOKEN}`) {

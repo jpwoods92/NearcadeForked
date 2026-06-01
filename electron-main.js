@@ -75,13 +75,20 @@ if (process.platform === 'darwin') app.dock.setIcon(path.join(__dirname, 'assets
 
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 
+// ── WAYLAND & HARDWARE ENCODING OPTIMIZATIONS ──
 if (isArcadeWorker && process.platform === 'linux') {
   app.commandLine.appendSwitch('ozone-platform-hint', 'x11');
-} else if (process.platform === 'linux' && (process.env.WAYLAND_DISPLAY || process.env.XDG_SESSION_TYPE === 'wayland')) {
   app.commandLine.appendSwitch('enable-features', 'WebRTCPipeWireCapturer');
+} else if (process.platform === 'linux' && (process.env.WAYLAND_DISPLAY || process.env.XDG_SESSION_TYPE === 'wayland')) {
+  // Force native Wayland with decorations
   app.commandLine.appendSwitch('ozone-platform-hint', 'auto');
+  // Combine WebRTC PipeWire capture with VAAPI Hardware Encoding for AMD
+  app.commandLine.appendSwitch('enable-features', 'WebRTCPipeWireCapturer,WaylandWindowDecorations,VaapiVideoEncoder,VaapiVideoDecoder,CanvasOopRasterization');
+  // Unlock zero-copy DMA-BUF memory passing
+  app.commandLine.appendSwitch('enable-zero-copy');
 }
 
+// ── GLOBAL PERFORMANCE FLAGS ──
 app.commandLine.appendSwitch('ignore-gpu-blocklist');
 app.commandLine.appendSwitch('disable-gpu-vsync');
 app.commandLine.appendSwitch('disable-frame-rate-limit');
@@ -91,10 +98,6 @@ app.commandLine.appendSwitch('force-high-performance-gpu');
 app.commandLine.appendSwitch('disable-gpu-driver-bug-workarounds');
 app.commandLine.appendSwitch('disable-rtc-smoothness-algorithm');
 app.commandLine.appendSwitch('disable-hardware-cursors');
-if (process.platform === 'linux') {
-  app.commandLine.appendSwitch('enable-features', 'WebRTCPipeWireCapturer');
-}
-
 // ── FIX #12: Single centralized config ───────────────────────────────────────
 // All settings live here. Renderer pages MUST go through electronAPI.getSettings /
 // saveSettings — never use localStorage as the authoritative source for Electron
@@ -206,6 +209,7 @@ async function createWindow() {
   }
 
   win.webContents.on('did-fail-load', (e, code, desc) => {
+    if (code === -3) return;
     console.error('[electron] failed to load:', code, desc);
     setTimeout(() => {
       if (isArcadeWorker) win.loadURL(`http://localhost:${port}/host?auto=1`);

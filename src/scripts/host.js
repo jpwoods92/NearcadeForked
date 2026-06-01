@@ -51,7 +51,7 @@ const hostSessionId = 'ns-' + Math.random().toString(36).substr(2, 9);
 
 // ── AUDIO STATE & MASTER MUTE ────────────────────────────────────────────────
 // Declared here so host.html inline scripts can reference them without redeclaring.
-let _desktopGainNode = null;
+_desktopGainNode = null;
 let _hostMicGainNode  = null;
 window._masterMuteActive = false;
 window._savedDesktopGain = 1.0;

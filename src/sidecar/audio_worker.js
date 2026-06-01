@@ -4,25 +4,25 @@
  * Worker thread for Nearsec virtual-audio lifecycle management.
  *
  * Owns:
- *   • _pactlExec()          — shell helper
- *   • cleanupStaleSinks()   — orphan-module sweep on boot
- *   • initVirtualAudio()    — full sink / remap-source / loopback setup
- *   • destroyVirtualAudio() — ordered teardown
- *   • routeGameAudio()      — pactl + venmic stream routing
+ * • _pactlExec()          — shell helper
+ * • cleanupStaleSinks()   — orphan-module sweep on boot
+ * • initVirtualAudio()    — full sink / remap-source / loopback setup
+ * • destroyVirtualAudio() — ordered teardown
+ * • routeGameAudio()      — pactl + venmic stream routing
  *
  * IPC contract (parentPort messages):
  *
- *   ← main thread sends:
- *     { type: 'init'    }                           → run initVirtualAudio
- *     { type: 'destroy' }                           → run destroyVirtualAudio
- *     { type: 'route',   processName: string|null } → run routeGameAudio
- *     { type: 'cleanup-stale' }                     → run cleanupStaleSinks only
+ * ← main thread sends:
+ * { type: 'init'    }                           → run initVirtualAudio
+ * { type: 'destroy' }                           → run destroyVirtualAudio
+ * { type: 'route',   processName: string|null } → run routeGameAudio
+ * { type: 'cleanup-stale' }                     → run cleanupStaleSinks only
  *
- *   → worker posts back to main thread:
- *     { type: 'ready',   hwSink: string }           → init completed, loopback sink name
- *     { type: 'error',   message: string }          → non-fatal error
- *     { type: 'log',     message: string }          → informational
- *     { type: 'module-ids', ids: object }           → _vAudioModules snapshot for cleanup()
+ * → worker posts back to main thread:
+ * { type: 'ready',   hwSink: string }           → init completed, loopback sink name
+ * { type: 'error',   message: string }          → non-fatal error
+ * { type: 'log',     message: string }          → informational
+ * { type: 'module-ids', ids: object }           → _vAudioModules snapshot for cleanup()
  */
 
 'use strict';
@@ -52,6 +52,7 @@ if (venmicPath && fs.existsSync(venmicPath)) {
 
 // ── Module-ID tracking ────────────────────────────────────────────────────────
 const _vAudioModules = { sink: null, remap: null, loopback: null, daemonHandle: null };
+let _systemOriginalSink = null; // Tracks the true system default to restore on exit
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function log(msg)  { parentPort.postMessage({ type: 'log',   message: `[audio_worker] ${msg}` }); }
@@ -82,10 +83,10 @@ async function cleanupStaleSinks() {
     const trimmed = line.trim();
     if (!trimmed) continue;
     if (trimmed.includes('NearsecAppAudio') || trimmed.includes('NearsecAppMic') ||
-        trimmed.includes('NearsecVirtual')  || trimmed.includes('NearsecVirtualCapture')) {
+      trimmed.includes('NearsecVirtual')  || trimmed.includes('NearsecVirtualCapture')) {
       const id = trimmed.split(/\s+/)[0];
-      if (id && /^\d+$/.test(id)) staleIds.push(id);
-    }
+    if (id && /^\d+$/.test(id)) staleIds.push(id);
+      }
   }
 
   if (staleIds.length === 0) { log('No stale modules found.'); return; }
@@ -107,6 +108,11 @@ async function initVirtualAudio() {
   log('Initialising Native Global Mirroring…');
   const _prevDefault = (await _pactlExec('pactl get-default-sink')).trim();
 
+  // Cache the true system default so we can restore it safely on exit
+  if (_prevDefault && !_prevDefault.includes('Nearsec')) {
+    _systemOriginalSink = _prevDefault;
+  }
+
   await cleanupStaleSinks();
 
   // 1. Virtual null-sink
@@ -124,7 +130,7 @@ async function initVirtualAudio() {
     'source_properties=device.description="NearsecVirtualCapture"'
   );
 
-  // 3. Resolve hardware sink for loopback (avoid using our own virtual sink)
+  // 3. Resolve hardware sink (needed for blacklist daemon filtering)
   let hwSink = _prevDefault;
   if (!hwSink || hwSink.includes('Nearsec')) {
     const sinksRaw = await _pactlExec('pactl list short sinks');
@@ -132,14 +138,12 @@ async function initVirtualAudio() {
     if (fallback) hwSink = fallback.trim().split(/\s+/)[1];
   }
 
-  // 4. Loopback mirror → hardware sink (prevents feedback loops)
-  if (hwSink) {
-    _vAudioModules.loopback = await _pactlExec(
-      `pactl load-module module-loopback source=NearsecVirtual.monitor sink=${hwSink} latency_msec=30`
-    );
-  } else {
-    log('No hardware sink found for loopback.');
-  }
+  // 4. Loopback mirror → Dynamic System Default Alias
+  // Using @DEFAULT_SINK@ lets the OS gracefully handle live device changes (like Bluetooth)
+  // under the hood without breaking our virtual mirror link.
+  _vAudioModules.loopback = await _pactlExec(
+    'pactl load-module module-loopback source=NearsecVirtual.monitor sink=@DEFAULT_SINK@ latency_msec=30'
+  );
 
   // 5. Lock system default to the virtual sink
   await new Promise(r => setTimeout(r, 400));
@@ -155,16 +159,42 @@ async function initVirtualAudio() {
     }
   }
 
-  log(`Ready. Default locked to NearsecVirtual. Mirroring to: ${hwSink || 'None'}`);
+  log(`Ready. Default locked to NearsecVirtual. Mirroring to active system sink.`);
 
-  // Report module IDs to main thread so cleanup() can unload them synchronously
-  parentPort.postMessage({ type: 'module-ids', ids: { ...(_vAudioModules) } });
+  // Report ONLY the string IDs to main thread so cleanup() can unload them synchronously
+  parentPort.postMessage({ type: 'module-ids', ids: {
+    sink: _vAudioModules.sink,
+    remap: _vAudioModules.remap,
+    loopback: _vAudioModules.loopback
+  }});
   parentPort.postMessage({ type: 'ready', hwSink: hwSink || null });
 }
 
 // ── Virtual audio teardown ────────────────────────────────────────────────────
 async function destroyVirtualAudio() {
   if (process.platform !== 'linux') return;
+
+  // Kill the JavaScript timer for the blacklist daemon
+  if (_vAudioModules.daemonHandle) {
+    clearInterval(_vAudioModules.daemonHandle);
+    _vAudioModules.daemonHandle = null;
+    log('Blacklist daemon stopped.');
+  }
+
+  // Hand control back to the original hardware device BEFORE killing the sink
+  if (_systemOriginalSink) {
+    log(`Restoring system default sink back to: ${_systemOriginalSink}`);
+    await _pactlExec(`pactl set-default-sink ${_systemOriginalSink}`);
+  } else {
+    // Ultimate fallback sweep: find the first non-Nearsec hardware device available
+    const sinksRaw = await _pactlExec('pactl list short sinks');
+    const nativeSink = (sinksRaw || '').split('\n').find(l => !l.includes('Nearsec') && l.trim() !== '');
+    if (nativeSink) {
+      const nativeName = nativeSink.trim().split(/\s+/)[1];
+      log(`Restoring system default sink back to fallback: ${nativeName}`);
+      await _pactlExec(`pactl set-default-sink ${nativeName}`);
+    }
+  }
 
   // Move sink-inputs off Nearsec sink before we unload
   const sinks = await _pactlExec('pactl list short sinks');
@@ -201,10 +231,10 @@ async function destroyVirtualAudio() {
     const leftover = [];
     for (const line of list.split('\n')) {
       if (line.includes('NearsecAppAudio') || line.includes('NearsecAppMic') ||
-          line.includes('NearsecVirtual')  || line.includes('NearsecVirtualCapture')) {
+        line.includes('NearsecVirtual')  || line.includes('NearsecVirtualCapture')) {
         const id = line.trim().split(/\s+/)[0];
-        if (id && /^\d+$/.test(id)) leftover.push(id);
-      }
+      if (id && /^\d+$/.test(id)) leftover.push(id);
+        }
     }
     if (leftover.length > 0) {
       log(`Belt-and-braces: unloading ${leftover.length} residual module(s) [${leftover.join(', ')}]`);
@@ -213,16 +243,17 @@ async function destroyVirtualAudio() {
   }
 
   parentPort.postMessage({ type: 'destroyed' });
+  process.exit(0); // <--- ADD THIS EXACT LINE
 }
 
 // ── Game audio routing ────────────────────────────────────────────────────────
 const AUDIO_BLACKLIST = [
   'WEBRTC VoiceEngine', 'teamspeak', 'ts3client', 'mumble', 'slack',
-  'Discord', 'telegram-desktop', 'discord_voice', 'vesktop',
-  'firefox', 'firefox-bin', 'firefox-esr',
-  'chromium', 'chromium-browser', 'google-chrome', 'chrome',
-  'brave', 'brave-browser', 'vivaldi', 'opera', 'epiphany',
-  'waterfox', 'librewolf', 'ungoogled-chromium',
+'Discord', 'telegram-desktop', 'discord_voice', 'vesktop',
+'firefox', 'firefox-bin', 'firefox-esr',
+'chromium', 'chromium-browser', 'google-chrome', 'chrome',
+'brave', 'brave-browser', 'vivaldi', 'opera', 'epiphany',
+'waterfox', 'librewolf', 'ungoogled-chromium',
 ];
 
 let linkedStreams = new Set();
@@ -240,7 +271,7 @@ function routeGameAudio(gameProcessName) {
     const name = (d['node.name'] || d['audio.name'] || '').toLowerCase();
     const desc = (d['node.description'] || d['device.description'] || d['media.description'] || '').toLowerCase();
     return (cls.includes('sink') || cls.includes('audio/sink')) &&
-           (name.includes('nearsec') || desc.includes('nearsec') || name.includes('nearsecappaudio'));
+    (name.includes('nearsec') || desc.includes('nearsec') || name.includes('nearsecappaudio'));
   });
   if (!sinkNode) return;
 

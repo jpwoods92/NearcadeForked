@@ -6,6 +6,7 @@
   "main": "electron-main.js",
   "scripts": {
     "start": "node src/scripts/server.js",
+    "test": "node bin/verify.js",
     "electron": "electron .",
     "dev": "electron . --dev",
     "deploy": "wrangler deploy",
