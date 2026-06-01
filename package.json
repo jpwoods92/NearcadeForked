@@ -77,7 +77,8 @@
     ],
     "asarUnpack": [
       "src/sidecar/**/*",
-      "assets/**/*"
+      "assets/**/*",
+      "bin/**/*"
     ],
     "win": {
       "target": [
