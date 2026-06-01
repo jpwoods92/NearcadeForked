@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   # ── 1. DESKTOP BUILDS ──
-  release-desktop:
+  desktop:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -35,19 +35,34 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22.x'
+          node-version: 22
           cache: npm
 
       - name: Install Dependencies
-        run: npm ci
+        run: npm install
 
       - name: Build Electron App
+        # Removing GH_TOKEN here strips electron-builder of its publishing privileges. 
+        # It will only compile the binaries into the dist/ folder.
         run: npm run dist
+
+      - name: Force Upload Desktop Binaries
+        uses: softprops/action-gh-release@v2
+        with:
+          # Sweep the dist folder and upload all compiled executable formats
+          files: |
+            dist/*.exe
+            dist/*.AppImage
+            dist/*.dmg
+            dist/*.deb
+            dist/*.snap
+            dist/*.zip
+            dist/latest*.yml
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # ── 2. ANDROID APK BUILD ──
-  release-android:
+  android:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
@@ -56,7 +71,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22.x'
+          node-version: 22
           cache: 'npm'
 
       - name: Set up JDK 21
@@ -67,7 +82,7 @@ jobs:
           cache: 'gradle'
 
       - name: Install NPM dependencies
-        run: npm ci
+        run: npm install
 
       - name: Build Web Assets for Android
         run: |
@@ -83,9 +98,12 @@ jobs:
           chmod +x ./gradlew
           ./gradlew assembleDebug
 
+      - name: Rename APK
+        run: mv android/app/build/outputs/apk/debug/app-debug.apk android/app/build/outputs/apk/debug/NearsecTogether-Android.apk
+
       - name: Upload APK to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: android/app/build/outputs/apk/debug/app-debug.apk
+          files: android/app/build/outputs/apk/debug/NearsecTogether-Android.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
