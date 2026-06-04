@@ -29,9 +29,6 @@ const { Worker } = require('worker_threads');
 const PusherRaw = require('pusher-js');
 
 const isPackaged = __dirname.includes('app.asar');
-const venmicPath = isPackaged
-? path.join(process.resourcesPath, 'bin', 'venmic.node')
-: path.join(__dirname, '..', '..', 'bin', 'venmic.node');
 
 // ══════════════════════════════════════════════════════════════════════════════
 // VIRTUAL AUDIO — delegated to audio_worker.js via worker_threads IPC
@@ -58,7 +55,6 @@ function spawnAudioWorker() {
   _audioWorker = new Worker(path.join(__dirname, '..', 'sidecar', 'audio_worker.js'), {
     workerData: {
       isPackaged,
-      venmicPath,
       daemonPath: fs.existsSync(daemonPath) ? daemonPath : null,
     }
   });
@@ -123,17 +119,6 @@ function routeGameAudio(gameProcessName) {
 // ── Venmic must init BEFORE virtual audio so pb is ready when the sink
 // appears in the PipeWire graph. initVirtualAudio() is async — we start it
 // here but let venmic load synchronously first.
-try {
-  if (fs.existsSync(venmicPath)) {
-    venmic = require(venmicPath);
-    pb = new venmic.PatchBay();
-    console.log("✅ Native audio router (venmic) loaded successfully!");
-  } else {
-    console.warn(`⚠️ venmic.node not found at ${venmicPath}`);
-  }
-} catch (e) {
-  console.error("❌ Failed to load venmic:", e);
-}
 
 // Now create the sink — venmic is already listening to the PipeWire graph
 initVirtualAudio();

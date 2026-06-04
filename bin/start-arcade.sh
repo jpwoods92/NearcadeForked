@@ -14,7 +14,7 @@ if ! command -v xvfb-run &> /dev/null; then
 fi
 
 # 1. Route ALL audio for this isolated session exclusively to the virtual cable
-export PULSE_SINK="NearsecAppAudio"
+export PULSE_SINK="NearsecVirtual"
 
 # 2. THE SANDBOX LOCK: Blindfold Chromium and MAME to Wayland.
 # If we do not unset these, the apps will escape the Xvfb sandbox,
