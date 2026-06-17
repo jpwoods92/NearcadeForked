@@ -1,159 +1,69 @@
-<p align="left">
-  <img src="assets/NearsecTogether.png" width="160" height="140">
-<h1>NearsecTogether</h1>
+# Nearsec ensemble
 
 [Anglais](README.md)\|[Espagnol](README.es.md)\|[Français](README.fr.md)\|[Allemand](README.de.md)\|[portugais](README.pt.md)\|[japonais](README.ja.md)
 
-## Captures d'écran - Tableau de bord, page de visualisation, Arcade
+## Mission du projet
 
-<div align="center">
-  <img src="assets/screenshots/nearsec-client-home.png" alt="Nearsec Host" width="45%">
-  <img src="assets/screenshots/nearsec-host.png" alt="Nearsec Host" width="45%">
-  <img src="assets/screenshots/nearsec-viewer.png" alt="Nearsec Viewer" width="45%">
-  <img src="assets/screenshots/nearsec-arcade.png" alt="Nearsec Arcade" width="45%">
-</div>
+Nearsec Together est une plate-forme open source qui vous permet de jouer à des jeux coopératifs locaux sur Internet avec des amis. Il est conçu pour les configurations auto-hébergées. Il utilise des connexions peer-to-peer et le routage audio et d'entrée natif du système d'exploitation pour maintenir un faible délai d'entrée.
 
-## Description du projet
+L'accent principal est mis sur les configurations privées. L'application hôte ne nécessite aucune configuration réseau particulière. Les téléspectateurs rejoignent via un navigateur Web standard sur un ordinateur de bureau ou un appareil mobile. L'interface de visualisation mobile comprend des commandes tactiles et un joystick virtuel. Les utilisateurs n'ont pas besoin de télécharger quoi que ce soit pour jouer.
 
-NearsecTogether est une plate-forme open source à faible latence qui vous permet de jouer à des jeux coopératifs locaux sur Internet avec vos amis. En tirant parti de WebRTC pour le streaming UDP et des encodeurs matériels de navigateur intégrés, NearsecTogether offre une latence presque imperceptible qui rivalise avec les plates-formes commerciales de jeux en nuage, spécialement conçues pour les instances auto-hébergées.
+## Configuration système requise
 
-Contrairement aux solutions de cloud gaming traditionnelles qui reposaient sur d'énormes tuyaux de centre de données et des encodeurs matériels QUIC/VP9 personnalisés, NearsecTogether est optimisé pour fonctionner avec élégance sur une connexion Internet domestique standard.
+Vous avez besoin d'un logiciel spécifique installé sur votre ordinateur pour exécuter l'application hôte.
 
-## Pile technologique
+### Logiciel requis
 
--   **Les transports**: WebRTC gère automatiquement la mise en mémoire tampon de gigue et la traversée NAT.
--   **Le distributeur**: Pour éviter de surcharger la bande passante de téléchargement de votre réseau domestique lors de la diffusion vers plusieurs personnes, vous pouvez l'associer à une SFU (Selective Forwarding Unit) ou utiliser les options intégrées de redirection de port et de tunneling.
--   **L'encodeur**: Le logiciel accède à l'encodage matériel de votre système (NVENC, VAAPI) via l'API WebRTC pour fournir des flux H.264 ou VP8/VP9 optimisés en fonction de la qualité de votre connexion.
+-   Node.js version 18 ou ultérieure.
+-   Python 3 pour le pont de virtualisation du contrôleur.
+-   Git pour télécharger le code source.
 
-* * *
+### Configuration requise pour Linux
 
-## Prise en charge de la plateforme
+-   PipeWire doit être votre serveur audio actif. L'application cible directement les nœuds PipeWire pour séparer l'audio du jeu des discussions vocales. Cela ne fonctionnera pas avec PulseAudio.
+-   Votre noyau doit avoir le module uinput activé pour que l'application puisse créer des manettes de jeu virtuelles natives.
+-   Le système déploie des règles udev natives pour bloquer les indicateurs de confusion de la souris et du clavier. Cela contourne les limites normales d’entrée de Steam. Le script d'installation fourni gère cette étape.
 
-| Fonctionnalité                          |      Linux     |     Fenêtres     |       macOS      |
-| --------------------------------------- | :------------: | :--------------: | :--------------: |
-| **Diffusion WebRTC**                    |        ✅       |         ✅        |         ✅        |
-| **Prise en charge des manettes de jeu** |     ✅ Plein    | ⚠️ Conditionnel¹ |      ❌ Aucun     |
-| **Entrée clavier/souris**               |     ✅ Plein    |     ⚠️ Limité    |      ✅ Plein     |
-| **Commandes de mouvement**              |        ✅       |         ❌        |         ❌        |
-| **Multi-contrôleur**                    |        ✅       |     ⚠️ Limité    |         ❌        |
-| **Lecture audio**                       |        ✅       |         ✅        |         ✅        |
-| **Capture d'affichage**                 |        ✅       |         ✅        |         ✅        |
-| **Stabilité**                           | **Production** | **Expérimental** | **Expérimental** |
+### Configuration requise pour Windows
 
-¹ La manette de jeu Windows nécessite[Pilote ViGEmBus](https://github.com/nefarius/ViGEmBus/releases)
+-   Vous devez installer le pilote ViGEmBus manuellement pour activer la prise en charge de la manette de jeu sous Windows.
 
-## Documentation
+### Dépendances groupées
 
-Toutes les configurations techniques, les guides d'utilisation et les explications de logique avancée ont été déplacés vers`/src/docs/`annuaire. Vous pouvez également les visualiser directement dans le tableau de bord hôte de l'application en cliquant sur l'icône Livre.
+L'application regroupe les binaires Cloudflared et Zrok pour le tunneling et les exécute de manière native. Vous n'avez pas besoin de les installer manuellement. Le routage réseau s'appuie sur un routeur Rust VPS externe pour la signalisation, tandis que le streaming multimédia s'effectue via WebRTC.
 
--   [Commencer](src/docs/GETTING_STARTED.md)
--   [Utilisation de l'hôte](src/docs/HOST_USAGE.md)
--   [API et configuration](src/docs/API_AND_SETUP.md)
--   [Architecture logique avancée](src/docs/ADVANCED_LOGIC.md)
+## Matrice de prise en charge de la plateforme
 
-* * *
+| Fonctionnalité                      | Linux      | Fenêtres     | macOS        |
+| ----------------------------------- | ---------- | ------------ | ------------ |
+| Diffusion WebRTC                    | Complet    | Complet      | Complet      |
+| Prise en charge des manettes de jeu | Complet    | Conditionnel | Aucun        |
+| Entrée au clavier et à la souris    | Complet    | Limité       | Complet      |
+| Multi-contrôleur                    | Complet    | Limité       | Aucun        |
+| Lecture audio                       | Complet    | Complet      | Complet      |
+| Niveau de stabilité                 | Production | Expérimental | Expérimental |
 
-## Commencer
+## Installation et documentation
 
-### Quoi`./start`gère automatiquement
+La plupart des utilisateurs exécuteront directement le fichier exécutable compilé. L'application gère automatiquement la configuration du système au lancement.
 
--   Fonctionne`npm install`si`node_modules`est manquant – y compris Electron.
--   Charge le`uinput`module noyau sous Linux (via`sudo modprobe uinput`).
--   Retombe sans tête`node server.js`mode si Electron n’est pas installé.
-
-### Ce que vous devez configurer vous-même
-
-| Dépendance                  | Requis pour                              | Installer                                           |
-| --------------------------- | ---------------------------------------- | --------------------------------------------------- |
-| **Noeud.js**(v18+)          | Tout                                     | [nodejs.org](https://nodejs.org)ou`nvm`             |
-| **Python3**+`python-uinput` | Virtualisation des entrées du contrôleur | `sudo ./linux_setup.sh`(Linux uniquement, une fois) |
-| **module noyau uinput**     | Virtualisation des entrées du contrôleur | Inclus dans`linux_setup.sh`                         |
-
-> **Les contrôleurs ne fonctionneront pas sans la configuration Python.**L'application se lancera et diffusera toujours correctement - les téléspectateurs ne pourront tout simplement pas envoyer une manette de jeu ou une saisie au clavier à l'hôte. Courir`sudo ./linux_setup.sh`une fois après le clonage pour l'activer.
-
-> **Pour la configuration Windows/macOS**, voir[PLATFORM_SETUP.md](PLATFORM_SETUP.md)pour des instructions détaillées, les exigences et les limitations connues pour chaque plate-forme.
-
-### Pas à pas
-
-**Linux (recommandé – entièrement pris en charge)**
+Vous devez uniquement exécuter le script de configuration manuellement si vous utilisez le code source ou si l'application compilée ne parvient pas à configurer votre système. Pour exécuter manuellement le script d'installation Linux, accédez au dossier bin à partir de la racine du projet.
 
 ```bash
-# 1. One-time system setup (installs python-uinput, udev rules, uinput)
+cd bin
 sudo ./linux_setup.sh
-
-# 2. Every subsequent launch
-./start
 ```
 
-**Windows/MacOS**_(expérimental — voir[PLATFORM_SETUP.md](PLATFORM_SETUP.md))_
+Nous conservons toutes les instructions de configuration technique, les listes de dépendances et les guides API dans un répertoire de documentation dédié. Cela permet de garder la page principale propre. Vous pouvez lire ces fichiers à partir de l'icône du livre du tableau de bord de l'hôte ou en cliquant sur les liens ci-dessous.
 
-```bash
-# For detailed setup instructions, troubleshooting, and known limitations:
-# → Read: PLATFORM_SETUP.md
+-   src/docs/GETTING_STARTED.md
+-   PLATFORM_SETUP.md
+-   src/docs/HOST_USAGE.md
+-   src/docs/API_AND_SETUP.md
+-   src/docs/ADVANCED_LOGIC.md
 
-./start
-```
+## Arcade de proximité
 
-Node.js doit déjà être installé. Le script se terminera avec`Node.js missing`s'il n'est pas trouvé.
+La plateforme comprend un système de lobby public en option. Les hôtes peuvent répertorier leurs sessions sur la grille Arcade pour permettre aux joueurs du monde entier de découvrir et de rejoindre des jeux coopératifs locaux. Vous pouvez voir le hall public à<https://nearsec.cutefame.net/arcade>et rejoignez des sessions actives directement depuis votre navigateur.
 
-### Partager avec des amis
-
-1.  Cliquez**Commencer le partage**dans l'interface hôte pour commencer la capture.
-2.  Choisissez un fournisseur de tunnel (cloudflared recommandé – gratuit, aucun compte requis) ou configurez la redirection de port sur TCP 3000.
-3.  Partagez le lien et le code PIN fournis avec vos amis. C'est ça.
-
-* * *
-
-## Sécurité
-
--   **Limitation du taux de code PIN**- le serveur WebSocket verrouille les adresses IP après des tentatives répétées de code PIN infructueuses.
--   **Contrôles de parité des versions**— les téléspectateurs sont immédiatement avertis si leur version client diffère de celle de l'hôte.
--   **Isolation des entrées**- Des autorisations strictes par spectateur empêchent les clients d'envoyer des entrées de clavier non autorisées ou de remplacer les emplacements de manette de jeu qu'ils ne possèdent pas.
-
-* * *
-
-## Dépannage
-
-### Les contrôleurs ne fonctionnent pas
-
-Courir`sudo ./linux_setup.sh`si ce n'est pas déjà fait. Vérifiez que`/dev/uinput`existe et est accessible en écriture. Le terminal enregistrera`[uinput] sidecar started`sur un lancement réussi.
-
-### Pas de son dans le flux
-
-Sur Wayland/PipeWire, la capture audio est gérée via la boîte de dialogue du portail de partage d'écran. Lorsque la boîte de dialogue de partage apparaît, assurez-vous**"Partager l'audio"**est coché. Si l'audio n'apparaît toujours pas après le partage, l'application tentera automatiquement un repli de boucle PipeWire et enregistrera le résultat.
-
-### Échec de la négociation WebRTC/erreurs GPU
-
-Si tu vois`vulkan_swap_chain.cc Swapchain is suboptimal`ou un GPU similaire plante dans le terminal, vos pilotes graphiques rejettent les indicateurs d'accélération matérielle d'Electron.
-
-1.  Ouvrir`electron-main.js`.
-2.  Trouver le`app.commandLine.appendSwitch('enable-features', ...)`bloc.
-3.  Supprimez les drapeaux un par un (par ex.`VaapiVideoEncoder`,`VaapiVideoDecoder`) jusqu'à ce que le flux se stabilise.
-4.  Si vous deviez les supprimer, l'application revient au codage logiciel (VP8/VP9) : utilisation plus élevée du processeur mais stable.
-
-### Reconstruire Electron à partir de zéro
-
-Si`npm install`ne parvient pas à extraire le binaire Electron correct pour votre architecture :
-
-```bash
-rm -rf node_modules package-lock.json
-npm cache clean --force
-npm install
-```
-
-Sur des architectures inhabituelles, vous devrez peut-être construire Electron à partir de la source via`electron/build-tools`, mais cela est très rarement nécessaire.
-
-* * *
-
-## Progrès actuels
-
--   Interface utilisateur principale de l'hôte avec contrôles de capture WebRTC intégrés.
--   Redirection de port, Cloudflared et intégration de tunneling automatique.
--   Virtualisation des entrées du contrôleur via`uinput`pour un contournement transparent de l’entrée de vapeur.
--   Bouclage audio PipeWire complet et isolation voix sur IP.
--   Interface utilisateur tactile mobile avec joystick virtuel et visée gyroscopique en option.
--   Mode Arcade : publiez votre session publiquement sur Nearsec Arcade pour que d'autres puissent la découvrir et la rejoindre.
-
-* * *
-
-_Ce projet a utilisé des LLM pour la génération de code._
+Ce projet utilise de grands modèles de langage d'intelligence artificielle pour la génération de code et la planification de la structure.
