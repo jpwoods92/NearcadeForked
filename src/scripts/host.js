@@ -671,6 +671,12 @@ function renderRoster(list) {
 
     const listStr = JSON.stringify(controllers);
     if (c.dataset.lastList === listStr) return;
+    
+    // Prevent wiping the DOM if the user is currently interacting with a dropdown
+    if (document.activeElement && document.activeElement.tagName === 'SELECT') {
+        return;
+    }
+    
     c.dataset.lastList = listStr;
 
     if (controllers.length === 0) {
@@ -713,7 +719,7 @@ function renderRoster(list) {
         <div style="display:flex; align-items:center; gap:6px; margin-top:4px;">
         <img src="${iconSrc}" style="width:14px;height:14px;filter:invert(0.8);" id="icon-${v.id}" />
         <select class="form-select" style="padding:2px 4px;font-size:9px;width:auto;"
-        onchange="changeInputMode('${v.id}', this.value, '${v.name.replace(/'/g, "\\'")}')">
+        onchange="changeInputMode('${v.id}', this.value, '${v.name.replace(/'/g, "\\'")}'); this.blur();">
         <option value="gamepad"       ${currentMode === 'gamepad'       ? 'selected' : ''}>Gamepad</option>
         <option value="kbm"           ${currentMode === 'kbm'           ? 'selected' : ''}>Raw KBM</option>
         <option value="kbm_emulated"  ${currentMode === 'kbm_emulated'  ? 'selected' : ''}>Emulated KBM</option>
