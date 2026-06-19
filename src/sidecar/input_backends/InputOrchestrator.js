@@ -95,6 +95,7 @@ let KBM_BINDINGS = { keys: {}, mouse: { sensitivity: 1.5, deadzone: 0.1 } };
 // This ensures all newly allocated slots inherit the host's chosen controller type
 // rather than always falling back to xbox360.
 let _defaultProfileKey = 'xbox360';
+let _hybridInputEnabled = false;
 
 
 const KBM_BTN_MAP = {
@@ -630,8 +631,8 @@ function send(msg) {
         if (!validated) return; // drop
     }
 
-    // Fallback passthrough to Python if Native module failed
-    if (!_bridge && _pythonProc && _pythonProc.stdin.writable) {
+    // Fallback passthrough to Python if Native module failed, OR if Hybrid Mode is explicitly enabled
+    if ((!_bridge || _hybridInputEnabled) && _pythonProc && _pythonProc.stdin.writable) {
         try { _pythonProc.stdin.write(JSON.stringify(validated) + '\n'); } catch (e) {}
         
         // Ensure the input visualizer still works when using Python sidecar
@@ -656,6 +657,9 @@ function send(msg) {
         // Update per-viewer map AND the global default so new connections inherit the type
         if (msg.viewerId) viewerCtrlType.set(msg.viewerId, msg.ctrlType || 'xbox360');
         _defaultProfileKey = msg.ctrlType || 'xbox360';
+    } else if (msg.type === 'ctrl-settings-hybrid') {
+        _hybridInputEnabled = !!msg.enabled;
+        console.log(`[input] Hybrid mode ${msg.enabled ? 'ENABLED: Routing via Python' : 'DISABLED: Restoring C++ bridge'}`);
     } else if (msg.type === 'set-input-mode') {
         viewerModes.set(msg.viewerId, msg.mode);
     } else if (msg.type === 'disconnect_viewer') {

@@ -49,6 +49,7 @@ jobs:
         run: npm ci
 
       - name: Build Electron App
+        shell: bash
         run: |
           if [ "$RUNNER_OS" == "macOS" ]; then
             npx electron-builder --mac --universal --publish always
