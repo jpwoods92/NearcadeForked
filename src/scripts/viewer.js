@@ -1350,11 +1350,9 @@ async function connect() {
                 if (typeof ws.onmessage === 'function') {
                     ws.onmessage({ data: JSON.stringify(msg) });
                 }
-            });
-            // Simulate the ws.onopen event slightly later to allow setup
-            setTimeout(() => {
+            }, () => {
                 if (typeof ws.onopen === 'function') ws.onopen();
-            }, 100);
+            });
         }
         stopReconnect = false;
         return;

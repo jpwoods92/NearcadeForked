@@ -2907,6 +2907,9 @@ function startP2POnly() {
     window._isP2P = true;
     window._p2pCode = code;
 
+    // Immediately trigger a UI refresh so the Room Code is displayed
+    fetch('/api/info').then(r => r.json()).then(d => renderUrls(d)).catch(() => {});
+
     log(I18N.t('Starting P2P tunnel') + (remember ? ' (saved)' : '') + '...', 'ok');
     
     // Initialize Trystero
@@ -2980,7 +2983,11 @@ async function checkTunnelOnConnect() {
         }
         // No tunnel yet — only prompt for one if the user hasn't chosen "never ask"
         const cfg = await loadAppConfig();
-        if (!cfg.neverAsk) showTunnelModal();
+        if (cfg.tunnelProvider === 'p2p') {
+            startP2POnly(true);
+        } else if (!cfg.neverAsk) {
+            showTunnelModal();
+        }
     } catch { }
 }
 

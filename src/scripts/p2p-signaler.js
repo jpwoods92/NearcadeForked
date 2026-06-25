@@ -38,7 +38,7 @@ class P2PSignaler {
         });
     }
 
-    initViewer(roomCode, onMessageCallback) {
+    initViewer(roomCode, onMessageCallback, onReady) {
         this.room = joinRoom({ appId: 'nearsec-arcade' }, roomCode);
         this.onMessageCallback = onMessageCallback;
         this.isActive = true;
@@ -49,6 +49,10 @@ class P2PSignaler {
         this.room.onPeerJoin(peerId => {
             console.log('[P2P] Host discovered:', peerId);
             this.peers.add(peerId);
+            if (onReady) {
+                onReady();
+                onReady = null; // Only fire once
+            }
         });
 
         get((data, peerId) => {

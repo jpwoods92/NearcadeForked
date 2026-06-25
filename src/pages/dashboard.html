@@ -704,7 +704,13 @@
           await fetch(pingUrl, { method: 'HEAD', mode: 'no-cors', signal: controller.signal });
           clearTimeout(tid);
           errEl.textContent = '';
-          if (window.electronAPI) window.electronAPI.joinSession(inputVal, { game: 'Direct Connect' }, pinVal);
+          if (window.electronAPI) {
+            window.electronAPI.joinSession(inputVal, { game: 'Direct Connect' }, pinVal);
+          } else {
+            let navUrl = `/?client=1&compat=1&host=${encodeURIComponent(inputVal)}`;
+            if (pinVal) navUrl += `&pin=${encodeURIComponent(pinVal)}`;
+            window.location.href = navUrl;
+          }
         } catch {
           errEl.style.color = 'var(--danger)';
           errEl.textContent = '⚠ Session unreachable. Make sure the host is online.';
@@ -712,7 +718,13 @@
       } else {
         // It's a Room Code
         errEl.textContent = '';
-        if (window.electronAPI) window.electronAPI.joinSession(`p2p://${inputVal}`, { game: 'P2P Session' }, pinVal);
+        if (window.electronAPI) {
+          window.electronAPI.joinSession(`p2p://${inputVal}`, { game: 'P2P Session' }, pinVal);
+        } else {
+          let navUrl = `/?client=1&compat=1&host=${encodeURIComponent('p2p://' + inputVal)}`;
+          if (pinVal) navUrl += `&pin=${encodeURIComponent(pinVal)}`;
+          window.location.href = navUrl;
+        }
       }
     }
 
