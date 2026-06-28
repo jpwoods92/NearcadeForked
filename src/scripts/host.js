@@ -3514,6 +3514,12 @@ function closeArcadeModal() {
 }
 
 async function startArcadeSession() {
+    const provider = document.querySelector('input[name="provider"]:checked');
+    if (provider && provider.value === 'p2p') {
+        log(I18N.t('Arcade mode is not supported over P2P tunnels.'), 'err');
+        closeArcadeModal();
+        return;
+    }
     arcadeConfig.title = document.getElementById('arcadeGameTitle').value.trim() || 'Arcade Game';
     arcadeConfig.desc = document.getElementById('arcadeGameDesc').value.trim();
     arcadeConfig.maxPlayers = document.getElementById('arcadeMaxPlayers').value;

@@ -428,6 +428,9 @@
     </div>
 
     <div class="nav-controls">
+      <button class="icon-btn" onclick="openArcadeInfo()" title="About Nearsec Arcade">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+      </button>
       <button class="icon-btn" id="globalMicBtn" title="Microphone Settings" onclick="toggleGlobalMic(this)">
         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/>
@@ -572,7 +575,7 @@
       console.warn('[i18n] Could not load i18n.js — using no-op fallback');
     }
   "></script>
-    <script>
+  <script>
   function openControllerGuide() {
     document
       .getElementById("controllerGuideModal")
@@ -584,20 +587,32 @@
       .getElementById("controllerGuideModal")
       .classList.add("hidden");
   }
+
+  function openArcadeInfo() {
+      const modal = document.getElementById('infoModal');
+      if (modal) modal.classList.add('open');
+  }
+  function closeArcadeInfo() {
+      const modal = document.getElementById('infoModal');
+      if (modal) modal.classList.remove('open');
+  }
   </script>
+  
+  <div class="modal-bg" id="infoModal" onclick="if(event.target===this)closeArcadeInfo()">
+    <div class="modal-content" style="padding: 32px; background: var(--surface);">
+      <h2 style="color:var(--text); margin-bottom: 16px; font-weight: 800; font-size: 24px;">Nearsec Arcade</h2>
+      <p style="color:var(--text-sec); font-size: 15px; line-height: 1.6; margin-bottom: 16px;">
+        Nearsec Arcade is a decentralized, community-driven platform for discovering local multiplayer games hosted by players worldwide.
+      </p>
+      <p style="color:var(--text-sec); font-size: 15px; line-height: 1.6; margin-bottom: 32px;">
+        All sessions are hosted directly from the host's computer via high-speed WebRTC tunnels. Gameplay data flows peer-to-peer and is not routed through our servers.
+      </p>
+      <button class="join-btn" onclick="closeArcadeInfo()">Awesome</button>
+    </div>
+  </div>
+
   <script src="arcade.js"></script>
-  <script>
-    // Mic UI Toggle
-    function toggleGlobalMic(btn) {
-      const isMuted = btn.classList.toggle('muted');
-      btn.classList.add('active');
-      if (isMuted) {
-        btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="2" x2="22" y1="2" y2="22"/><path d="M18.89 13.23A7.12 7.12 0 0 0 19 12v-2"/><path d="M5 10v2a7 7 0 0 0 12 5"/><path d="M15 9.34V5a3 3 0 0 0-5.68-1.33"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12"/><line x1="12" x2="12" y1="19" y2="22"/></svg>`;
-      } else {
-        btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>`;
-      }
-    }
-  </script>
+
   <script>
     let testMicStream = null;
     let testAudioEl = null;
