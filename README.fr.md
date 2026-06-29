@@ -21,7 +21,7 @@ L'accent principal est mis sur les configurations privées. L'application hôte 
 
 ## Configuration système requise
 
-Vous avez besoin d'un logiciel spécifique installé sur votre ordinateur pour exécuter l'application hôte.
+Vous avez besoin d'un logiciel spécifique installé sur votre machine pour exécuter l'application hôte.
 
 ### Logiciel requis
 
