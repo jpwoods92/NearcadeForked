@@ -275,6 +275,19 @@ def _handle_gamepad(msg: dict):
     if pad_id not in devices:
         try:
             gp = vg.VX360Gamepad()
+            
+            def _on_vibration(client, target, large_motor, small_motor, led_number, user_data):
+                vid = str(user_data).split('_')[0] if "_" in str(user_data) else str(user_data)
+                _emit({
+                    "type": "rumble",
+                    "viewerId": vid,
+                    "strong": large_motor / 255.0,
+                    "weak": small_motor / 255.0,
+                    "duration": 250
+                })
+
+            gp.register_notification(callback_function=_on_vibration, user_data=pad_id)
+
             gp.update()  # Send an initial neutral state to register with ViGEmBus
             devices[pad_id] = gp
             _log(f"Created virtual gamepad for slot: {pad_id}")

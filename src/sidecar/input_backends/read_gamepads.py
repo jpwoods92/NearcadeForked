@@ -40,6 +40,12 @@ if os_type == "Windows":
             ("Gamepad", XINPUT_GAMEPAD),
         ]
 
+    class XINPUT_VIBRATION(ctypes.Structure):
+        _fields_ = [
+            ("wLeftMotorSpeed", wintypes.WORD),
+            ("wRightMotorSpeed", wintypes.WORD),
+        ]
+
     xinput = None
     for dll in ("xinput1_4.dll", "xinput1_3.dll", "xinput9_1_0.dll"):
         try:
@@ -55,6 +61,13 @@ if os_type == "Windows":
     XInputGetState = xinput.XInputGetState
     XInputGetState.argtypes = [wintypes.DWORD, ctypes.POINTER(XINPUT_STATE)]
     XInputGetState.restype = wintypes.DWORD
+
+    try:
+        XInputSetState = xinput.XInputSetState
+        XInputSetState.argtypes = [wintypes.DWORD, ctypes.POINTER(XINPUT_VIBRATION)]
+        XInputSetState.restype = wintypes.DWORD
+    except AttributeError:
+        XInputSetState = None
 
     def windows_loop():
         last_states = {}
@@ -228,7 +241,7 @@ def stdin_loop():
                 weak = msg.get("weak", 0.0)
                 duration = msg.get("duration", 200)
 
-                if os_type == "Windows" and xinput:
+                if os_type == "Windows" and xinput and XInputSetState:
                     vib = XINPUT_VIBRATION()
                     vib.wLeftMotorSpeed = int(strong * 65535)
                     vib.wRightMotorSpeed = int(weak * 65535)
@@ -258,8 +271,16 @@ def stdin_loop():
                             )
                             eid = dev_to_rumble.upload_effect(effect)
                             dev_to_rumble.write(evdev.ecodes.EV_FF, eid, 1)
-                            # Let it play out naturally, but we should eventually erase it to prevent leak.
-                            # Usually simple controllers don't strictly require explicit erase.
+                            
+                            # Erase effect after it finishes to prevent slot leak
+                            def erase_effect(dev, effect_id, delay_ms):
+                                time.sleep((delay_ms + 50) / 1000.0)
+                                try:
+                                    dev.erase_effect(effect_id)
+                                except Exception:
+                                    pass
+                            threading.Thread(target=erase_effect, args=(dev_to_rumble, eid, duration), daemon=True).start()
+                            
                         except Exception as e:
                             eprint("Linux rumble failed:", e)
         except Exception as e:
