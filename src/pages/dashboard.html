@@ -249,6 +249,16 @@
     .toggle-thumb { position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; background: #fff; border-radius: 50%; transition: transform 0.2s; }
     .toggle.on .toggle-thumb { transform: translateX(20px); }
 
+    #updateModal { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); z-index: 1000; align-items: center; justify-content: center; }
+    #updateModal .modal-content { background: var(--surface); padding: 30px; border-radius: 12px; border: 1px solid var(--border); max-width: 400px; text-align: center; }
+    #updateModal h2 { color: var(--accent); margin-bottom: 12px; font-weight: 700; }
+    #updateModal p { color: var(--muted); margin-bottom: 24px; font-size: 14px; line-height: 1.5; }
+    #updateModal .modal-actions { display: flex; gap: 12px; justify-content: center; }
+    #updateModal button { padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 600; border: none; transition: filter 0.2s; }
+    #updateModal button:hover { filter: brightness(1.1); }
+    #updateModal .btn-primary { background: var(--accent); color: #000; }
+    #updateModal .btn-secondary { background: var(--bg); color: var(--text); border: 1px solid var(--border); }
+
     .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,0.85); display: none; align-items: center; justify-content: center; z-index: 1000; backdrop-filter: blur(4px); }
     .modal-bg.open { display: flex; animation: fadeIn 0.2s ease; }
     @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
@@ -277,6 +287,19 @@
   </style>
 </head>
 <body>
+
+  <!-- Update Modal -->
+  <div id="updateModal">
+    <div class="modal-content">
+      <h2>Update Available</h2>
+      <p>A new version of NearsecTogether (<span id="updateVersion"></span>) is available! You are currently on v<span id="currentVersionModal"></span>.</p>
+      <div class="modal-actions">
+        <button class="btn-secondary" onclick="document.getElementById('updateModal').style.display='none'">Dismiss</button>
+        <button class="btn-primary" onclick="if(window.electronAPI) window.electronAPI.openBrowser('https://github.com/TheRealFame/NearsecTogether/releases/latest'); document.getElementById('updateModal').style.display='none'">Download</button>
+      </div>
+    </div>
+  </div>
+
   <div id="ns-splash-screen">
     <img src="../../assets/NearsecTogetherTitle.png" alt="Nearsec Logo">
   </div>
@@ -593,8 +616,15 @@ Permission is granted to anyone to use this software for any purpose, subject to
               </div>
               <div class="toggle" id="settingTrackDiscordRPC"><div class="toggle-thumb"></div></div>
             </div>
+            <div class="setting-row" onclick="toggleAppSetting('checkForUpdates')" id="settingRowUpdates">
+              <div class="setting-info">
+                <h4>Check for Updates</h4>
+                <p>Automatically check for a new version of NearsecTogether on startup.</p>
+              </div>
+              <div class="toggle" id="settingTrackCheckForUpdates"><div class="toggle-thumb"></div></div>
+            </div>
           </div>
-              <div class="setting-row" onclick="toggleOldUI()" id="settingRowOldUI">
+          <div class="setting-row" onclick="toggleOldUI()" id="settingRowOldUI">
             <div class="setting-info">
               <h4>Use Classic Host UI</h4>
               <p>Switches the host dashboard to the legacy layout.</p>
@@ -670,14 +700,61 @@ Permission is granted to anyone to use this software for any purpose, subject to
     document.addEventListener('DOMContentLoaded', async () => {
       const vEl = document.getElementById('version-text');
       const cEl = document.getElementById('commit-hash');
-      if (window.electronAPI && window.electronAPI.getVersion) {
+      if (window.electronAPI) {
         const { version, commit } = await window.electronAPI.getVersion();
         window.NEARSEC_VERSION = version;
-        window.NEARSEC_COMMIT = commit;
+        vEl.innerHTML = `v${version} <span style="opacity:0.5; margin-left:4px;">${commit}</span>`;
+        if (typeof checkForUpdates === 'function') checkForUpdates(version);
+        
+        window.electronAPI.onUpdateReady((latestVersion) => {
+          document.getElementById('updateVersion').textContent = latestVersion;
+          document.getElementById('currentVersionModal').textContent = version;
+          const dlBtn = document.querySelector('#updateModal .btn-primary');
+          dlBtn.textContent = 'Restart & Install';
+          dlBtn.onclick = () => { window.electronAPI.installUpdate(); };
+          document.getElementById('updateModal').style.display = 'flex';
+        });
+      } else {
+        if (window.NEARSEC_VERSION && vEl) vEl.textContent = 'v' + window.NEARSEC_VERSION;
+        if (window.NEARSEC_COMMIT && cEl) cEl.textContent = window.NEARSEC_COMMIT;
       }
-      if (window.NEARSEC_VERSION && vEl) vEl.textContent = 'v' + window.NEARSEC_VERSION;
-      if (window.NEARSEC_COMMIT && cEl) cEl.textContent = window.NEARSEC_COMMIT;
     });
+
+    async function checkForUpdates(currentVersion) {
+      let cfg = appConfig;
+      if (window.electronAPI) {
+          // Electron-updater handles background checking automatically.
+          return;
+      }
+      
+      if (cfg.checkForUpdates === false) return;
+
+      try {
+          const res = await fetch('https://api.github.com/repos/TheRealFame/NearsecTogether/releases/latest');
+          if (!res.ok) return;
+          const data = await res.json();
+          const latest = data.tag_name;
+          if (!latest) return;
+          
+          let pa = latest.replace(/[^0-9.]/g, '').split('.');
+          let pb = currentVersion.replace(/[^0-9.]/g, '').split('.');
+          let isNewer = false;
+          for (let i = 0; i < 3; i++) {
+              let na = Number(pa[i] || 0);
+              let nb = Number(pb[i] || 0);
+              if (na > nb) { isNewer = true; break; }
+              if (nb > na) break;
+          }
+          
+          if (isNewer) {
+              document.getElementById('updateVersion').textContent = latest;
+              document.getElementById('currentVersionModal').textContent = currentVersion;
+              document.getElementById('updateModal').style.display = 'flex';
+          }
+      } catch (e) {
+          console.error("Update check failed:", e);
+      }
+    }
 
     function copyVersion() {
       const txt = 'v' + (window.NEARSEC_VERSION || 'unknown') + (window.NEARSEC_COMMIT ? '-' + window.NEARSEC_COMMIT : '');
@@ -743,6 +820,7 @@ Permission is granted to anyone to use this software for any purpose, subject to
       }
       document.getElementById('settingTrackRumble')?.classList.toggle('on', appConfig.rumble !== false);
       document.getElementById('settingTrackTray')?.classList.toggle('on', appConfig.tray !== false);
+      document.getElementById('settingTrackCheckForUpdates')?.classList.toggle('on', appConfig.checkForUpdates !== false);
       document.getElementById('settingTrackAlwaysOnTop')?.classList.toggle('on', !!appConfig.alwaysOnTop);
       document.getElementById('settingTrackBootHost')?.classList.toggle('on', !!appConfig.bootToHost);
       document.getElementById('settingTrackDiscordRPC')?.classList.toggle('on', appConfig.discordRPC !== false);
@@ -769,7 +847,7 @@ Permission is granted to anyone to use this software for any purpose, subject to
     }
 
     function toggleAppSetting(key) {
-      if (['tray', 'hwDecode', 'discordRPC', 'rumble'].includes(key)) {
+      if (['tray', 'hwDecode', 'discordRPC', 'rumble', 'checkForUpdates'].includes(key)) {
         appConfig[key] = appConfig[key] === false ? true : false;
       } else {
         appConfig[key] = !appConfig[key];

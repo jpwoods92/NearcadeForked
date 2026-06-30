@@ -696,6 +696,21 @@ async function createWindow() {
     }
   });
 
+  ipcMain.on('back-to-dashboard', () => {
+    if (win && !win.isDestroyed()) {
+      win.loadURL(`http://localhost:${serverPort}/dashboard?port=${serverPort}&noAutoHost=1`);
+    }
+  });
+
+  ipcMain.on('install-update', () => {
+    try {
+      const { autoUpdater } = require('electron-updater');
+      autoUpdater.quitAndInstall();
+    } catch (e) {
+      console.error('[electron] Failed to install update:', e);
+    }
+  });
+
   ipcMain.on('window-close', () => { if (win && !win.isDestroyed()) win.close(); });
   ipcMain.on('app-quit', () => { app.isQuiting = true; app.quit(); });
   ipcMain.on('update-tray-icon', (event, iconName) => {
@@ -726,6 +741,26 @@ app.whenReady().then(() => {
       serverCore.toUinput({ type: 'panic_toggle', enabled: isPanicActive });
     }
   });
+
+  // Auto-updater logic
+  if (settings.checkForUpdates !== false) {
+    try {
+      const { autoUpdater } = require('electron-updater');
+      autoUpdater.autoDownload = true;
+      autoUpdater.autoInstallOnAppQuit = true;
+      
+      autoUpdater.on('update-downloaded', (info) => {
+        console.log('[electron] Update downloaded:', info.version);
+        if (win && !win.isDestroyed()) {
+          win.webContents.send('update-ready', info.version);
+        }
+      });
+      
+      autoUpdater.checkForUpdatesAndNotify().catch(e => console.error('[electron] Auto-update check failed:', e));
+    } catch (e) {
+      console.error('[electron] autoUpdater error:', e);
+    }
+  }
 });
 
 app.on('will-quit', () => {

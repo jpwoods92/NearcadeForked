@@ -1563,7 +1563,7 @@
       </div>
 
       <button class="pin-submit-btn" onclick="submitPin()">Join Stream →</button>
-      <button class="pin-submit-btn client-only-btn" style="display:none;background:var(--surface);color:var(--text);border:1px solid var(--border);margin-top:8px;" onclick="window.location.href='index.html'">← Cancel & Go Back</button>
+      <button class="pin-submit-btn client-only-btn" style="display:none;background:var(--surface);color:var(--text);border:1px solid var(--border);margin-top:8px;" onclick="window.electronAPI ? window.electronAPI.backToDashboard() : window.location.href='/'">← Cancel & Go Back</button>
       <div id="pinErr"></div>
     </div>
   </div>
