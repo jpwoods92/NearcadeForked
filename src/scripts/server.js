@@ -893,13 +893,14 @@ async function main() {
       .replace(/(<meta property="og:image"\s+content=")[^"]*"/, `$1${ogImage}"`);
     res.type("html").send(html);
   });
-  app.get("/dashboard", (req, res) => res.sendFile(path.join(pagesDir, "dashboard.html")));
-  app.get("/host", (req, res) => res.sendFile(path.join(pagesDir, "host.html")));
+  app.get("/dashboard", (req, res) => { res.setHeader('Content-Type', 'text/html'); res.sendFile(path.join(pagesDir, "dashboard.html")); });
+  app.get("/host", (req, res) => { res.setHeader('Content-Type', 'text/html'); res.sendFile(path.join(pagesDir, "host.html")); });
 
   app.get("/old_host", (req, res) => {
+    res.setHeader('Content-Type', 'text/html');
     res.sendFile(path.join(pagesDir, "old_host.html"));
   });
-  app.get("/gamepad-popup.html", (req, res) => res.sendFile(path.join(pagesDir, "gamepad-popup.html")));
+  app.get("/gamepad-popup.html", (req, res) => { res.setHeader('Content-Type', 'text/html'); res.sendFile(path.join(pagesDir, "gamepad-popup.html")); });
   app.use('/css', express.static(path.join(__dirname, '..', 'css')));
   app.get("/api/info", (req, res) => res.json({ lanIP: LAN_IP, port: PORT, pin: PIN, publicIP: PUBLIC_IP || null, tunnelUrl: tunnelUrl || null, version: APP_VERSION }));
   app.post("/api/fe-log", express.json(), (req, res) => {
