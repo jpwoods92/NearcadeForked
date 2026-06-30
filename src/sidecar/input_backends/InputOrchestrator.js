@@ -152,7 +152,8 @@ function init(screenWidth, screenHeight) {
     else if (isMac) scriptName = 'mac_gamepad_bridge.py';
     else scriptName = 'linux_uinput.py';
     // __dirname is already .../input_backends
-    const pythonScript = path.join(__dirname, scriptName);
+    const pythonScriptRaw = path.join(__dirname, scriptName);
+    const pythonScript = pythonScriptRaw.replace('app.asar', 'app.asar.unpacked');
     if (!fs.existsSync(pythonScript)) {
         console.error(`[input] FATAL: Python fallback not found at ${pythonScript}`);
         return false;
@@ -323,6 +324,8 @@ function _freeSlot(viewerId) {
 function _handleGamepad(msg) {
     const viewerId = msg.pad_id;
     if (!viewerId) return;
+
+    if (!_bridge && !_pythonProc) return;
 
     const profileKey = viewerCtrlType.get(viewerId) || _defaultProfileKey || 'xbox360';
     const slotIndex = _allocateSlot(viewerId, profileKey);
@@ -661,6 +664,9 @@ function send(msg) {
         validated = _validateKbmMsg(msg);
         if (!validated) return; // drop
     }
+
+    // Drop immediately if both backends are dead
+    if (!_bridge && !_pythonProc) return;
 
     // Fallback passthrough to Python if Native module failed, OR if Hybrid Mode is explicitly enabled
     if ((!_bridge || _hybridInputEnabled) && _pythonProc && _pythonProc.stdin.writable) {
