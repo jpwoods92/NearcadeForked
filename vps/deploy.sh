@@ -19,15 +19,56 @@ echo "========================================"
 echo ""
 
 # Step 1: Install Node.js dependencies from the project root
-echo "[1/4] Installing Node.js dependencies..."
+echo "[1/5] Installing Node.js dependencies..."
 cd "$PROJECT_ROOT"
 npm install --omit=dev
 echo "      Done."
 echo ""
 
-# Step 2: Build the Rust router if the binary is missing or the source is newer
+# Step 2: Ensure .env exists and optionally install TURN server
+echo "[2/5] Checking environment and TURN setup..."
+if [ ! -f "$PROJECT_ROOT/.env" ]; then
+    echo "      Creating default .env file..."
+    cat <<EOF > "$PROJECT_ROOT/.env"
+# Nearsec Together Configuration
+TUNNEL=vps
+
+# P2P TURN/STUN Configuration (Auto-populated if you install coturn)
+STUN_URL=
+TURN_URL=
+TURN_USERNAME=
+TURN_CREDENTIAL=
+EOF
+fi
+
+if ! command -v turnserver &> /dev/null; then
+    echo ""
+    read -p "      Would you like to install a TURN server for WebRTC P2P fallback? (y/N): " install_turn
+    if [[ "$install_turn" =~ ^[Yy]$ ]]; then
+        if [ -f "$PROJECT_ROOT/bin/setup_turn.sh" ]; then
+            chmod +x "$PROJECT_ROOT/bin/setup_turn.sh"
+            sudo "$PROJECT_ROOT/bin/setup_turn.sh"
+            
+            # Auto-populate the .env file with the VPS public IP
+            PUBLIC_IP=\$(curl -s https://api.ipify.org || echo "YOUR_VPS_IP")
+            sed -i "s|^STUN_URL=.*|STUN_URL=stun:\${PUBLIC_IP}:3478|" "$PROJECT_ROOT/.env"
+            sed -i "s|^TURN_URL=.*|TURN_URL=turn:\${PUBLIC_IP}:3478|" "$PROJECT_ROOT/.env"
+            sed -i "s|^TURN_USERNAME=.*|TURN_USERNAME=nearsec|" "$PROJECT_ROOT/.env"
+            sed -i "s|^TURN_CREDENTIAL=.*|TURN_CREDENTIAL=nearsec_turn_secret_change_me|" "$PROJECT_ROOT/.env"
+            echo "      .env file automatically configured with IP \$PUBLIC_IP."
+        else
+            echo "      Error: bin/setup_turn.sh not found."
+        fi
+    fi
+else
+    echo "      TURN server (coturn) is already installed."
+fi
+echo ""
+
+
+# Step 3: Build the Rust router if the binary is missing or the source is newer
 RUST_BIN="$VPS_DIR/target/release/nearsec-router"
-echo "[2/4] Checking Rust router binary..."
+echo "[3/5] Checking Rust router binary..."
 cd "$VPS_DIR"
 if [ ! -f "$RUST_BIN" ] || find "$VPS_DIR/src" -name "*.rs" -newer "$RUST_BIN" | grep -q .; then
     echo "      Building Rust router (this may take a minute on the first run)..."
@@ -38,8 +79,8 @@ else
 fi
 echo ""
 
-# Step 3: Kill any stale processes occupying ports 3000 or 3001
-echo "[3/4] Clearing ports 3000 and 3001..."
+# Step 4: Kill any stale processes occupying ports 3000 or 3001
+echo "[4/5] Clearing ports 3000 and 3001..."
 for PORT in 3000 3001; do
     PID="$(lsof -ti tcp:"$PORT" 2>/dev/null || true)"
     if [ -n "$PID" ]; then
@@ -50,8 +91,8 @@ done
 sleep 1
 echo ""
 
-# Step 4: Launch both processes
-echo "[4/4] Starting services..."
+# Step 5: Launch both processes
+echo "[5/5] Starting services..."
 
 echo "      Setting permissions on project directory..."
 chmod -R 755 "$PROJECT_ROOT"

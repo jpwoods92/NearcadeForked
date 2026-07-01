@@ -722,6 +722,11 @@ async function createWindow() {
     }
   });
 
+  ipcMain.on('open-dir', () => {
+    const { shell } = require('electron');
+    shell.openPath(__dirname);
+  });
+
   ipcMain.on('window-close', () => { if (win && !win.isDestroyed()) win.close(); });
   ipcMain.on('app-quit', () => { app.isQuiting = true; app.quit(); });
   ipcMain.on('update-tray-icon', (event, iconName) => {

@@ -625,10 +625,13 @@ Permission is granted to anyone to use this software for any purpose, subject to
             </div>
             <div class="setting-row" id="settingRowOpenLog" style="cursor:default;">
               <div class="setting-info">
-                <h4>Session Logs</h4>
-                <p>View the diagnostic logs for the current session.</p>
+                <h4>Session Logs & Configs</h4>
+                <p>View diagnostic logs or open the install folder to edit .env</p>
               </div>
-              <button style="padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 600; border: 1px solid var(--border); background: var(--surface); color: var(--text);" onclick="window.electronAPI.openLog()">Open Log File</button>
+              <div style="display: flex; gap: 8px;">
+                <button style="padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 600; border: 1px solid var(--border); background: var(--surface); color: var(--text);" onclick="window.electronAPI.openLog()">Open Log</button>
+                <button style="padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 600; border: 1px solid var(--border); background: var(--surface); color: var(--text);" onclick="window.electronAPI.openInstallDir()">Open Folder</button>
+              </div>
             </div>
           </div>
           <div class="setting-row" onclick="toggleOldUI()" id="settingRowOldUI">

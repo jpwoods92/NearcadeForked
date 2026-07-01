@@ -281,7 +281,13 @@ async function createPC() {
 
     pc.onconnectionstatechange = () => {
         console.log(`[WebRTC] Connection State: ${pc.connectionState}`);
-        if (pc.connectionState === 'failed') setStatus('Connection failed. Retrying...');
+        if (pc.connectionState === 'failed') {
+            console.warn('[WebRTC] Connection failed — requesting fresh offer in 1s...');
+            setStatus('Connection failed. Retrying...');
+            setTimeout(() => {
+                if (ws?.readyState === 1) ws.send(JSON.stringify({ type: 'request-offer' }));
+            }, 1000);
+        }
         if (pc.connectionState === 'disconnected') console.warn('[WebRTC] Disconnected.');
     };
     pc.oniceconnectionstatechange = () => console.log(`[WebRTC] ICE State: ${pc.iceConnectionState}`);
@@ -1553,6 +1559,14 @@ async function connect() {
             try {
                 await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
                 pc._remoteSet = true;
+
+                // Apply receiver codec preferences AFTER remote description is set
+                // so transceivers already exist. This nudges Chromium on Windows
+                // to pick H264/VP8 over AV1/H265 which may not be hardware-decoded.
+                pc.getTransceivers().forEach(t => {
+                    if (t.receiver?.track?.kind === 'video') preferReceiverCodec(t);
+                });
+
                 for (const c of (pc._iceBuf || [])) { try { await pc.addIceCandidate(new RTCIceCandidate(c)); } catch { } }
                 pc._iceBuf = [];
                 const answer = await pc.createAnswer();
@@ -1560,7 +1574,14 @@ async function connect() {
                 ws.send(JSON.stringify({ type: 'answer', sdp: pc.localDescription }));
                 // Apply bandwidth profile now that transceivers are negotiated
                 _applyBwProfile(pc);
-            } catch (err) { console.error('[webrtc] offer error:', err.message); try { pc.close(); } catch { } pc = null; }
+            } catch (err) {
+                console.error('[webrtc] offer error:', err.message, '— SDP snippet:', msg.sdp?.sdp?.slice(0, 300));
+                try { pc.close(); } catch { } pc = null;
+                // Retry with a fresh request-offer in case it was a transient failure
+                setTimeout(() => {
+                    if (ws?.readyState === 1) ws.send(JSON.stringify({ type: 'request-offer' }));
+                }, 2000);
+            }
             return;
         }
         if (msg.type === 'ice-host' && msg.candidate) {

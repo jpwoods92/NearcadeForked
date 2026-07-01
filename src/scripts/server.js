@@ -983,14 +983,38 @@ async function main() {
   });
 
   app.get("/api/turn", (req, res) => {
-    res.json({
-      urls: [
-        process.env.METERED_TURN_URL || 'turn:openrelay.metered.ca:80',
-        process.env.METERED_TURN_URL_SECURE || 'turn:openrelay.metered.ca:443'
-      ],
-      username: process.env.METERED_TURN_USERNAME || 'openrelayproject',
-      credential: process.env.METERED_TURN_CREDENTIAL || 'openrelayproject'
-    });
+    const iceServers = [];
+
+    // ── Custom STUN server (optional) ───────────────────────────────────────
+    if (process.env.STUN_URL) {
+      iceServers.push({ urls: process.env.STUN_URL });
+    }
+
+    // ── Custom TURN server (optional) ───────────────────────────────────────
+    if (process.env.TURN_URL) {
+      const entry = { urls: [] };
+      entry.urls.push(process.env.TURN_URL);
+      if (process.env.TURN_URL_TLS) entry.urls.push(process.env.TURN_URL_TLS);
+      if (process.env.TURN_USERNAME) entry.username = process.env.TURN_USERNAME;
+      if (process.env.TURN_CREDENTIAL) entry.credential = process.env.TURN_CREDENTIAL;
+      iceServers.push(entry);
+    }
+
+    // ── Legacy Metered.ca env vars (backward compat) ────────────────────────
+    if (!process.env.TURN_URL && process.env.METERED_TURN_URL) {
+      iceServers.push({
+        urls: [
+          process.env.METERED_TURN_URL,
+          process.env.METERED_TURN_URL_SECURE || ''
+        ].filter(Boolean),
+        username: process.env.METERED_TURN_USERNAME || 'openrelayproject',
+        credential: process.env.METERED_TURN_CREDENTIAL || 'openrelayproject'
+      });
+    }
+
+    // Return null if nothing is configured — clients will use their built-in STUN pool
+    if (iceServers.length === 0) return res.json(null);
+    res.json(iceServers.length === 1 ? iceServers[0] : iceServers);
   });
 
   app.get("/api/status", (req, res) => {

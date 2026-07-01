@@ -477,9 +477,16 @@ function preferVideoCodec(pc) {
     const targetMime = 'video/' + (val === 'H265' ? 'hevc' : val).toLowerCase();
     const fallbackMime = val === 'H265' ? 'video/h265' : targetMime;
 
-    const preferred = caps.codecs.filter(c =>
-    c.mimeType.toLowerCase() === targetMime || c.mimeType.toLowerCase() === fallbackMime
+    let preferred = caps.codecs.filter(c =>
+        c.mimeType.toLowerCase() === targetMime || c.mimeType.toLowerCase() === fallbackMime
     );
+
+    // If the selected codec is unavailable on this machine (e.g. AV1/H265 on Windows),
+    // silently fall back to H264 — the safest cross-platform baseline.
+    if (preferred.length === 0) {
+        console.warn(`[WebRTC] Codec ${val} not available, falling back to H264`);
+        preferred = caps.codecs.filter(c => c.mimeType.toLowerCase() === 'video/h264');
+    }
 
     // Fallback to browser default if hardware is missing
     if (preferred.length === 0) return null;

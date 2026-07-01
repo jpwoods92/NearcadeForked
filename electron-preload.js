@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // FIX #7: openHost now accepts an optional version string ('new' | 'old')
   openHost:    (version)          => ipcRenderer.send('open-host', version || 'new'),
   openLog:     ()                 => ipcRenderer.send('open-log'),
+  openInstallDir: ()              => ipcRenderer.send('open-dir'),
   readDoc:     (filename)         => ipcRenderer.invoke('read-doc', filename),
   getSettings:                    () => ipcRenderer.invoke('get-settings'),
   saveSettings:                   (s) => ipcRenderer.invoke('save-settings', s),
