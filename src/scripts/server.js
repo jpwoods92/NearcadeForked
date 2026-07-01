@@ -1877,12 +1877,16 @@ async function main() {
       }
 
       // ── Session password check ────────────────────────────────────────────
-      if (sessionPassword) {
-        const provided = ws.protocol || url.searchParams.get('password') || url.searchParams.get('pin') || '';
+      // Only run when there is NO active pin gate. When pinEnabled && requirePin
+      // is true AND sessionPassword is set, PIN === sessionPassword, so the PIN
+      // check above already validated the credential — checking again here causes
+      // spurious session-password-required rejections for correctly authenticated viewers.
+      if (sessionPassword && !(pinEnabled && requirePin)) {
+        const provided = url.searchParams.get('password') || url.searchParams.get('pin') || '';
         if (provided !== sessionPassword) {
-          ws.send(JSON.stringify({ type: 'session-password-required', reason: 'Session password incorrect.' }));
+          try { ws.send(JSON.stringify({ type: 'session-password-required', reason: 'Session password incorrect.' })); } catch {}
           ws.close();
-          console.log(`[viewer] rejected — wrong session password from ${clientIp}`);
+          console.log(`[viewer] rejected — wrong session password (non-PIN path) from ${clientIp}`);
           return;
         }
       }

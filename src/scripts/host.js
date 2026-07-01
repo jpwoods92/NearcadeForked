@@ -1538,7 +1538,11 @@ async function sendOfferToViewer(viewerId) {
             // resulting in a permanent black screen until the stream is fully restarted.
             // Replacing the sender's track with itself forces Chromium to flush the encoder pipeline
             // and emit a fresh IDR keyframe, instantly fixing the black screen for late-joiners.
+            // Guard: only fire if this pc is still the active connection for this viewer.
+            // Without this guard, a stale timer from a replaced pc fires on the new connection's
+            // DTLS transport while it is being set up, triggering a DcSctpTransport abort cascade.
             setTimeout(() => {
+                if (peerConnections[viewerId] !== pc) return;
                 try {
                     const videoSender = pc.getSenders().find(s => s.track && s.track.kind === 'video');
                     if (videoSender && videoSender.track) {
@@ -2452,8 +2456,13 @@ async function startWebCodecsNetworkPipeline(videoTrack) {
     });
     _wcEncoder = encoder;
 
+    // Derive codec string from the host's UI selection so AV1/VP9/H264 are honored.
+    // WebCodecs codec strings differ from WebRTC mimeTypes — map them explicitly.
+    const _wcCodecSel = (document.getElementById('codecSelect')?.value || 'VP8').toUpperCase();
+    const _wcCodecMap = { 'AV1': 'av01.0.04M.08', 'VP9': 'vp09.00.10.08', 'VP8': 'vp8', 'H264': 'avc1.42002A', 'H265': 'hvc1.1.6.L93.B0' };
+    const _wcCodecStr = _wcCodecMap[_wcCodecSel] || 'vp8';
     const wcConfig = {
-        codec: 'vp8',
+        codec: _wcCodecStr,
         width: exactWidth,
         height: exactHeight,
         bitrate: 8000000,
@@ -2463,6 +2472,7 @@ async function startWebCodecsNetworkPipeline(videoTrack) {
     };
     encoder.configure(wcConfig);
     encoder._lastConfig = wcConfig;
+    console.log(`[WebCodecs] Encoder configured with codec: ${_wcCodecStr} (from UI: ${_wcCodecSel})`);
 
     const processor = new MediaStreamTrackProcessor({ track: videoTrack });
     const reader = processor.readable.getReader();
