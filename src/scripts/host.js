@@ -3565,7 +3565,11 @@ const arcadeConfig = {
     requirePin: localStorage.getItem('ns_arcade_requirePin') === 'true'
 };
 
-function showArcadeModal() {
+function showArcadeModal(skipRules = false) {
+    if (!skipRules && localStorage.getItem('ns_arcade_rules_accepted') !== 'true') {
+        document.getElementById('arcadeRulesModal').classList.remove('gone');
+        return;
+    }
     document.getElementById('arcadeGameTitle').value = arcadeConfig.title;
     document.getElementById('arcadeGameDesc').value = arcadeConfig.desc;
     document.getElementById('arcadeMaxPlayers').value = arcadeConfig.maxPlayers;

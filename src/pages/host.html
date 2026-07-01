@@ -401,6 +401,30 @@
     </div>
   </div>
 
+  <!-- Arcade Rules Modal -->
+  <div class="modal-bg gone" id="arcadeRulesModal" style="z-index: 10000;">
+    <div class="modal" style="width: 420px; position:relative;">
+      <div class="modal-head">
+        <h3>Arcade Rules & Agreement</h3>
+      </div>
+      <div class="modal-body" style="padding: 20px; font-size: 13px; color: var(--text); line-height: 1.6;">
+        Before hosting a public Arcade session, you must agree to the following rules:<br><br>
+        <ul style="margin:0; padding-left:20px;">
+          <li style="margin-bottom:6px;"><strong style="color:var(--danger);">No 18+ Content:</strong> Do not stream any sexually explicit or severely mature material.</li>
+          <li style="margin-bottom:6px;"><strong style="color:var(--danger);">No Pure Media:</strong> Arcade is for interactive gaming. Do not host movies, TV shows, or copyright-infringing media broadcasts.</li>
+          <li style="margin-bottom:6px;"><strong style="color:var(--danger);">No Harassment:</strong> Do not use this platform to promote hate speech, scam, or mess with other users in any way.</li>
+        </ul><br>
+        Violating these terms will result in your IP being permanently banned from the public Arcade directory.
+      </div>
+      <div class="modal-footer">
+        <div class="btn-row" style="justify-content: flex-end;">
+          <button class="btn-skip" onclick="document.getElementById('arcadeRulesModal').classList.add('gone');" style="margin-right: 8px;">Decline</button>
+          <button class="btn-confirm" onclick="document.getElementById('arcadeRulesModal').classList.add('gone'); localStorage.setItem('ns_arcade_rules_accepted', 'true'); showArcadeModal(true);">I Agree</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-bg gone" id="arcadeModal">
     <div class="modal" style="position:relative;width:520px;">
       <div class="modal-head">
