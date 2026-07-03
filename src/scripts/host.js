@@ -526,6 +526,20 @@ function preferVideoCodec(pc) {
     // Fallback to browser default if hardware is missing
     if (preferred.length === 0) return null;
 
+    // H264 profile fix for Windows AMD/MediaFoundation decoder bugs:
+    // Linux hosts using VaapiVideoEncoder sometimes prioritize High Profile or Main Profile
+    // which fails to decode properly on Windows MediaFoundation, resulting in a black screen.
+    // We MUST force Constrained Baseline (42e01f) to the absolute top of the H264 list.
+    if (targetMime === 'video/h264' || preferred.some(c => c.mimeType.toLowerCase() === 'video/h264')) {
+        preferred.sort((a, b) => {
+            const isBaseA = a.sdpFmtpLine && a.sdpFmtpLine.includes('42e01f');
+            const isBaseB = b.sdpFmtpLine && b.sdpFmtpLine.includes('42e01f');
+            if (isBaseA && !isBaseB) return -1;
+            if (!isBaseA && isBaseB) return 1;
+            return 0;
+        });
+    }
+
     const rest = caps.codecs.filter(c => !preferred.includes(c));
     const sorted = [...preferred, ...rest];
 

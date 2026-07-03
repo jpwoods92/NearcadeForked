@@ -220,6 +220,7 @@ function acknowledgeControllerGuide() {
 function maybeShowControllerGuide() {
     if (!_nsHostConnected) return;
     if (sessionStorage.getItem(CONTROLLER_GUIDE_STORAGE_KEY)) return;
+    if (knownNativePads.length > 0) return; // Native controllers are auto-mapped and bypass browser Gamepad API
 
     const pads = navigator.getGamepads ? navigator.getGamepads() : [];
     let needsCalib = false;
@@ -326,6 +327,7 @@ async function createPC() {
             if (videoEl) {
                 videoEl.muted = true; // Required by Chrome/Safari to allow dynamic autoplay
                 videoEl.srcObject = e.streams && e.streams[0] ? e.streams[0] : new MediaStream([e.track]);
+                videoEl.play().catch(err => console.warn('[WebRTC] video.play() exception:', err));
                 videoEl.onplaying = () => {
                     if (typeof showOverlay === 'function') showOverlay(false);
                     setStatus('');
@@ -755,8 +757,20 @@ function preferReceiverCodec(transceiver, preferredMime) {
     if (preferredMime) {
         priority = [preferredMime, ...CODEC_PRIORITY.filter(c => c.toLowerCase() !== preferredMime.toLowerCase())];
     }
+    let preferredCodecs = priority.flatMap(mime => caps.codecs.filter(c => c.mimeType.toLowerCase() === mime.toLowerCase()));
+    
+    // Sort H264 to prioritize Constrained Baseline (42e01f) to prevent MediaFoundation black screens
+    preferredCodecs.sort((a, b) => {
+        if (a.mimeType.toLowerCase() !== 'video/h264' || b.mimeType.toLowerCase() !== 'video/h264') return 0;
+        const isBaseA = a.sdpFmtpLine && a.sdpFmtpLine.includes('42e01f');
+        const isBaseB = b.sdpFmtpLine && b.sdpFmtpLine.includes('42e01f');
+        if (isBaseA && !isBaseB) return -1;
+        if (!isBaseA && isBaseB) return 1;
+        return 0;
+    });
+
     const sorted = [
-        ...priority.flatMap(mime => caps.codecs.filter(c => c.mimeType.toLowerCase() === mime.toLowerCase())),
+        ...preferredCodecs,
         ...caps.codecs.filter(c => !priority.some(p => p.toLowerCase() === c.mimeType.toLowerCase()))
     ];
     try { transceiver.setCodecPreferences(sorted); return sorted[0]?.mimeType || null; } catch { return null; }
