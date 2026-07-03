@@ -2533,7 +2533,16 @@ async function startWebCodecsNetworkPipeline(videoTrack) {
 
     // Derive codec string from the host's UI selection so AV1/VP9/H264 are honored.
     // WebCodecs codec strings differ from WebRTC mimeTypes — map them explicitly.
-    const _wcCodecSel = (document.getElementById('codecSelect')?.value || 'VP8').toUpperCase();
+    let _wcCodecSel = (document.getElementById('codecSelect')?.value || 'VP8').toUpperCase();
+    
+    // FIX: Linux VaapiVideoEncoder fails to emit mandatory AVCC extradata (description) for H264.
+    // Windows VideoDecoder completely crashes/blacks out if description is missing.
+    // Force fallback to VP9 on Linux to bypass the H264 hardware encoder bug in WebCodecs.
+    if (_wcCodecSel === 'H264' && navigator.userAgent.toLowerCase().includes('linux')) {
+        console.warn('[WebCodecs] Linux H264 hardware encoding is broken (missing AVCC). Forcing VP9 fallback.');
+        _wcCodecSel = 'VP9';
+    }
+
     const _wcCodecMap = { 'AV1': 'av01.0.04M.08', 'VP9': 'vp09.00.10.08', 'VP8': 'vp8', 'H264': 'avc1.42002A', 'H265': 'hvc1.1.6.L93.B0' };
     const _wcCodecStr = _wcCodecMap[_wcCodecSel] || 'vp8';
     const wcConfig = {
