@@ -8,6 +8,7 @@ const si = require('systeminformation');
 // Helper to anonymize IPs so we never store them
 function hashIp(ip) { return crypto.createHash('sha256').update(ip).digest('hex'); }
 const os = require("os");
+const state = require('./server/state.js');
 const serverEnv = require('./server/env.js');
 const serverNetwork = require('./server/network-info.js');
 const { toUinput, normalizeGamepadMsg } = require('./server/input-bridge.js');
@@ -46,9 +47,15 @@ console.log = function (...args) {
   // Blur Session Password
   msg = msg.replace(/("?sessionPassword"?\s*:\s*['"]?)[^'"\s,]+(['"]?)/g, '$1********$2');
 
-  // Blur global PIN
-  if (typeof PIN !== 'undefined' && PIN) {
-    msg = msg.replace(new RegExp(PIN, 'g'), '****');
+  // Blur global PIN. NOTE: before this file's state consolidation, `PIN` was
+  // a `let` declared inside main() and unreachable from this module-level
+  // scrubber — `typeof PIN !== 'undefined'` was always false, so this
+  // redaction never actually fired. Routing through the shared `state`
+  // module makes it reachable, so it now genuinely redacts the PIN from
+  // logs — an accidental (and welcome) side effect of the refactor, not a
+  // deliberate behavior change.
+  if (typeof state.session.pin !== 'undefined' && state.session.pin) {
+    msg = msg.replace(new RegExp(state.session.pin, 'g'), '****');
   }
 
   _origLog.call(console, msg);
@@ -63,17 +70,11 @@ const { exec, spawn } = require("child_process");
 const which = require("which");
 const killPort = require("kill-port");
 const captureManager = require('../sidecar/CaptureManager.js');
-let activePort = 3000;
-let hostWS = null;
-let tunnelUrl = null;
-let activeTunnelProc = null;
-let uinputProc = null;
-let audioProc = null;
-let vidCount = 0;
-const viewers = new Map();
-const viewerNames = new Map();
-const inputPerms = new Map();
-const pinAttempts = new Map();
+// activePort/hostWS/tunnelUrl/activeTunnelProc/audioProc/vidCount and the
+// viewers/viewerNames/inputPerms/pinAttempts registries all live in
+// ./server/state.js now (shared mutable state so ws.js/http.js can both
+// reach them once those are extracted). uinputProc was dead code — declared
+// but never read anywhere — so it's dropped rather than moved.
 
 const isPackaged = __dirname.includes('app.asar');
 const inputDriver = require('../sidecar/input_backends/InputOrchestrator.js');
@@ -147,19 +148,18 @@ async function main() {
   }
   console.log("");
 
-  activePort = await findFreePort(3000);
-  const PORT = activePort;
-  const LAN_IP = getLanIP();
-  const PUBLIC_IP = await getPublicIP();
+  state.runtime.activePort = await findFreePort(3000);
+  state.serverInfo.lanIp = getLanIP();
+  state.serverInfo.publicIp = await getPublicIP();
   const initialCfg = loadConfig();
-  let sessionPassword = initialCfg.persistentPassword || '';
-  let PIN = sessionPassword ? sessionPassword : makePin();
-  let pinEnabled = true;
+  state.session.sessionPassword = initialCfg.persistentPassword || '';
+  state.session.pin = state.session.sessionPassword ? state.session.sessionPassword : makePin();
+  state.session.pinEnabled = true;
 
   console.log("\n  \x1b[1mNearsecTogether\x1b[0m");
-  console.log("  Host page : http://localhost:" + PORT + "/host");
-  console.log("  LAN URL   : http://***.***.***.***:" + PORT + "/");
-  if (PUBLIC_IP) console.log("  Public IP : http://***.***.***.***:" + PORT + "/ (needs port forward)");
+  console.log("  Host page : http://localhost:" + state.runtime.activePort + "/host");
+  console.log("  LAN URL   : http://***.***.***.***:" + state.runtime.activePort + "/");
+  if (state.serverInfo.publicIp) console.log("  Public IP : http://***.***.***.***:" + state.runtime.activePort + "/ (needs port forward)");
   console.log("  PIN       : \x1b[1;32m****\x1b[0m\n");
 
   const app = express();
@@ -175,7 +175,9 @@ async function main() {
     next();
   });
 
-  const { version: APP_VERSION, commit: COMMIT_HASH } = getAppVersionInfo();
+  const _versionInfo = getAppVersionInfo();
+  state.serverInfo.appVersion = _versionInfo.version;
+  state.serverInfo.commitHash = _versionInfo.commit;
   app.use('/docs', express.static(path.join(__dirname, '..', '..', '..', 'assets', 'locales', 'docs')));
 
   // ── Dynamic version.js — always reflects package.json ──────────────────
@@ -184,7 +186,7 @@ async function main() {
     res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');
-    res.send(`window.NEARSEC_VERSION = "${APP_VERSION}";\nwindow.NEARSEC_COMMIT = "${COMMIT_HASH}";\nconsole.log("[Nearsec] Version loaded:", window.NEARSEC_VERSION, window.NEARSEC_COMMIT ? "("+window.NEARSEC_COMMIT+")" : "");`);
+    res.send(`window.NEARSEC_VERSION = "${state.serverInfo.appVersion}";\nwindow.NEARSEC_COMMIT = "${state.serverInfo.commitHash}";\nconsole.log("[Nearsec] Version loaded:", window.NEARSEC_VERSION, window.NEARSEC_COMMIT ? "("+window.NEARSEC_COMMIT+")" : "");`);
   });
 
   app.use("/js", express.static(path.join(__dirname, "..", "..", "src", "scripts"), { setHeaders: (res) => { res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate'); res.setHeader('Pragma', 'no-cache'); res.setHeader('Expires', '0'); } }));
@@ -245,7 +247,7 @@ async function main() {
     }
   });
 
-  app.get("/api/info", (req, res) => res.json({ lanIP: LAN_IP, port: PORT, pin: PIN, publicIP: PUBLIC_IP || null, tunnelUrl: tunnelUrl || null, version: APP_VERSION }));
+  app.get("/api/info", (req, res) => res.json({ lanIP: state.serverInfo.lanIp, port: state.runtime.activePort, pin: state.session.pin, publicIP: state.serverInfo.publicIp || null, tunnelUrl: state.runtime.tunnelUrl || null, version: state.serverInfo.appVersion }));
   app.post("/api/fe-log", express.json(), (req, res) => {
     const { msg, src, line } = req.body || {};
     console.error(`[renderer] ${msg} @ ${src}:${line}`);
@@ -255,7 +257,7 @@ async function main() {
   app.get("/api/pin-required", (req, res) => {
     const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
     const hasTunnelHeader = !!req.headers['x-forwarded-for'] || !!req.headers['cf-connecting-ip'];
-    res.json({ required: pinEnabled && shouldRequirePin(clientIp, hasTunnelHeader) });
+    res.json({ required: state.session.pinEnabled && shouldRequirePin(clientIp, hasTunnelHeader) });
   });
   app.get("/api/config", (req, res) => res.json(loadConfig()));
   app.post("/api/config", express.json(), (req, res) => { res.json(saveConfig(req.body || {})); });
@@ -263,15 +265,15 @@ async function main() {
   app.post('/api/set-session-password', express.json(), (req, res) => {
     const newPass = (req.body?.password || '').trim();
     saveConfig({ persistentPassword: newPass });
-    sessionPassword = newPass;
-    PIN = sessionPassword ? sessionPassword : makePin();
-    console.log(`[host] Session password ${sessionPassword ? 'set' : 'cleared'}`);
-    if (hostWS && hostWS.readyState === 1) hostWS.send(JSON.stringify({ type: "regen-pin", pin: PIN }));
-    res.json({ ok: true, hasPassword: !!sessionPassword });
+    state.session.sessionPassword = newPass;
+    state.session.pin = state.session.sessionPassword ? state.session.sessionPassword : makePin();
+    console.log(`[host] Session password ${state.session.sessionPassword ? 'set' : 'cleared'}`);
+    if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1) state.runtime.hostWS.send(JSON.stringify({ type: "regen-pin", pin: state.session.pin }));
+    res.json({ ok: true, hasPassword: !!state.session.sessionPassword });
   });
 
   app.get('/api/session-password-status', (req, res) => {
-    res.json({ hasPassword: !!sessionPassword, password: sessionPassword });
+    res.json({ hasPassword: !!state.session.sessionPassword, password: state.session.sessionPassword });
   });
 
   app.get("/api/sysinfo", async (req, res) => {
@@ -331,12 +333,12 @@ async function main() {
 
   app.get("/api/status", (req, res) => {
     res.json({
-      online: !!hostWS,
-      streaming: hostStreaming,
-      viewers: viewers.size,
+      online: !!state.runtime.hostWS,
+      streaming: state.session.hostStreaming,
+      viewers: state.viewers.size,
       controllers: controllerViewerCount(),
-      tunnel: tunnelUrl,
-      version: APP_VERSION,
+      tunnel: state.runtime.tunnelUrl,
+      version: state.serverInfo.appVersion,
       uptime: process.uptime()
     });
   });
@@ -369,16 +371,16 @@ async function main() {
     const { viewerId, revoked } = req.body || {};
     if (!viewerId) return res.status(400).json({ ok: false, reason: 'missing viewerId' });
     const padId = viewerId + '_0';
-    const cur = inputPerms.get(padId) || { gp: true, kb: false, slot: null };
+    const cur = state.inputPerms.get(padId) || { gp: true, kb: false, slot: null };
     const updated = { ...cur, gp: !revoked, kb: revoked ? false : cur.kb, revokedByHost: !!revoked };
-    inputPerms.set(padId, updated);
+    state.inputPerms.set(padId, updated);
     // Flush neutral state so the game doesn't see a stuck button
     if (revoked) {
       inputDriver.send({ type: 'flush_neutral', viewer_id: padId });
     }
     // Notify host WS client so the viewer panel updates live
-    if (typeof hostWS !== 'undefined' && hostWS && hostWS.readyState === 1) {
-      hostWS.send(JSON.stringify({ type: 'input-perm-changed', viewerId, revoked: !!revoked }));
+    if (typeof state.runtime.hostWS !== 'undefined' && state.runtime.hostWS && state.runtime.hostWS.readyState === 1) {
+      state.runtime.hostWS.send(JSON.stringify({ type: 'input-perm-changed', viewerId, revoked: !!revoked }));
     }
     res.json({ ok: true, viewerId, revoked: !!revoked });
   });
@@ -482,12 +484,12 @@ async function main() {
 
   app.post("/api/start-tunnel", express.json(), async (req, res) => {
 
-    if (activeTunnelProc) {
+    if (state.runtime.activeTunnelProc) {
       console.log("  \x1b[33m~\x1b[0m Stopping existing tunnel process before switching...");
-      try { activeTunnelProc.kill(); } catch (e) { }
-      activeTunnelProc = null;
+      try { state.runtime.activeTunnelProc.kill(); } catch (e) { }
+      state.runtime.activeTunnelProc = null;
     }
-    tunnelUrl = null;
+    state.runtime.tunnelUrl = null;
 
     const provider = (req.body && req.body.provider) || "cloudflared";
     if (req.body && req.body.remember) saveConfig({ tunnelProvider: provider, neverAsk: true });
@@ -518,22 +520,22 @@ async function main() {
     }
 
     try {
-      const tun = await fn(PORT);
+      const tun = await fn(state.runtime.activePort);
       if (tun && tun.url) {
-        tunnelUrl = tun.url;
-        activeTunnelProc = tun.proc;
-        const msg = JSON.stringify({ type: "tunnel-url", url: tunnelUrl });
-        if (hostWS && hostWS.readyState === 1) hostWS.send(msg);
+        state.runtime.tunnelUrl = tun.url;
+        state.runtime.activeTunnelProc = tun.proc;
+        const msg = JSON.stringify({ type: "tunnel-url", url: state.runtime.tunnelUrl });
+        if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1) state.runtime.hostWS.send(msg);
       } else if (tun && tun.error === 'NOT_FOUND') {
         console.log(`  \x1b[31m~\x1b[0m Tunnel provider '${provider}' binary not found.`);
-        if (hostWS && hostWS.readyState === 1) hostWS.send(JSON.stringify({ type: "tunnel-not-found", provider: provider }));
+        if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1) state.runtime.hostWS.send(JSON.stringify({ type: "tunnel-not-found", provider: provider }));
       } else {
         console.log(`  \x1b[31m~\x1b[0m Tunnel provider '${provider}' failed.`);
-        if (hostWS && hostWS.readyState === 1) hostWS.send(JSON.stringify({ type: "tunnel-error", provider: provider }));
+        if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1) state.runtime.hostWS.send(JSON.stringify({ type: "tunnel-error", provider: provider }));
       }
     } catch (e) {
       console.log(`  \x1b[31m~\x1b[0m Tunnel error:`, e.message);
-      if (hostWS && hostWS.readyState === 1) hostWS.send(JSON.stringify({ type: "tunnel-error", provider: provider }));
+      if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1) state.runtime.hostWS.send(JSON.stringify({ type: "tunnel-error", provider: provider }));
     }
   });
 
@@ -547,14 +549,14 @@ async function main() {
   // Forward input driver errors (e.g. ViGEmBus missing on Windows) to the host UI
   inputDriver.events.on('input-error', (err) => {
     console.error('[InputOrchestrator] input-error:', err.message, '(code:', err.code + ')');
-    if (hostWS && hostWS.readyState === 1) {
-      hostWS.send(JSON.stringify({ type: 'input-error', message: err.message, code: err.code || '' }));
+    if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1) {
+      state.runtime.hostWS.send(JSON.stringify({ type: 'input-error', message: err.message, code: err.code || '' }));
     }
   });
   inputDriver.events.on('input-ready', (info) => {
     console.log('[InputOrchestrator] input-ready:', info.message || '');
-    if (hostWS && hostWS.readyState === 1) {
-      hostWS.send(JSON.stringify({ type: 'input-ready', message: info.message || '' }));
+    if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1) {
+      state.runtime.hostWS.send(JSON.stringify({ type: 'input-ready', message: info.message || '' }));
     }
   });
 
@@ -576,7 +578,7 @@ async function main() {
         duration: data.duration || 200,
       });
       if (realId) {
-        const vws = viewers.get(realId);
+        const vws = state.viewers.get(realId);
         if (vws && vws.readyState === 1) {
           // Direct local WebSocket viewer
           vws.send(rumbleMsg);
@@ -584,17 +586,17 @@ async function main() {
         } else if (vws === null) {
           // VPS viewer — no direct WS. Bounce via hostWS so host.js
           // can dispatch it over _vpsWs to the Rust router.
-          if (hostWS && hostWS.readyState === 1) {
-            hostWS.send(JSON.stringify({
+          if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1) {
+            state.runtime.hostWS.send(JSON.stringify({
               type: 'rumble',
               targetViewerId: realId,
               strong: data.strong,
               weak: data.weak,
               duration: data.duration || 200,
             }));
-            console.log(`[Rumble] Bounced via hostWS to VPS viewer ${realId}`);
+            console.log(`[Rumble] Bounced via state.runtime.hostWS to VPS viewer ${realId}`);
           } else {
-            console.warn(`[Rumble] hostWS not open, cannot reach VPS viewer ${realId}`);
+            console.warn(`[Rumble] state.runtime.hostWS not open, cannot reach VPS viewer ${realId}`);
           }
         } else {
           console.warn(`[Rumble] Viewer ${realId} WebSocket not open (state: ${vws?.readyState})`);
@@ -602,10 +604,10 @@ async function main() {
       } else {
         // Slot not yet resolved — broadcast to all viewers best-effort
         console.warn(`[Rumble] No viewer for slot ${data.slot} — broadcasting best-effort`);
-        viewers.forEach((vws, vid) => {
+        state.viewers.forEach((vws, vid) => {
           if (vws && vws.readyState === 1) try { vws.send(rumbleMsg); } catch (_) { }
-          else if (vws === null && hostWS && hostWS.readyState === 1) {
-            hostWS.send(JSON.stringify({ type: 'rumble', targetViewerId: vid, strong: data.strong, weak: data.weak, duration: data.duration || 200 }));
+          else if (vws === null && state.runtime.hostWS && state.runtime.hostWS.readyState === 1) {
+            state.runtime.hostWS.send(JSON.stringify({ type: 'rumble', targetViewerId: vid, strong: data.strong, weak: data.weak, duration: data.duration || 200 }));
           }
         });
       }
@@ -624,21 +626,18 @@ async function main() {
       duration: data.duration || 200,
     });
     if (data.viewerId) {
-      const vws = viewers.get(data.viewerId);
+      const vws = state.viewers.get(data.viewerId);
       if (vws && vws.readyState === 1) vws.send(rumbleMsg);
     } else {
       // viewerId unknown — broadcast to all connected viewers (best-effort)
-      viewers.forEach((vws) => {
+      state.viewers.forEach((vws) => {
         if (vws.readyState === 1) try { vws.send(rumbleMsg); } catch (_) { }
       });
     }
   });
 
-  let hostStreaming = false;
+  state.session.hostStreaming = false;
   const audioViewers = new Set();
-  const viewerGamepads = new Map();
-  const viewerHasController = new Set();
-  const hwIdToViewer = new Map();
 
   const JOIN_SOUND = __dirname.includes('app.asar')
     ? path.join(process.resourcesPath, 'app.asar.unpacked', 'assets', 'joinsound.wav')
@@ -657,43 +656,43 @@ async function main() {
     });
   }
   function playJoinSound() {
-    if (hostWS && hostWS.readyState === 1) {
-      hostWS.send(JSON.stringify({ type: 'play-system-sound', action: 'join' }));
+    if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1) {
+      state.runtime.hostWS.send(JSON.stringify({ type: 'play-system-sound', action: 'join' }));
     }
   }
   function playLeaveSound() {
-    if (hostWS && hostWS.readyState === 1) {
-      hostWS.send(JSON.stringify({ type: 'play-system-sound', action: 'leave' }));
+    if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1) {
+      state.runtime.hostWS.send(JSON.stringify({ type: 'play-system-sound', action: 'leave' }));
     }
   }
 
   function broadcast(data) {
     let sentToVps = false;
-    viewers.forEach(vws => {
+    state.viewers.forEach(vws => {
       if (vws && vws.readyState === 1) vws.send(data);
-      else if (vws === null && !sentToVps && hostWS && hostWS.readyState === 1) {
-        hostWS.send(JSON.stringify({ type: 'vps-broadcast', payload: data }));
+      else if (vws === null && !sentToVps && state.runtime.hostWS && state.runtime.hostWS.readyState === 1) {
+        state.runtime.hostWS.send(JSON.stringify({ type: 'vps-broadcast', payload: data }));
         sentToVps = true;
       }
     });
   }
 
   function controllerViewerCount() {
-    return viewerHasController.size;
+    return state.viewerHasController.size;
   }
 
   function broadcastRoster() {
     const roster = [];
     roster.push({ id: 'host_0', name: 'Host', gp: false, kb: false, slot: 0, locked: true, inputMode: 'host' });
     let autoSlot = 1;
-    viewers.forEach((vws, id) => {
-      const pads = viewerGamepads.get(id) || new Set([0]);
+    state.viewers.forEach((vws, id) => {
+      const pads = state.viewerGamepads.get(id) || new Set([0]);
       pads.forEach(padIdx => {
         const isExtra = padIdx > 0;
         const nameSuffix = isExtra ? ' ' + (padIdx + 1) : '';
         const rosterId = id + '_' + padIdx;
-        const pBase = inputPerms.get(id) || {};
-        const pPad = inputPerms.get(rosterId) || {};
+        const pBase = state.inputPerms.get(id) || {};
+        const pPad = state.inputPerms.get(rosterId) || {};
         const p = { gp: true, kb: false, slot: null, locked: false, ...pBase, ...pPad };
 
         let mode = 'gamepad';
@@ -703,7 +702,7 @@ async function main() {
 
         roster.push({
           id: rosterId,
-          name: (viewerNames.get(id) || id) + nameSuffix,
+          name: (state.viewerNames.get(id) || id) + nameSuffix,
           gp: !!p.gp,
           kb: !!p.kb,
           slot: p.slot ?? autoSlot++,
@@ -715,7 +714,7 @@ async function main() {
     const count = controllerViewerCount();
     const msg = JSON.stringify({ type: "roster", viewers: roster, controllerCount: count });
     broadcast(msg);
-    if (hostWS && hostWS.readyState === 1) hostWS.send(msg);
+    if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1) state.runtime.hostWS.send(msg);
   }
 
   wss.on("connection", (ws, req) => {
@@ -729,19 +728,19 @@ async function main() {
     // ── HOST ─────────────────────────────────────────────────────────────────
     if (wsPath === "/ws/host") {
       console.log("[host] connected");
-      hostWS = ws;
+      state.runtime.hostWS = ws;
       broadcast(JSON.stringify({ type: "host-connected" }));
 
       // Start audio routing as soon as the host session opens
       routeGameAudio(null);
-      viewers.forEach((_, id) => hostWS.send(JSON.stringify({ type: "viewer-joined", viewerId: id, name: viewerNames.get(id) || id })));
+      state.viewers.forEach((_, id) => state.runtime.hostWS.send(JSON.stringify({ type: "viewer-joined", viewerId: id, name: state.viewerNames.get(id) || id })));
 
-      if (tunnelUrl) ws.send(JSON.stringify({ type: "tunnel-url", url: tunnelUrl }));
+      if (state.runtime.tunnelUrl) ws.send(JSON.stringify({ type: "tunnel-url", url: state.runtime.tunnelUrl }));
 
       ws.on("message", (raw, isBinary) => {
         if (isBinary) {
           // Tunnel WebCodecs binary frames from Host -> Node.js Server -> Viewers
-          viewers.forEach(vws => {
+          state.viewers.forEach(vws => {
             if (vws && vws.readyState === 1) vws.send(raw);
           });
           return;
@@ -757,18 +756,18 @@ async function main() {
 
           // ── OS-LEVEL AUDIO FALLBACK COMMANDS ──
           if (msg.type === "start-audio-fallback") {
-            if (audioProc) {
-              audioProc.kill();
-              audioProc = null;
+            if (state.runtime.audioProc) {
+              state.runtime.audioProc.kill();
+              state.runtime.audioProc = null;
             }
             console.log("  [host] Engaging Python OS-Level Audio Fallback...");
             const audioScript = path.join(__dirname, "..", "sidecar", "audio_driver.py");
 
             // FIX: Added "-u" to bypass buffer lock, and "inherit" to expose Python crashes!
-            audioProc = spawn(process.platform === "win32" ? "python" : "python3", ["-u", audioScript], { stdio: ['ignore', 'pipe', 'inherit'] });
+            state.runtime.audioProc = spawn(process.platform === "win32" ? "python" : "python3", ["-u", audioScript], { stdio: ['ignore', 'pipe', 'inherit'] });
 
-            audioProc.stdout.on('data', (chunk) => {
-              viewers.forEach(v => {
+            state.runtime.audioProc.stdout.on('data', (chunk) => {
+              state.viewers.forEach(v => {
                 if (v.readyState === WebSocket.OPEN) v.send(chunk);
               });
             });
@@ -776,20 +775,20 @@ async function main() {
           }
 
           if (msg.type === "stop-audio-fallback") {
-            if (audioProc) {
-              audioProc.kill();
-              audioProc = null;
+            if (state.runtime.audioProc) {
+              state.runtime.audioProc.kill();
+              state.runtime.audioProc = null;
             }
             return;
           }
 
           // ── STANDARD SIGNALING ──
           if ((msg.type === "offer" || msg.type === "ice-host") && msg._viewerId) {
-            const vws = viewers.get(msg._viewerId);
+            const vws = state.viewers.get(msg._viewerId);
             if (vws && vws.readyState === 1) {
               vws.send(JSON.stringify(msg));
-            } else if (vws === null && hostWS && hostWS.readyState === 1) {
-              hostWS.send(JSON.stringify(msg));
+            } else if (vws === null && state.runtime.hostWS && state.runtime.hostWS.readyState === 1) {
+              state.runtime.hostWS.send(JSON.stringify(msg));
             }
             return;
           }
@@ -798,21 +797,21 @@ async function main() {
           // Individual viewer: relay to that specific viewer
           if (msg.type === "host-voice-cmd" && msg.targetViewerId) {
             const realId = msg.targetViewerId.split('_')[0];
-            const targetWs = viewers.get(realId);
+            const targetWs = state.viewers.get(realId);
             if (targetWs && targetWs.readyState === 1) {
               targetWs.send(JSON.stringify(msg));
-            } else if (targetWs === null && hostWS && hostWS.readyState === 1) {
-              hostWS.send(JSON.stringify(msg));
+            } else if (targetWs === null && state.runtime.hostWS && state.runtime.hostWS.readyState === 1) {
+              state.runtime.hostWS.send(JSON.stringify(msg));
             }
             return;
           }
           // Broadcast: relay mute/unmute to every connected viewer
           if (msg.type === "host-voice-broadcast" && msg.action) {
-            viewers.forEach((vws, id) => {
+            state.viewers.forEach((vws, id) => {
               if (vws && vws.readyState === 1) {
                 vws.send(JSON.stringify({ type: "host-voice-cmd", action: msg.action, targetViewerId: id }));
-              } else if (vws === null && hostWS && hostWS.readyState === 1) {
-                hostWS.send(JSON.stringify({ type: "host-voice-cmd", action: msg.action, targetViewerId: id }));
+              } else if (vws === null && state.runtime.hostWS && state.runtime.hostWS.readyState === 1) {
+                state.runtime.hostWS.send(JSON.stringify({ type: "host-voice-cmd", action: msg.action, targetViewerId: id }));
               }
             });
             return;
@@ -821,18 +820,18 @@ async function main() {
 
           if (msg.type === "kick-viewer") {
             const realId = msg.viewerId.split('_')[0];
-            const targetWs = viewers.get(realId);
+            const targetWs = state.viewers.get(realId);
 
-            viewers.delete(realId);
-            viewerNames.delete(realId);
-            inputPerms.delete(realId);
+            state.viewers.delete(realId);
+            state.viewerNames.delete(realId);
+            state.inputPerms.delete(realId);
 
             if (targetWs) {
               try { targetWs.send(JSON.stringify({ type: "pin-rejected", reason: "kicked" })); } catch { }
               targetWs.close(4003, "KICKED");
               console.log(`[host] Kicked viewer ${realId}`);
-            } else if (hostWS && hostWS.readyState === 1) {
-              hostWS.send(JSON.stringify({ type: "pin-rejected", reason: "kicked", targetViewerId: realId }));
+            } else if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1) {
+              state.runtime.hostWS.send(JSON.stringify({ type: "pin-rejected", reason: "kicked", targetViewerId: realId }));
               console.log(`[host] Kicked VPS viewer ${realId}`);
             }
 
@@ -840,13 +839,13 @@ async function main() {
             return;
           }
 
-          if (msg.type === "set-pin") { pinEnabled = !!msg.enabled; return; }
+          if (msg.type === "set-pin") { state.session.pinEnabled = !!msg.enabled; return; }
 
           if (msg.type === "set-input") {
-            const cur = inputPerms.get(msg.viewerId) || { gp: true, kb: false, slot: null, mode: 'gamepad' };
-            inputPerms.set(msg.viewerId, { ...cur, gp: !!msg.gp, kb: !!msg.kb });
+            const cur = state.inputPerms.get(msg.viewerId) || { gp: true, kb: false, slot: null, mode: 'gamepad' };
+            state.inputPerms.set(msg.viewerId, { ...cur, gp: !!msg.gp, kb: !!msg.kb });
             const realId = msg.viewerId.split('_')[0];
-            const vws = viewers.get(realId);
+            const vws = state.viewers.get(realId);
             if (vws && vws.readyState === 1 && msg.viewerId.endsWith('_0')) {
               vws.send(JSON.stringify({ type: "input-state", gp: !!msg.gp, kb: !!msg.kb }));
             }
@@ -855,10 +854,10 @@ async function main() {
           }
 
           if (msg.type === "assign-slot") {
-            const cur = inputPerms.get(msg.viewerId) || { gp: true, kb: false, slot: null };
-            inputPerms.set(msg.viewerId, { ...cur, slot: msg.slot });
+            const cur = state.inputPerms.get(msg.viewerId) || { gp: true, kb: false, slot: null };
+            state.inputPerms.set(msg.viewerId, { ...cur, slot: msg.slot });
             const realId = msg.viewerId.split('_')[0];
-            const vws = viewers.get(realId);
+            const vws = state.viewers.get(realId);
             if (vws && vws.readyState === 1 && msg.viewerId.endsWith('_0')) {
               vws.send(JSON.stringify({ type: "slot-assigned", slot: msg.slot }));
             }
@@ -891,7 +890,7 @@ async function main() {
             // Update the orchestrator's global default FIRST (no viewerId = set global default),
             // then update each connected viewer's per-viewer entry.
             toUinput({ type: 'set-ctrl-type', viewerId: null, ctrlType: global.currentCtrlType });
-            viewers.forEach((_, vid) => {
+            state.viewers.forEach((_, vid) => {
               toUinput({ type: 'set-ctrl-type', viewerId: vid, ctrlType: global.currentCtrlType });
             });
 
@@ -923,15 +922,15 @@ async function main() {
               disabled: { gp: false, kb: false }
             };
             const perms = modeMap[msg.mode] || { gp: true, kb: false };
-            const cur = inputPerms.get(msg.viewerId) || { gp: true, kb: false, slot: null, mode: 'gamepad' };
-            inputPerms.set(msg.viewerId, { ...cur, ...perms, mode: msg.mode });
+            const cur = state.inputPerms.get(msg.viewerId) || { gp: true, kb: false, slot: null, mode: 'gamepad' };
+            state.inputPerms.set(msg.viewerId, { ...cur, ...perms, mode: msg.mode });
 
             const realId = msg.viewerId.split('_')[0];
-            const vws = viewers.get(realId);
+            const vws = state.viewers.get(realId);
             if (vws && vws.readyState === 1) {
               vws.send(JSON.stringify({ type: "input-state", gp: perms.gp, kb: perms.kb, mode: msg.mode }));
-            } else if (vws === null && hostWS && hostWS.readyState === 1) {
-              hostWS.send(JSON.stringify({ type: "input-state", gp: perms.gp, kb: perms.kb, mode: msg.mode, targetViewerId: realId }));
+            } else if (vws === null && state.runtime.hostWS && state.runtime.hostWS.readyState === 1) {
+              state.runtime.hostWS.send(JSON.stringify({ type: "input-state", gp: perms.gp, kb: perms.kb, mode: msg.mode, targetViewerId: realId }));
             }
             toUinput({ type: 'set-input-mode', viewerId: msg.viewerId, mode: msg.mode });
             broadcastRoster();
@@ -940,30 +939,30 @@ async function main() {
 
           if (msg.type === "toggle-slot-lock") {
             const realId = msg.viewerId.split('_')[0];
-            const cur = inputPerms.get(realId) || { gp: true, kb: false, slot: null };
-            inputPerms.set(realId, { ...cur, locked: !!msg.locked });
+            const cur = state.inputPerms.get(realId) || { gp: true, kb: false, slot: null };
+            state.inputPerms.set(realId, { ...cur, locked: !!msg.locked });
             broadcastRoster();
             return;
           }
 
           if (msg.type === "regen-pin") {
-            if (sessionPassword && arcadeSessions.size === 0) {
+            if (state.session.sessionPassword && arcadeSessions.size === 0) {
               console.log("[host] Ignoring regen-pin because persistent PIN is set.");
               return;
             }
-            PIN = makePin();
+            state.session.pin = makePin();
             console.log("[host] PIN regenerated: ****");
-            if (hostWS && hostWS.readyState === 1) hostWS.send(JSON.stringify({ type: "regen-pin", pin: PIN }));
+            if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1) state.runtime.hostWS.send(JSON.stringify({ type: "regen-pin", pin: state.session.pin }));
             return;
           }
 
           if (msg.type === "arcade-session-start") {
-            if (sessionPassword) {
-              PIN = makePin();
-              if (hostWS && hostWS.readyState === 1) hostWS.send(JSON.stringify({ type: "regen-pin", pin: PIN }));
+            if (state.session.sessionPassword) {
+              state.session.pin = makePin();
+              if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1) state.runtime.hostWS.send(JSON.stringify({ type: "regen-pin", pin: state.session.pin }));
             }
             
-            const arcadeUrl = msg.tunnelUrl || tunnelUrl;
+            const arcadeUrl = msg.state.runtime.tunnelUrl || state.runtime.tunnelUrl;
             if (!arcadeUrl) { /* error logic */ return; }
 
             const cfg = loadConfig(); // Fetch live config
@@ -983,15 +982,15 @@ async function main() {
             arcadeSessions.set(sessionId, session);
             console.log("[arcade] Session registered:", session.game, arcadeUrl);
             broadcastToArcade({ type: 'arcade-session-active', session });
-            if (hostWS && hostWS.readyState === 1) hostWS.send(JSON.stringify({ type: 'arcade-session-active', session }));
+            if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1) state.runtime.hostWS.send(JSON.stringify({ type: 'arcade-session-active', session }));
             _arcadePost({ type: 'session-active', session });
             return;
           }
 
           if (msg.type === "arcade-session-stop") {
-            if (sessionPassword) {
-              PIN = sessionPassword;
-              if (hostWS && hostWS.readyState === 1) hostWS.send(JSON.stringify({ type: "regen-pin", pin: PIN }));
+            if (state.session.sessionPassword) {
+              state.session.pin = state.session.sessionPassword;
+              if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1) state.runtime.hostWS.send(JSON.stringify({ type: "regen-pin", pin: state.session.pin }));
             }
             for (const [id, s] of arcadeSessions) {
               arcadeSessions.delete(id);
@@ -1002,16 +1001,16 @@ async function main() {
             return;
           }
 
-          if (msg.type === "host-stream-ready") hostStreaming = true;
+          if (msg.type === "host-stream-ready") state.session.hostStreaming = true;
           if (msg.type === "host-stream-stopped") {
-            hostStreaming = false;
+            state.session.hostStreaming = false;
             for (const [id, s] of arcadeSessions) {
               arcadeSessions.delete(id);
               broadcastToArcade({ type: 'arcade-session-stopped', id });
             }
-            if (sessionPassword && PIN !== sessionPassword) {
-              PIN = sessionPassword;
-              if (hostWS && hostWS.readyState === 1) hostWS.send(JSON.stringify({ type: "regen-pin", pin: PIN }));
+            if (state.session.sessionPassword && state.session.pin !== state.session.sessionPassword) {
+              state.session.pin = state.session.sessionPassword;
+              if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1) state.runtime.hostWS.send(JSON.stringify({ type: "regen-pin", pin: state.session.pin }));
             }
           }
 
@@ -1022,24 +1021,24 @@ async function main() {
           if (msg.type === 'vps-viewer-join') {
             const id = String(msg.viewerId || '').slice(0, 64);
             if (!id) return;
-            if (!viewers.has(id)) {
-              viewers.set(id, null);
-              viewerNames.set(id, String(msg.name || id).slice(0, 48));
+            if (!state.viewers.has(id)) {
+              state.viewers.set(id, null);
+              state.viewerNames.set(id, String(msg.name || id).slice(0, 48));
               const cfg = loadConfig();
               const defaultMode = cfg.defaultInputMode || 'gamepad';
               const padId = id + '_0';
-              inputPerms.set(padId, {
+              state.inputPerms.set(padId, {
                 gp: defaultMode !== 'kbm',
                 kb: defaultMode !== 'gamepad',
                 slot: null,
                 mode: defaultMode,
               });
               toUinput({ type: 'set-ctrl-type', viewerId: padId, ctrlType: global.currentCtrlType || 'xbox360' });
-              if (hostWS && hostWS.readyState === 1) {
-                hostWS.send(JSON.stringify({
+              if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1) {
+                state.runtime.hostWS.send(JSON.stringify({
                   type: 'viewer-joined',
                   viewerId: id,
-                  name: viewerNames.get(id),
+                  name: state.viewerNames.get(id),
                   viewerRegion: msg.viewerRegion || null,
                   isDesktopApp: !!msg.isDesktopApp,
                 }));
@@ -1052,15 +1051,15 @@ async function main() {
 
           if (msg.type === 'vps-viewer-leave') {
             const id = String(msg.viewerId || '').slice(0, 64);
-            if (!id || !viewers.has(id)) return;
-            viewers.delete(id);
-            viewerNames.delete(id);
+            if (!id || !state.viewers.has(id)) return;
+            state.viewers.delete(id);
+            state.viewerNames.delete(id);
             const padId = id + '_0';
             toUinput({ type: 'flush_neutral', viewer_id: padId });
             toUinput({ type: 'disconnect_viewer', viewer_id: padId });
-            inputPerms.delete(padId);
-            if (hostWS && hostWS.readyState === 1) {
-              hostWS.send(JSON.stringify({ type: 'viewer-left', viewerId: id }));
+            state.inputPerms.delete(padId);
+            if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1) {
+              state.runtime.hostWS.send(JSON.stringify({ type: 'viewer-left', viewerId: id }));
             }
             broadcastRoster();
             console.log('[VPS] Viewer left:', id);
@@ -1085,14 +1084,14 @@ async function main() {
             const padId = id + '_' + padIdx;
 
             if (msg.type === 'gpid') {
-              const pads = viewerGamepads.get(id) || new Set();
+              const pads = state.viewerGamepads.get(id) || new Set();
               if (!pads.has(padIdx)) {
                 pads.add(padIdx);
-                viewerGamepads.set(id, pads);
+                state.viewerGamepads.set(id, pads);
                 msg.pad_id = padId;
                 msg.viewer_id = id;
-                if (!inputPerms.has(padId)) inputPerms.set(padId, { gp: true, kb: false, slot: null, mode: 'gamepad' });
-                if (hostWS && hostWS.readyState === 1) hostWS.send(JSON.stringify({ type: "viewer-gpid", viewerId: id, id: msg.id }));
+                if (!state.inputPerms.has(padId)) state.inputPerms.set(padId, { gp: true, kb: false, slot: null, mode: 'gamepad' });
+                if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1) state.runtime.hostWS.send(JSON.stringify({ type: "viewer-gpid", viewerId: id, id: msg.id }));
                 toUinput(msg);
                 broadcastRoster();
               }
@@ -1106,7 +1105,7 @@ async function main() {
             msg.viewer_id = id;
             msg.viewerId = id;
 
-            const perms = inputPerms.get(padId) || inputPerms.get(id + '_0') || { gp: true, kb: false };
+            const perms = state.inputPerms.get(padId) || state.inputPerms.get(id + '_0') || { gp: true, kb: false };
 
             if (msg.type === 'kbm') {
               console.log(`[DEBUG KBM] (/ws/host) padId: ${padId}, perms: ${JSON.stringify(perms)}, Event: ${msg.event} ${msg.key}`);
@@ -1149,8 +1148,8 @@ async function main() {
 
       ws.on("close", () => {
         console.log("[host] disconnected");
-        hostWS = null;
-        hostStreaming = false;
+        state.runtime.hostWS = null;
+        state.session.hostStreaming = false;
         for (const [id] of arcadeSessions) {
           arcadeSessions.delete(id);
           broadcastToArcade({ type: 'arcade-session-stopped', id });
@@ -1167,29 +1166,29 @@ async function main() {
       const requirePin = shouldRequirePin(clientIp, hasTunnelHeader);
       const anonHash = hashIp(clientIp);
 
-      if (pinEnabled && requirePin) {
-        const attempt = pinAttempts.get(anonHash) || { count: 0, lockedUntil: 0 };
+      if (state.session.pinEnabled && requirePin) {
+        const attempt = state.pinAttempts.get(anonHash) || { count: 0, lockedUntil: 0 };
         if (Date.now() < attempt.lockedUntil) {
           try { ws.send(JSON.stringify({ type: "pin-rejected", reason: "rate-limited" })); } catch { }
           ws.close(4001, "PIN_RATE_LIMITED");
           console.log(`[viewer] rejected — an anonymous user is rate-limited`);
           return;
         }
-        if (pin !== PIN) {
+        if (pin !== state.session.pin) {
           attempt.count++;
           if (attempt.count >= 6) {
             attempt.lockedUntil = Date.now() + 2 * 60 * 1000;
-            console.log(`[viewer] anonymous user locked out for 2 minutes (PIN brute-force)`);
+            console.log(`[viewer] anonymous user locked out for 2 minutes (state.session.pin brute-force)`);
           }
-          pinAttempts.set(anonHash, attempt);
+          state.pinAttempts.set(anonHash, attempt);
           try { ws.send(JSON.stringify({ type: "pin-rejected" })); } catch { }
           ws.close(4002, "PIN_REJECTED");
           console.log("[viewer] rejected — wrong PIN");
           return;
         }
-        pinAttempts.delete(anonHash);
+        state.pinAttempts.delete(anonHash);
       } else {
-        console.log(`[viewer] anonymous user (requirePin=${requirePin}) bypassing PIN check`);
+        console.log(`[viewer] anonymous user (requirePin=${requirePin}) bypassing state.session.pin check`);
       }
 
       // ── Session password check ────────────────────────────────────────────
@@ -1197,18 +1196,18 @@ async function main() {
       // is true AND sessionPassword is set, PIN === sessionPassword, so the PIN
       // check above already validated the credential — checking again here causes
       // spurious session-password-required rejections for correctly authenticated viewers.
-      if (sessionPassword && !(pinEnabled && requirePin)) {
+      if (state.session.sessionPassword && !(state.session.pinEnabled && requirePin)) {
         const provided = url.searchParams.get('password') || url.searchParams.get('pin') || '';
-        if (provided !== sessionPassword) {
+        if (provided !== state.session.sessionPassword) {
           try { ws.send(JSON.stringify({ type: 'session-password-required', reason: 'Session password incorrect.' })); } catch {}
           ws.close(4004, "SESSION_PASSWORD_REJECTED");
-          console.log(`[viewer] rejected — wrong session password (non-PIN path) from ${clientIp}`);
+          console.log(`[viewer] rejected — wrong session password (non-state.session.pin path) from ${clientIp}`);
           return;
         }
       }
       // ─────────────────────────────────────────────────────────────────────
 
-      let id = "v" + (++vidCount);
+      let id = "v" + (++state.runtime.vidCount);
       const defaultName = "Guest" + (1000 + Math.floor(Math.random() * 9000));
 
       // ── Arcade viewer cap ─────────────────────────────────────────────────
@@ -1216,8 +1215,8 @@ async function main() {
       // viewers beyond that count before they are added to the viewers map.
       if (arcadeSessions.size > 0) {
         const sess = [...arcadeSessions.values()][0];
-        if (sess && sess.maxPlayers && viewers.size >= sess.maxPlayers) {
-          console.log(`[viewer] ${id} rejected — arcade session full (${viewers.size}/${sess.maxPlayers})`);
+        if (sess && sess.maxPlayers && state.viewers.size >= sess.maxPlayers) {
+          console.log(`[viewer] ${id} rejected — arcade session full (${state.viewers.size}/${sess.maxPlayers})`);
           ws.send(JSON.stringify({
             type: 'session-full',
             max: sess.maxPlayers,
@@ -1229,14 +1228,14 @@ async function main() {
       }
       // ─────────────────────────────────────────────────────────────────────
 
-      viewers.set(id, ws);
-      viewerNames.set(id, defaultName);
+      state.viewers.set(id, ws);
+      state.viewerNames.set(id, defaultName);
 
       // FIX: Apply global hybrid state to new viewers joining
       const startKb = !!global.hybridInputActive;
-      inputPerms.set(id + '_0', { gp: true, kb: startKb, slot: null });
+      state.inputPerms.set(id + '_0', { gp: true, kb: startKb, slot: null });
 
-      console.log("[viewer]", id, "(" + defaultName + ") joined (" + viewers.size + " total, " + controllerViewerCount() + " with controllers)");
+      console.log("[viewer]", id, "(" + defaultName + ") joined (" + state.viewers.size + " total, " + controllerViewerCount() + " with controllers)");
 
       // Immediately tell Python to apply the correct profile to this new viewer
       toUinput({ type: 'set-ctrl-type', viewerId: id, ctrlType: global.currentCtrlType || 'xbox360' });
@@ -1262,11 +1261,11 @@ async function main() {
           // We update the name here, then fire viewer-joined to the host.
           if (msg.type === "join") {
             const joinName = sanitize(String(msg.name || '')).slice(0, 20) || defaultName;
-            viewerNames.set(id, joinName);
+            state.viewerNames.set(id, joinName);
             console.log("[viewer]", id, "name resolved to:", joinName);
 
-            if (hostWS && hostWS.readyState === 1) {
-              hostWS.send(JSON.stringify({
+            if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1) {
+              state.runtime.hostWS.send(JSON.stringify({
                 type: "viewer-joined",
                 viewerId: id,
                 name: joinName,
@@ -1282,7 +1281,7 @@ async function main() {
                 touchLayout: global.touchLayout || 'default',
                 expDevices: global.expDevices || []
               }));
-              if (hostStreaming) {
+              if (state.session.hostStreaming) {
                 ws.send(JSON.stringify({ type: "host-stream-ready" }));
               }
             }
@@ -1294,116 +1293,116 @@ async function main() {
           // Inject viewer ID for answers AND mic renegotiation requests
           if (msg.type === "answer" || msg.type === "ice-viewer" || msg.type === "viewer-mic-ready") {
             msg._viewerId = id;
-            if (hostWS && hostWS.readyState === 1) hostWS.send(JSON.stringify(msg));
+            if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1) state.runtime.hostWS.send(JSON.stringify(msg));
             return;
           }
 
           if (msg.type === "host-not-streaming") {
-            const vws = viewers.get(msg.viewerId);
+            const vws = state.viewers.get(msg.viewerId);
             if (vws && vws.readyState === 1) vws.send(JSON.stringify(msg));
             return;
           }
 
           if (msg.type === "viewer-rejoin") {
             const claimedId = msg.viewerId;
-            if (claimedId && viewers.has(claimedId)) {
+            if (claimedId && state.viewers.has(claimedId)) {
               const tempId = id;
-              viewers.set(claimedId, ws);
-              viewers.delete(tempId);
-              viewerNames.set(claimedId, viewerNames.get(tempId) || viewerNames.get(claimedId) || "Guest");
-              viewerNames.delete(tempId);
-              if (viewerHasController.has(tempId)) {
-                viewerHasController.delete(tempId);
-                viewerHasController.add(claimedId);
+              state.viewers.set(claimedId, ws);
+              state.viewers.delete(tempId);
+              state.viewerNames.set(claimedId, state.viewerNames.get(tempId) || state.viewerNames.get(claimedId) || "Guest");
+              state.viewerNames.delete(tempId);
+              if (state.viewerHasController.has(tempId)) {
+                state.viewerHasController.delete(tempId);
+                state.viewerHasController.add(claimedId);
               }
               console.log("[viewer]", claimedId, "rejoined (slot reused, no duplicate)");
               id = claimedId;
-              if (hostWS && hostWS.readyState === 1) {
-                hostWS.send(JSON.stringify({ type: "viewer-left", viewerId: tempId }));
-                hostWS.send(JSON.stringify({ type: "viewer-joined", viewerId: id, name: viewerNames.get(id) }));
+              if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1) {
+                state.runtime.hostWS.send(JSON.stringify({ type: "viewer-left", viewerId: tempId }));
+                state.runtime.hostWS.send(JSON.stringify({ type: "viewer-joined", viewerId: id, name: state.viewerNames.get(id) }));
               }
-              ws.send(JSON.stringify({ type: "your-id", viewerId: id, name: viewerNames.get(id) }));
+              ws.send(JSON.stringify({ type: "your-id", viewerId: id, name: state.viewerNames.get(id) }));
               broadcastRoster();
             }
             return;
           }
 
           if (msg.type === "request-offer") {
-            if (hostWS && hostWS.readyState === 1)
-              hostWS.send(JSON.stringify({ type: "viewer-joined", viewerId: id, name: viewerNames.get(id) || id }));
+            if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1)
+              state.runtime.hostWS.send(JSON.stringify({ type: "viewer-joined", viewerId: id, name: state.viewerNames.get(id) || id }));
             return;
           }
 
           if (msg.type === "gpid") {
             const padIdx = msg.padIndex || 0;
-            const pads = viewerGamepads.get(id) || new Set();
+            const pads = state.viewerGamepads.get(id) || new Set();
             if (pads.has(padIdx)) return;
 
             const hwKey = (msg.id || 'unknown') + ':' + padIdx;
-            const staleViewerId = hwIdToViewer.get(hwKey);
+            const staleViewerId = state.hwIdToViewer.get(hwKey);
             if (staleViewerId && staleViewerId !== id) {
               console.log("[viewer] evicting stale hw registration:", hwKey, "from", staleViewerId, "→", id);
-              const stalePads = viewerGamepads.get(staleViewerId);
+              const stalePads = state.viewerGamepads.get(staleViewerId);
               if (stalePads) {
                 stalePads.delete(padIdx);
                 if (stalePads.size === 0) {
-                  viewerGamepads.delete(staleViewerId);
-                  viewerHasController.delete(staleViewerId);
+                  state.viewerGamepads.delete(staleViewerId);
+                  state.viewerHasController.delete(staleViewerId);
                 }
               }
-              inputPerms.delete(staleViewerId + '_' + padIdx);
+              state.inputPerms.delete(staleViewerId + '_' + padIdx);
               toUinput({ type: 'disconnect_viewer', viewer_id: staleViewerId });
             }
-            hwIdToViewer.set(hwKey, id);
+            state.hwIdToViewer.set(hwKey, id);
 
-            const totalPads = [...viewerGamepads.values()].reduce((sum, s) => sum + s.size, 0);
+            const totalPads = [...state.viewerGamepads.values()].reduce((sum, s) => sum + s.size, 0);
             if (totalPads >= 16) {
               console.log("[viewer] global slot cap (16) reached, ignoring from", id);
               return;
             }
-            if ((viewerGamepads.get(id) || new Set()).size >= 4) {
+            if ((state.viewerGamepads.get(id) || new Set()).size >= 4) {
               console.log("[viewer] per-viewer cap (4) reached for", id);
               return;
             }
 
             pads.add(padIdx);
-            viewerGamepads.set(id, pads);
+            state.viewerGamepads.set(id, pads);
             msg.pad_id = id + '_' + padIdx;
-            if (!inputPerms.has(msg.pad_id)) inputPerms.set(msg.pad_id, { gp: true, kb: false, slot: null });
+            if (!state.inputPerms.has(msg.pad_id)) state.inputPerms.set(msg.pad_id, { gp: true, kb: false, slot: null });
 
-            const isNewController = !viewerHasController.has(id);
-            viewerHasController.add(id);
+            const isNewController = !state.viewerHasController.has(id);
+            state.viewerHasController.add(id);
             if (isNewController) {
               playJoinSound();
               console.log("[viewer]", id, "controller detected — now counted (" + controllerViewerCount() + " with controllers)");
             }
-            if (hostWS && hostWS.readyState === 1) hostWS.send(JSON.stringify({ type: "viewer-gpid", viewerId: id, id: msg.id }));
+            if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1) state.runtime.hostWS.send(JSON.stringify({ type: "viewer-gpid", viewerId: id, id: msg.id }));
             toUinput(msg);
             broadcastRoster();
             return;
           }
 
           if (msg.type === "set-name") {
-            const name = sanitize(String(msg.name || '')).slice(0, 20) || viewerNames.get(id);
-            viewerNames.set(id, name);
+            const name = sanitize(String(msg.name || '')).slice(0, 20) || state.viewerNames.get(id);
+            state.viewerNames.set(id, name);
             ws.send(JSON.stringify({ type: "name-confirmed", name }));
-            if (hostWS && hostWS.readyState === 1) hostWS.send(JSON.stringify({ type: "viewer-renamed", viewerId: id, name }));
+            if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1) state.runtime.hostWS.send(JSON.stringify({ type: "viewer-renamed", viewerId: id, name }));
             broadcastRoster();
             return;
           }
 
           if (msg.type === "chat") {
             msg.msg = sanitize(msg.msg);
-            msg.from = sanitize(viewerNames.get(id) || msg.from || 'Guest').slice(0, 20);
+            msg.from = sanitize(state.viewerNames.get(id) || msg.from || 'Guest').slice(0, 20);
             broadcast(JSON.stringify(msg));
-            if (hostWS && hostWS.readyState === 1) hostWS.send(JSON.stringify(msg));
+            if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1) state.runtime.hostWS.send(JSON.stringify(msg));
             return;
           }
 
           if (msg.type === "touch-disconnect") {
             const padIdx = 99;
             const rosterId = id + '_' + padIdx;
-            const pads = viewerGamepads.get(id);
+            const pads = state.viewerGamepads.get(id);
             if (pads) pads.delete(padIdx);
             toUinput({ type: 'flush_neutral', viewer_id: rosterId });
             toUinput({ type: 'disconnect_viewer', viewer_id: rosterId });
@@ -1425,8 +1424,8 @@ async function main() {
               ws._ppsCount = (ws._ppsCount || 0) + 1;
               if (ws._ppsCount > 300) {
                 console.warn(`[PPS] Viewer ${id} exceeded 300 inputs/sec — disconnecting`);
-                if (hostWS && hostWS.readyState === 1) {
-                  hostWS.send(JSON.stringify({ type: 'viewer-flood-kick', viewerId: id }));
+                if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1) {
+                  state.runtime.hostWS.send(JSON.stringify({ type: 'viewer-flood-kick', viewerId: id }));
                 }
                 ws.close(1008, 'pps_flood');
                 return;
@@ -1437,13 +1436,13 @@ async function main() {
             const rosterId = msg.type === "gamepad" ? id + '_' + padIdx : id + '_0';
 
             if (msg.type === "gamepad") {
-              const pads = viewerGamepads.get(id) || new Set();
+              const pads = state.viewerGamepads.get(id) || new Set();
               if (!pads.has(padIdx)) {
                 pads.add(padIdx);
-                viewerGamepads.set(id, pads);
-                if (!inputPerms.has(rosterId)) inputPerms.set(rosterId, { gp: true, kb: false, slot: null });
-                const isNew = !viewerHasController.has(id);
-                viewerHasController.add(id);
+                state.viewerGamepads.set(id, pads);
+                if (!state.inputPerms.has(rosterId)) state.inputPerms.set(rosterId, { gp: true, kb: false, slot: null });
+                const isNew = !state.viewerHasController.has(id);
+                state.viewerHasController.add(id);
                 if (isNew) {
                   playJoinSound();
                   console.log("[viewer]", id, "controller auto-detected from input");
@@ -1452,7 +1451,7 @@ async function main() {
               }
             }
 
-            const perms = inputPerms.get(id) || inputPerms.get(rosterId) || { gp: true, kb: false };
+            const perms = state.inputPerms.get(id) || state.inputPerms.get(rosterId) || { gp: true, kb: false };
 
             if (msg.type === 'kbm') {
               console.log(`[DEBUG KBM] (app.ws) id: ${id}, rosterId: ${rosterId}, perms: ${JSON.stringify(perms)}, Event: ${msg.event} ${msg.key}`);
@@ -1469,7 +1468,7 @@ async function main() {
             // EXCEPTION: padIdx >= 100 are native XInput pads from read_gamepads.py via Electron IPC
             // and must always pass through regardless of the primary slot's input mode.
             if (msg.type === "gamepad" && padIdx !== 0 && padIdx < 100) {
-              const primaryPerms = inputPerms.get(id + '_0') || {};
+              const primaryPerms = state.inputPerms.get(id + '_0') || {};
               const primaryMode = primaryPerms.gp && primaryPerms.kb ? 'kbm_emulated' : 'gamepad';
               if (primaryMode === 'kbm_emulated') return;
             }
@@ -1483,15 +1482,15 @@ async function main() {
       });
 
       ws.on("close", () => {
-        const hadController = viewerHasController.has(id);
-        const wasActive = viewers.get(id) === ws;
+        const hadController = state.viewerHasController.has(id);
+        const wasActive = state.viewers.get(id) === ws;
         if (wasActive) {
-          viewers.delete(id);
-          viewerNames.delete(id);
-          viewerGamepads.delete(id);
-          viewerHasController.delete(id);
-          for (const [hwKey, vid] of hwIdToViewer) {
-            if (vid === id) hwIdToViewer.delete(hwKey);
+          state.viewers.delete(id);
+          state.viewerNames.delete(id);
+          state.viewerGamepads.delete(id);
+          state.viewerHasController.delete(id);
+          for (const [hwKey, vid] of state.hwIdToViewer) {
+            if (vid === id) state.hwIdToViewer.delete(hwKey);
           }
           if (hadController) {
             playLeaveSound();
@@ -1499,9 +1498,9 @@ async function main() {
             toUinput({ type: 'disconnect_viewer', viewer_id: id });
           }
           broadcastRoster();
-          if (hostWS && hostWS.readyState === 1) hostWS.send(JSON.stringify({ type: "viewer-left", viewerId: id, name: viewerNames.get(id) || id }));
+          if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1) state.runtime.hostWS.send(JSON.stringify({ type: "viewer-left", viewerId: id, name: state.viewerNames.get(id) || id }));
         }
-        console.log("[viewer]", id, "left (" + viewers.size + " total, " + controllerViewerCount() + " with controllers)");
+        console.log("[viewer]", id, "left (" + state.viewers.size + " total, " + controllerViewerCount() + " with controllers)");
       });
 
       // ── ARCADE CLIENTS ────────────────────────────────────────────────────────
@@ -1534,12 +1533,12 @@ async function main() {
           const msg = JSON.parse(raw);
           if (msg.type === "identify") { myId = msg.viewerId; console.log("[input] identified as", myId); return; }
           if (msg.type === "gpid") {
-            if (hostWS && hostWS.readyState === 1) hostWS.send(JSON.stringify({ type: "viewer-gpid", viewerId: myId, id: msg.id }));
+            if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1) state.runtime.hostWS.send(JSON.stringify({ type: "viewer-gpid", viewerId: myId, id: msg.id }));
             return;
           }
           if (msg.type === "gamepad") {
             if (!myId) return;
-            const perms = inputPerms.get(msg.pad_id) || inputPerms.get(myId + '_0') || { gp: true, kb: false };
+            const perms = state.inputPerms.get(msg.pad_id) || state.inputPerms.get(myId + '_0') || { gp: true, kb: false };
             if (!perms.gp) return;
             toUinput(normalizeGamepadMsg(msg));
             return;
@@ -1551,7 +1550,7 @@ async function main() {
               console.log(`[DEBUG KBM] Dropped in /ws/input: myId is null`);
               return;
             }
-            const perms = inputPerms.get(msg.pad_id) || inputPerms.get(myId + '_0') || { gp: true, kb: false };
+            const perms = state.inputPerms.get(msg.pad_id) || state.inputPerms.get(myId + '_0') || { gp: true, kb: false };
             if (!perms.kb) {
               console.log(`[DEBUG KBM] Dropped in /ws/input: perms.kb=false for id ${myId}`);
               return;
@@ -1581,22 +1580,22 @@ async function main() {
   }, 30000);
   wss.on('close', () => clearInterval(interval));
 
-  server.listen(PORT, async () => {
-    console.log("Listening on port " + PORT);
-    if (!process.env.ELECTRON_MODE) openBrowser("http://localhost:" + PORT + "/host");
+  server.listen(state.runtime.activePort, async () => {
+    console.log("Listening on port " + state.runtime.activePort);
+    if (!process.env.ELECTRON_MODE) openBrowser("http://localhost:" + state.runtime.activePort + "/host");
 
     const cfg = loadConfig();
 
     if (process.env.USE_VPS === 'true' && process.env.VPS_HOST) {
       console.log("  ~ Tunnel: VPS (from .env)");
-      const tun = await startTunnelVps(PORT, process.env.VPS_HOST.trim());
+      const tun = await startTunnelVps(state.runtime.activePort, process.env.VPS_HOST.trim());
       if (tun) {
-        tunnelUrl = tun.url;
-        activeTunnelProc = tun.proc;
-        if (hostWS && hostWS.readyState === 1) hostWS.send(JSON.stringify({ type: "tunnel-url", url: tunnelUrl }));
+        state.runtime.tunnelUrl = tun.url;
+        state.runtime.activeTunnelProc = tun.proc;
+        if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1) state.runtime.hostWS.send(JSON.stringify({ type: "tunnel-url", url: state.runtime.tunnelUrl }));
       } else {
         console.log(`  \x1b[31m~\x1b[0m VPS Tunnel failed to start on boot.`);
-        if (hostWS && hostWS.readyState === 1) hostWS.send(JSON.stringify({ type: "tunnel-error", provider: 'vps' }));
+        if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1) state.runtime.hostWS.send(JSON.stringify({ type: "tunnel-error", provider: 'vps' }));
       }
     } else if (cfg.tunnelProvider === 'vps-sfu') {
       // VPS SFU mode — the host app manages its own WebSocket to the Rust router.
@@ -1620,14 +1619,14 @@ async function main() {
         vps: (p) => startTunnelVps(p, cfg.vpsHost || process.env.VPS_HOST || '')
       }[cfg.tunnelProvider] || startTunnel;
 
-      const tun = await fn(PORT);
+      const tun = await fn(state.runtime.activePort);
       if (tun) {
-        tunnelUrl = tun.url;
-        activeTunnelProc = tun.proc;
-        if (hostWS && hostWS.readyState === 1) hostWS.send(JSON.stringify({ type: "tunnel-url", url: tunnelUrl }));
+        state.runtime.tunnelUrl = tun.url;
+        state.runtime.activeTunnelProc = tun.proc;
+        if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1) state.runtime.hostWS.send(JSON.stringify({ type: "tunnel-url", url: state.runtime.tunnelUrl }));
       } else {
         console.log(`  \x1b[31m~\x1b[0m Tunnel provider '${cfg.tunnelProvider}' failed to start on boot.`);
-        if (hostWS && hostWS.readyState === 1) hostWS.send(JSON.stringify({ type: "tunnel-error", provider: cfg.tunnelProvider }));
+        if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1) state.runtime.hostWS.send(JSON.stringify({ type: "tunnel-error", provider: cfg.tunnelProvider }));
       }
     } else {
       console.log("  ~ Tunnel: waiting for host to choose provider...");
@@ -1654,8 +1653,8 @@ function cleanup(isElectron = false) {
   // Arcade heartbeat worker: clean shutdown
   stopArcadeHeartbeatWorker();
 
-  if (activeTunnelProc) { try { activeTunnelProc.kill(); } catch (_) { } }
-  if (activeTunnelProc) { try { activeTunnelProc.kill(); } catch (_) { } }
+  if (state.runtime.activeTunnelProc) { try { state.runtime.activeTunnelProc.kill(); } catch (_) { } }
+  if (state.runtime.activeTunnelProc) { try { state.runtime.activeTunnelProc.kill(); } catch (_) { } }
 
   // Cleanly destroy the input driver (whether it's using C++ or Python)
   try {
@@ -1665,12 +1664,12 @@ function cleanup(isElectron = false) {
     console.error("[Server] Input driver cleanup error:", e);
   }
 
-  if (audioProc) { try { audioProc.kill(); } catch (_) { } }
+  if (state.runtime.audioProc) { try { state.runtime.audioProc.kill(); } catch (_) { } }
 
   if (!isElectron) {
-    killPort(activePort).catch(() => { }).finally(() => process.exit(0));
+    killPort(state.runtime.activePort).catch(() => { }).finally(() => process.exit(0));
   } else {
-    killPort(activePort).catch(() => { });
+    killPort(state.runtime.activePort).catch(() => { });
   }
 }
 
