@@ -28,7 +28,7 @@ struct NearsecVRPacket {
 };
 #pragma pack(pop)
 
-class SteamVRNearsecDriver : public vr::ITrackedDeviceServerDriver {
+class SteamVRNearsecDriver : public vr::ITrackedDeviceServerDriver, public vr::IVRDisplayComponent {
 public:
     virtual vr::EVRInitError Activate(uint32_t unObjectId) override {
         m_unObjectId = unObjectId;
@@ -55,8 +55,52 @@ public:
     }
 
     virtual void EnterStandby() override {}
-    virtual void* GetComponent(const char* pchComponentNameAndVersion) override { return nullptr; }
+    virtual void* GetComponent(const char* pchComponentNameAndVersion) override {
+        if (0 == strcmp(pchComponentNameAndVersion, vr::IVRDisplayComponent_Version)) {
+            return (vr::IVRDisplayComponent*)this;
+        }
+        return nullptr;
+    }
     virtual void DebugRequest(const char* pchRequest, char* pchResponseBuffer, uint32_t unResponseBufferSize) override {}
+
+    // --- IVRDisplayComponent Implementation ---
+    virtual void GetWindowBounds(int32_t *pnX, int32_t *pnY, uint32_t *pnWidth, uint32_t *pnHeight) override {
+        *pnX = 0;
+        *pnY = 0;
+        *pnWidth = 1920;
+        *pnHeight = 1080;
+    }
+    virtual bool IsDisplayOnDesktop() override { return true; }
+    virtual bool IsDisplayRealDisplay() override { return false; }
+    virtual void GetRecommendedRenderTargetSize(uint32_t *pnWidth, uint32_t *pnHeight) override {
+        *pnWidth = 1920;
+        *pnHeight = 1080;
+    }
+    virtual void GetEyeOutputViewport(vr::EVREye eEye, uint32_t *pnX, uint32_t *pnY, uint32_t *pnWidth, uint32_t *pnHeight) override {
+        *pnY = 0;
+        *pnWidth = 960;
+        *pnHeight = 1080;
+        *pnX = (eEye == vr::Eye_Left) ? 0 : 960;
+    }
+    virtual void GetProjectionRaw(vr::EVREye eEye, float *pfLeft, float *pfRight, float *pfTop, float *pfBottom) override {
+        *pfLeft = -1.0;
+        *pfRight = 1.0;
+        *pfTop = -1.0;
+        *pfBottom = 1.0;
+    }
+    virtual vr::DistortionCoordinates_t ComputeDistortion(vr::EVREye eEye, float fU, float fV) override {
+        vr::DistortionCoordinates_t coordinates;
+        coordinates.rfBlue[0] = fU; coordinates.rfBlue[1] = fV;
+        coordinates.rfGreen[0] = fU; coordinates.rfGreen[1] = fV;
+        coordinates.rfRed[0] = fU; coordinates.rfRed[1] = fV;
+        return coordinates;
+    }
+    virtual bool ComputeInverseDistortion(vr::HmdVector2_t *pResult, vr::EVREye eEye, uint32_t unChannel, float fU, float fV) override {
+        pResult->v[0] = fU;
+        pResult->v[1] = fV;
+        return true;
+    }
+    // ------------------------------------------
 
     virtual vr::DriverPose_t GetPose() override {
         vr::DriverPose_t pose = { 0 };
