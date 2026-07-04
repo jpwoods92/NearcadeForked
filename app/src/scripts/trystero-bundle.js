@@ -1,3 +1,6 @@
+// GENERATED FILE — do not edit by hand.
+// Regenerate with `npm run build:trystero` (see bin/build-trystero.js).
+
 // node_modules/@trystero-p2p/core/dist/utils.mjs
 var { floor, min, sin } = Math;
 var libName = "Trystero";

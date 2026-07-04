@@ -7,6 +7,7 @@
   "scripts": {
     "start": "node app/src/scripts/server.js",
     "build:uinput": "cd app/src/sidecar/input_backends && node-gyp rebuild",
+    "build:trystero": "node bin/build-trystero.js",
     "test": "npm run test:unit && node bin/verify.js",
     "test:unit": "vitest run",
     "test:unit:watch": "vitest",
@@ -43,6 +44,7 @@
     "@eslint/js": "^10.0.1",
     "electron": "^33.0.0",
     "electron-builder": "^24.13.3",
+    "esbuild": "^0.28.1",
     "eslint": "^10.6.0",
     "eslint-config-prettier": "^10.1.8",
     "globals": "^17.7.0",
