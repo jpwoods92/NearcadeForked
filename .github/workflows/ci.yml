@@ -18,8 +18,9 @@ jobs:
           node-version: '22.x'
           cache: npm
 
+      # Lint/tests don't touch Capacitor or Wrangler — both optionalDependencies.
       - name: Install Dependencies
-        run: npm ci
+        run: npm ci --omit=optional
 
       - name: Lint
         run: npm run lint
