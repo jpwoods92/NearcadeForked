@@ -3,16 +3,16 @@ const path = require('path');
 
 // 1. Define the files you want to scan (update paths if needed)
 const filesToScan = [
-'src/pages/gamepad-popup.html',
-'src/pages/setup.html',
-'src/pages/index.html',
-'src/pages/host.html',
-'src/pages/dashboard.html',
+'app/src/pages/gamepad-popup.html',
+'app/src/pages/setup.html',
+'app/src/pages/index.html',
+'app/src/pages/host.html',
+'app/src/pages/dashboard.html',
 'website/nearsec-arcade.html',
-'src/scripts/audio-util.js',
-'src/scripts/server.js',
-'src/scripts/host.js',
-'src/scripts/viewer.js',
+'app/src/scripts/audio-util.js',
+'app/src/scripts/server.js',
+'app/src/scripts/host.js',
+'app/src/scripts/viewer.js',
 'website/arcade.js'
 ];
 

@@ -37,4 +37,4 @@ modules:
       - type: script
         dest-filename: run.sh
         commands:
-          - exec zsh -c "electron /app/main/electron-main.js" # Launch script
+          - exec zsh -c "electron /app/main/app/electron-main.js" # Launch script

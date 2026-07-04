@@ -36,20 +36,19 @@ export default [
       'website/**',
       'vps/**',
       'build/**',
-      'src/scripts/trystero-bundle.js',
-      'src/scripts/trystero-torrent.min.js',
-      'src/sidecar/**/build/**',
-      'src/sidecar/**/experimental/**',
+      'app/src/scripts/trystero-bundle.js',
+      'app/src/sidecar/**/build/**',
+      'app/src/sidecar/**/experimental/**',
     ],
   },
   js.configs.recommended,
   {
-    // Browser-context scripts, loaded via <script> tags from src/pages/*.html
+    // Browser-context scripts, loaded via <script> tags from app/src/pages/*.html
     // — not modules, so functions/vars are intentionally global. `module`/
     // `require` are recognized too: host.js/viewer.js end with a guarded
     // `if (typeof module !== 'undefined') module.exports = {...}` shim purely
-    // for Vitest (see test/helpers/browser-shims.js) — inert in the browser.
-    files: ['src/scripts/host.js', 'src/scripts/viewer.js', 'src/scripts/i18n.js', 'src/scripts/audio-util.js'],
+    // for Vitest (see app/test/helpers/browser-shims.js) — inert in the browser.
+    files: ['app/src/scripts/host.js', 'app/src/scripts/viewer.js', 'app/src/scripts/i18n.js', 'app/src/scripts/audio-util.js'],
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: 'script',
@@ -59,7 +58,7 @@ export default [
   },
   {
     // Loaded via <script type="module"> — real ESM, unlike the plain globals above.
-    files: ['src/scripts/p2p-signaler.js'],
+    files: ['app/src/scripts/p2p-signaler.js'],
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: 'module',
@@ -69,7 +68,7 @@ export default [
   },
   {
     // Node-context: Electron main/preload, the Express/WS server, sidecar daemons.
-    files: ['electron-*.js', 'extract-text.js', 'src/scripts/server.js', 'src/sidecar/**/*.js', 'bin/**/*.js'],
+    files: ['app/electron-*.js', 'extract-text.js', 'app/src/scripts/server.js', 'app/src/sidecar/**/*.js', 'bin/**/*.js'],
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: 'commonjs',
@@ -81,7 +80,7 @@ export default [
     // Vitest test files/helpers — run under Node but exercise a jsdom global
     // environment (document/window/etc.), so both global sets apply. Kept at
     // full 'error' severity since this is new code, not legacy debt.
-    files: ['test/**/*.js'],
+    files: ['app/test/**/*.js'],
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: 'module',

@@ -322,7 +322,7 @@ function normalizeGamepadMsg(msg) {
   };
 }
 
-const projectRoot = path.join(__dirname, '..', '..');
+const projectRoot = path.join(__dirname, '..', '..', '..');
 
 // ── Safe App Data Pathing for Production ASAR ──
 function getSafeDataDir() {
@@ -346,8 +346,8 @@ const envFile = path.join(dataDir, '.env');
 (function ensureConfigSymlink() {
   if (process.platform === 'win32' || isPackaged) return;
   try {
-    // Walk up from src/scripts to find the project root (two levels up)
-    const projectRoot = path.resolve(__dirname, '..', '..');
+    // Walk up from app/src/scripts to find the project root (three levels up)
+    const projectRoot = path.resolve(__dirname, '..', '..', '..');
     const configDir = path.join(projectRoot, 'config');
     const symlinkPath = path.join(configDir, 'nearsectogether.config.json');
     const realTarget = path.join(dataDir, 'nearsectogether.config.json');
@@ -477,7 +477,7 @@ function findBinaryPath(name) {
 function readEnv(key) {
   if (process.env[key]) return process.env[key];
   try {
-    const envPath = path.join(__dirname, '..', '..', '.env');
+    const envPath = path.join(__dirname, '..', '..', '..', '.env');
     if (fs.existsSync(envPath)) {
       const lines = fs.readFileSync(envPath, 'utf8').split('\n');
       for (let line of lines) {
@@ -894,7 +894,7 @@ async function main() {
       return fs.readFileSync(path.join(projectRoot, 'commit.txt'), 'utf8').trim().substring(0, 7);
     } catch (e) { return ''; }
   })();
-  app.use('/docs', express.static(path.join(__dirname, '..', '..', 'assets', 'locales', 'docs')));
+  app.use('/docs', express.static(path.join(__dirname, '..', '..', '..', 'assets', 'locales', 'docs')));
 
   // ── Dynamic version.js — always reflects package.json ──────────────────
   app.get('/js/version.js', (req, res) => {
@@ -906,7 +906,7 @@ async function main() {
   });
 
   app.use("/js", express.static(path.join(__dirname, "..", "..", "src", "scripts"), { setHeaders: (res) => { res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate'); res.setHeader('Pragma', 'no-cache'); res.setHeader('Expires', '0'); } }));
-  app.use("/assets", express.static(path.join(__dirname, "..", "..", "assets")));
+  app.use("/assets", express.static(path.join(__dirname, "..", "..", "..", "assets")));
 
   const pagesDir = path.join(__dirname, "..", "..", "src/pages");
 
@@ -1359,11 +1359,11 @@ async function main() {
 
   const JOIN_SOUND = __dirname.includes('app.asar')
     ? path.join(process.resourcesPath, 'app.asar.unpacked', 'assets', 'joinsound.wav')
-    : path.join(__dirname, '../../assets/joinsound.wav');
+    : path.join(__dirname, '../../../assets/joinsound.wav');
 
   const LEAVE_SOUND = __dirname.includes('app.asar')
     ? path.join(process.resourcesPath, 'app.asar.unpacked', 'assets', 'leavesound.wav')
-    : path.join(__dirname, '../../assets/leavesound.wav');
+    : path.join(__dirname, '../../../assets/leavesound.wav');
 
   const { playSound: playSoundUtil } = require('./audio-util');
 

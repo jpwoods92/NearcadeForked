@@ -3,10 +3,10 @@
   "version": "3.0.1",
   "author": "Fame <support@cutefame.net>",
   "description": "Browser-based game streaming host",
-  "main": "electron-main.js",
+  "main": "app/electron-main.js",
   "scripts": {
-    "start": "node src/scripts/server.js",
-    "build:uinput": "cd src/sidecar/input_backends && node-gyp rebuild",
+    "start": "node app/src/scripts/server.js",
+    "build:uinput": "cd app/src/sidecar/input_backends && node-gyp rebuild",
     "test": "npm run test:unit && node bin/verify.js",
     "test:unit": "vitest run",
     "test:unit:watch": "vitest",
@@ -78,11 +78,11 @@
       }
     ],
     "files": [
-      "src/sidecar/input_backends/build/Release/*.node",
+      "app/src/sidecar/input_backends/build/Release/*.node",
       "!/.env",
       "**/*",
       "!website",
-      "!src/docs",
+      "!app/src/docs",
       "!**/*.md",
       "!.github",
       "!.flatpak-builder",
@@ -94,8 +94,8 @@
       "!**/build/*.gypi"
     ],
     "asarUnpack": [
-      "src/sidecar/**/*",
-      "src/sidecar/input_backends/build/Release/*.node",
+      "app/src/sidecar/**/*",
+      "app/src/sidecar/input_backends/build/Release/*.node",
       "config/**/*",
       "kbm_presets/**/*",
       "assets/**/*",

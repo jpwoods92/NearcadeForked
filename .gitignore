@@ -20,6 +20,6 @@ dist-android/
 # Native addon build artifacts — rebuilt via `npm run build:uinput` /
 # CI (see .github/workflows/release.yml), not committed.
 vps/target/
-src/sidecar/input_backends/build/
-src/sidecar/input_backends/experimental/**/build/
+app/src/sidecar/input_backends/build/
+app/src/sidecar/input_backends/experimental/**/build/
 drafts/

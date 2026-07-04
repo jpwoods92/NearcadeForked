@@ -65,7 +65,7 @@ fi
 if [ -f node_modules/.bin/electron ]; then
     ./node_modules/.bin/electron . "$@"
 else
-    exec node src/scripts/server.js "$@"
+    exec node app/src/scripts/server.js "$@"
 fi
 exit 0
 
@@ -134,7 +134,7 @@ if not exist node_modules (
 if exist node_modules\.bin\electron.cmd (
     call node_modules\.bin\electron.cmd . %*
 ) else (
-    node src\scripts\server.js %*
+    node app\src\scripts\server.js %*
 )
 
 :: Only pause if the app exited with an error so the user can read it.

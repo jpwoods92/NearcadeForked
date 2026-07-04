@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 
 const dist = path.join(__dirname, '..', 'dist-android');
-const src = path.join(__dirname, '..', 'src');
+const src = path.join(__dirname, '..', 'app', 'src');
 const root = path.join(__dirname, '..');
 
 // Clean dist-android

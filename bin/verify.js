@@ -13,7 +13,7 @@ console.log("\n Starting Nearsec Headless Verification Suite...\n");
 // Inject ELECTRON_MODE to prevent the browser from opening automatically
 const env = Object.assign({}, process.env, { ELECTRON_MODE: 'true', TUNNEL: 'skip' });
 
-const serverProc = spawn('node', ['src/scripts/server.js'], { env, cwd: __dirname + '/..' });
+const serverProc = spawn('node', ['app/src/scripts/server.js'], { env, cwd: __dirname + '/..' });
 
 let port = null;
 let checks = {

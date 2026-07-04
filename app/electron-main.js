@@ -40,7 +40,7 @@ function _getConfigDir() {
 }
 const CONFIG_DIR = _getConfigDir();
 const CONFIG_FILE = path.join(CONFIG_DIR, 'nearsectogether.config.json');
-const BUNDLED_CONTROLLERS = path.join(__dirname, 'config', 'controllers.json');
+const BUNDLED_CONTROLLERS = path.join(__dirname, '..', 'config', 'controllers.json');
 const USER_CONTROLLERS = path.join(CONFIG_DIR, 'controllers.json');
 
 // ── SESSION FILE LOGGER ──
@@ -154,7 +154,7 @@ if (process.platform === 'linux') {
   } catch (_) { }
 }
 
-if (process.platform === 'darwin') app.dock.setIcon(path.join(__dirname, 'assets/NearsecTogetherLogo.png'));
+if (process.platform === 'darwin') app.dock.setIcon(path.join(__dirname, '..', 'assets/NearsecTogetherLogo.png'));
 
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 
@@ -335,7 +335,7 @@ async function createWindow() {
     minWidth: 600,
     minHeight: 500,
     title: 'NearsecTogether',
-    icon: path.join(__dirname, 'assets/NearsecTogetherLogo.png'),
+    icon: path.join(__dirname, '..', 'assets/NearsecTogetherLogo.png'),
     backgroundColor: '#111111',
     alwaysOnTop: settings.alwaysOnTop,
     show: isGamescopeEnv ? true : false,
@@ -455,7 +455,7 @@ async function createWindow() {
 
   // ── Tray ──
   if (!isGamescopeEnv) {    // We only specify height so Electron maintains the natural aspect ratio of the logo
-    const trayIcon = nativeImage.createFromPath(path.join(__dirname, 'assets/NearsecTogetherLogo.png')).resize({ height: 22 });
+    const trayIcon = nativeImage.createFromPath(path.join(__dirname, '..', 'assets/NearsecTogetherLogo.png')).resize({ height: 22 });
     tray = new Tray(trayIcon);
     tray.setToolTip('NearsecTogether');
     tray.setContextMenu(Menu.buildFromTemplate([
@@ -529,7 +529,7 @@ async function createWindow() {
       basePath = basePath.replace('app.asar', 'app.asar.unpacked');
     }
     const pyScript = path.join(basePath, 'src', 'sidecar', 'input_backends', 'read_gamepads.py');
-    const pyExec = process.platform === 'win32' ? path.join(basePath, 'bin', 'python', 'python.exe') : 'python3';
+    const pyExec = process.platform === 'win32' ? path.join(basePath, '..', 'bin', 'python', 'python.exe') : 'python3';
 
     // Fallback to system python on windows if bin/python doesn't exist
     const actualExec = (process.platform === 'win32' && !fs.existsSync(pyExec)) ? 'python' : pyExec;
@@ -624,7 +624,7 @@ async function createWindow() {
 
     if (os.platform() === 'win32') {
       // WINDOWS: Run the PowerShell setup script natively as Administrator
-      const scriptPath = path.join(__dirname, 'bin', 'windows_setup.ps1');
+      const scriptPath = path.join(__dirname, '..', 'bin', 'windows_setup.ps1');
       const psCommand = `Start-Process powershell -ArgumentList '-ExecutionPolicy Bypass -File ""${scriptPath}""' -Verb RunAs`;
 
       exec(`powershell -Command "${psCommand}"`, (error) => {
@@ -637,8 +637,8 @@ async function createWindow() {
       });
     }
     else if (os.platform() === 'linux') {
-      let scriptPath = path.join(__dirname, 'bin', 'linux_setup.sh');
-      let iconPath = path.join(__dirname, 'assets', 'NearsecTogetherLogo.png');
+      let scriptPath = path.join(__dirname, '..', 'bin', 'linux_setup.sh');
+      let iconPath = path.join(__dirname, '..', 'assets', 'NearsecTogetherLogo.png');
 
       // If running from an AppImage or built executable, extraResources places 'bin' directly in resourcesPath
       if (__dirname.includes('app.asar')) {
@@ -693,11 +693,11 @@ async function createWindow() {
   });
 
   ipcMain.handle('get-app-version', () => {
-    const pkgPath = path.join(__dirname, 'package.json');
+    const pkgPath = path.join(__dirname, '..', 'package.json');
     let version = '1.0.0';
     try { version = JSON.parse(fs.readFileSync(pkgPath, 'utf8')).version; } catch (_) { }
     let commit = '';
-    try { commit = fs.readFileSync(path.join(__dirname, 'commit.txt'), 'utf8').trim().substring(0, 7); } catch (_) { }
+    try { commit = fs.readFileSync(path.join(__dirname, '..', 'commit.txt'), 'utf8').trim().substring(0, 7); } catch (_) { }
     return { version, commit };
   });
 
@@ -749,7 +749,7 @@ async function createWindow() {
 
   ipcMain.on('open-dir', () => {
     const { shell } = require('electron');
-    shell.openPath(__dirname);
+    shell.openPath(path.join(__dirname, '..'));
   });
 
   ipcMain.on('window-close', () => { if (win && !win.isDestroyed()) win.close(); });
@@ -760,7 +760,7 @@ async function createWindow() {
   ipcMain.on('update-tray-icon', (event, iconName) => {
     if (tray && !tray.isDestroyed()) {
       try {
-        const p = path.join(__dirname, 'assets', iconName);
+        const p = path.join(__dirname, '..', 'assets', iconName);
         if (fs.existsSync(p)) {
           const newIcon = nativeImage.createFromPath(p).resize({ height: 22 });
           tray.setImage(newIcon);

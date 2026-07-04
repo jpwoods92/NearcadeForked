@@ -234,7 +234,7 @@ function init(screenWidth, screenHeight) {
 
 function _loadProfiles() {
     try {
-        const pth = path.join(__dirname, '..', '..', '..', 'config', 'game_profiles.csv');
+        const pth = path.join(__dirname, '..', '..', '..', '..', 'config', 'game_profiles.csv');
         if (fs.existsSync(pth)) {
             const lines = fs.readFileSync(pth, 'utf8').split('\n');
             lines.forEach(line => {
@@ -246,7 +246,7 @@ function _loadProfiles() {
     } catch (e) { console.warn('[input] Failed to load CSV:', e.message); }
 
     try {
-        const pth = path.join(__dirname, '..', '..', '..', 'config', 'kbm_bindings.json');
+        const pth = path.join(__dirname, '..', '..', '..', '..', 'config', 'kbm_bindings.json');
         if (fs.existsSync(pth)) {
             KBM_BINDINGS = JSON.parse(fs.readFileSync(pth, 'utf8'));
             console.log('[input] JSON KBM fallback loaded.');

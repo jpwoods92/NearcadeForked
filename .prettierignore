@@ -5,6 +5,6 @@ android/
 website/
 vps/
 build/
-src/scripts/trystero-bundle.js
-src/sidecar/**/build/
+app/src/scripts/trystero-bundle.js
+app/src/sidecar/**/build/
 *.min.js

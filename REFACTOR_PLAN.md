@@ -46,13 +46,16 @@ Goal: reduce these into small, single-responsibility modules with a safety net (
 
 ## Phase 2 — Establish workspace boundaries
 
-- [ ] Decide on a workspace strategy (npm workspaces is the natural fit given everything is already Node-tooled except `vps/`). Recommend: `app/` (Electron + renderer), `android/` (Capacitor, mostly unchanged), `website/` (Cloudflare Worker, mostly unchanged), `vps/` (Rust, already isolated by Cargo).
-- [ ] Split root `package.json` scripts/deps so Capacitor and Wrangler deps aren't installed for people just running the desktop app, and vice versa.
-- [ ] Add a top-level `docs/ARCHITECTURE.md` (or promote `src/docs/ADVANCED_LOGIC.md`) that states these boundaries explicitly, so future contributors don't blur them again.
-- [ ] This phase is mechanical (moving folders, updating import paths) — do it after Phase 1 so there's less to move.
-- [ ] **Carried over from Phase 1**: replace `src/scripts/trystero-bundle.js` (hand-vendored, 3015 lines) with a real build step. Needs a minimal bundler (esbuild is the natural fit — fast, zero-config for this case) that bundles `@trystero-p2p/torrent` (which imports `@trystero-p2p/core` via a bare specifier the browser can't resolve unbundled) into a single browser-consumable file, replacing the hand-copy `p2p-signaler.js` currently imports from. Since this is on the critical path of P2P viewer connections: build it as its own PR, diff the generated output against the current vendored file to confirm the module surface (`joinRoom` etc.) matches, and manually verify a host/viewer session actually connects before merging — don't rely on lint/unit tests alone for this one.
+- [x] Decided scope after investigation: `android/`, `website/`, `vps/` already have adequate physical separation (native Gradle project, static+Worker dir, separate Cargo project respectively — none has its own `package.json`, none needed to move). The actual work was moving the Electron+renderer source — `electron-main.js`, `electron-preload.js`, `electron-viewer-preload.js`, `src/` (all of it), and `test/` (moved alongside, since it tests `src/`) — into a new `app/` directory via `git mv` (preserves history). `config/`, `assets/`, `bin/`, `package.json`, and the root launcher scripts (`NearsecTogether.{bat,cmd,command,desktop}`) stay at the true repo root: they're referenced by things outside the app (README image embeds, OS-level desktop shortcuts, electron-builder config anchored to `package.json`'s location) and moving them would've meant touching those external references for no boundary-clarity benefit. Did **not** introduce actual npm `workspaces` mechanism — there's only one real npm-managed package (root); `android`/`website`/`vps` have no `package.json` of their own, so a `workspaces` array would have nothing genuine to list.
+- [x] This move touched far more than folders — anything computing a "project root" via `__dirname` + `..` walks silently breaks when a new nesting level is inserted. Found and fixed by grepping for every multi-level `__dirname` pattern *before* moving anything: 12 sites in `electron-main.js` (config/assets/bin/package.json/commit.txt access — all needed one more `'..'`; `src/pages`, `src/docs`, and the preload path were correctly left alone since they move together with `src/`), 5 in `server.js` (`.env`, `assets`, the `projectRoot` used for `package.json`/`commit.txt`/`favicon.ico`), 2 in `InputOrchestrator.js` (`config/game_profiles.csv`, `config/kbm_bindings.json`). Also updated: `package.json` (`main`, `start`/`build:uinput` scripts, electron-builder `files`/`asarUnpack` globs), `bin/verify.js`, `bin/build-android.js`, `bin/start.cmd` (both Unix and Windows sections), `extract-text.js`, the flatpak manifest's launch command, `.gitignore`, `.gitmodules` (git auto-updated the submodule `path` on the directory move; manually renamed the submodule section header to match), and `eslint.config.mjs`/`vitest.config.mjs`/`.prettierignore` globs.
+- [x] Verified rather than assumed: syntax-checked every touched file, full lint (0 errors) and unit test suite (22 passing) after the move, ran `bin/verify.js`'s real integration smoke test (boots the actual server — confirmed the config symlink lands at the true root's `config/`, not `app/config`), and did a full `electron-builder --linux --dir` packaging dry run (confirmed `app/electron-main.js` and the full `app/src` tree land correctly inside `app.asar`, and `uinputBridge.node` unpacks to the right path). Did **not** verify the Android (Gradle/Capacitor) or Cloudflare Worker pipelines end-to-end, or Windows/macOS packaging — only Linux electron-builder and the Node-level smoke test were actually runnable in this environment.
+- [ ] Split root `package.json` scripts/deps so Capacitor and Wrangler deps aren't installed for people just running the desktop app, and vice versa. **Not done** — deferred, since `android`/`website` have no `package.json` of their own to hold those deps separately without introducing real npm workspaces (a bigger, separate decision — see note above).
+- [ ] Add a top-level `docs/ARCHITECTURE.md` (or promote `src/docs/ADVANCED_LOGIC.md`, now at `app/src/docs/ADVANCED_LOGIC.md`) documenting the `app/` / `android/` / `website/` / `vps/` boundary and why each does or doesn't have its own `package.json`.
+- [ ] Replace `app/src/scripts/trystero-bundle.js` (hand-vendored, 3015 lines) with a real build step. Needs a minimal bundler (esbuild is the natural fit — fast, zero-config for this case) that bundles `@trystero-p2p/torrent` (which imports `@trystero-p2p/core` via a bare specifier the browser can't resolve unbundled) into a single browser-consumable file, replacing the hand-copy `p2p-signaler.js` currently imports from. Since this is on the critical path of P2P viewer connections: build it as its own PR, diff the generated output against the current vendored file to confirm the module surface (`joinRoom` etc.) matches, and manually verify a host/viewer session actually connects before merging — don't rely on lint/unit tests alone for this one.
 
 ## Phase 3 — Break up `server.js` (2431 lines → modules)
+
+Note: as of Phase 2, this file lives at `app/src/scripts/server.js` (module paths below are relative to that directory).
 
 Split by the ~6 distinct concerns identified:
 - [ ] `server/http.js` — Express app setup, routes, static serving.
@@ -66,6 +69,8 @@ Split by the ~6 distinct concerns identified:
 
 ## Phase 4 — Break up `electron-main.js` (942 lines → modules)
 
+Note: as of Phase 2, this file lives at `app/electron-main.js`.
+
 - [ ] `electron/window.js` — window/tray lifecycle (the current 565-line `createWindow` body).
 - [ ] `electron/ipc/*.js` — split the 31 `ipcMain` handlers by domain (clipboard, VPS config, setup runner, log viewing, settings) instead of one flat list.
 - [ ] `electron/updater.js` — auto-updater wiring.
@@ -75,7 +80,7 @@ Split by the ~6 distinct concerns identified:
 
 ## Phase 5 — Break up `host.js` (4457 lines) and `viewer.js` (2770 lines)
 
-This is the biggest and riskiest phase — do it last, after Phases 0–4 give you tooling and a template for how to split a file.
+This is the biggest and riskiest phase — do it last, after Phases 0–4 give you tooling and a template for how to split a file. As of Phase 2, both files live at `app/src/scripts/` (module paths below are relative to that directory).
 
 - [ ] Extract shared `scripts/chat.js` (`appendChat`, `sendChat`, `log`, `sysChat`) — used by both `host.js` and `viewer.js`, currently duplicated. Do this first; it's the clearest, lowest-risk win and validates the extraction pattern for the rest of the phase.
 - [ ] Extract `scripts/webrtc/peer-connection.js` — connection setup/teardown, shared shape between host and viewer.
@@ -90,17 +95,17 @@ This is the biggest and riskiest phase — do it last, after Phases 0–4 give y
 
 ## Phase 6 — CSS
 
-- [ ] Split `src/css/host.css` (1318 lines) into component-scoped files (`modals.css`, `roster.css`, `stats-hud.css`, `chat.css`, base/layout) mirroring the JS module boundaries from Phase 5, so a given feature's CSS and JS live in parallel files.
+- [ ] Split `app/src/css/host.css` (1318 lines) into component-scoped files (`modals.css`, `roster.css`, `stats-hud.css`, `chat.css`, base/layout) mirroring the JS module boundaries from Phase 5, so a given feature's CSS and JS live in parallel files.
 
 ## Phase 7 — HTML pages
 
-- [ ] Audit `src/pages/index.html` (2128 lines), `host-minimal.html` (1505), `dashboard.html` (1474), `host-modals.html` (840) for inline `<script>`/`<style>` blocks; move logic into the `scripts/`/`css/` modules from Phases 5–6 so HTML files hold markup only.
+- [ ] Audit `app/src/pages/index.html` (2128 lines), `host-minimal.html` (1505), `dashboard.html` (1474), `host-modals.html` (840) for inline `<script>`/`<style>` blocks; move logic into the `scripts/`/`css/` modules from Phases 5–6 so HTML files hold markup only.
 - [ ] Confirm whether `host.html`, `host-custom.html`, `host-playground.html`, `host-minimal.html` are all still in active use — consolidate or delete variants that have drifted into redundancy, once it's clear which are load-bearing.
 
 ## Phase 8 — Sidecar dedup
 
-- [ ] Point the 4 independent `pactl` implementations (`electron-main.js`, `server.js`, `src/sidecar/audio_worker.js`, `src/sidecar/audio_blacklist_daemon.js`) at the single `server/audio-routing.js` module from Phase 3, or a shared sidecar equivalent if some of these run in a different process context.
-- [ ] Review `src/sidecar/InputOrchestrator.js` (764 lines) for the same multi-concern pattern as the main JS files; split if it mixes device detection, event translation, and platform dispatch.
+- [ ] Point the 4 independent `pactl` implementations (`app/electron-main.js`, `app/src/scripts/server.js`, `app/src/sidecar/audio_worker.js`, `app/src/sidecar/audio_blacklist_daemon.js`) at the single `server/audio-routing.js` module from Phase 3, or a shared sidecar equivalent if some of these run in a different process context.
+- [ ] Review `app/src/sidecar/input_backends/InputOrchestrator.js` (764 lines) for the same multi-concern pattern as the main JS files; split if it mixes device detection, event translation, and platform dispatch.
 
 ## Phase 9 — Ongoing hygiene (after the above lands)
 
