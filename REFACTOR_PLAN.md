@@ -106,6 +106,11 @@ This is the biggest and riskiest phase — do it last, after Phases 0–4 give y
 
 - [ ] Audit `app/src/pages/index.html` (2128 lines), `host-minimal.html` (1505), `dashboard.html` (1474), `host-modals.html` (840) for inline `<script>`/`<style>` blocks; move logic into the `scripts/`/`css/` modules from Phases 5–6 so HTML files hold markup only.
 - [ ] Confirm whether `host.html`, `host-custom.html`, `host-playground.html`, `host-minimal.html` are all still in active use — consolidate or delete variants that have drifted into redundancy, once it's clear which are load-bearing.
+- [ ] Once the above leaves each page as markup-only, break the remaining oversized markup itself into smaller included partials — there's already a working precedent for this: `host.html`/`host-playground.html`/`host-custom.html`/`host-minimal.html` all pull `host-modals.html` in via a synchronous `XMLHttpRequest` to `/pages/host-modals.html` and inject the response. Concretely:
+  - [ ] `index.html` (2128 lines, by far the largest): identify its major sections (viewer UI shell, chat panel, settings/modals, etc.) and split each into its own partial under `app/src/pages/partials/`, following the same fetch-and-inject pattern `host-modals.html` already established.
+  - [ ] `host-minimal.html` (1505) and `dashboard.html` (1474): same approach — split out modal/panel sections that don't need to be present in the initial HTML payload.
+  - [ ] While touching this include mechanism, switch the blocking synchronous `XMLHttpRequest` to an async `fetch()` (the sync XHR blocks the main thread during page load and is deprecated by browsers) — but treat this as its own small, isolated behavior change with a before/after manual load-time check, not bundled silently into the markup-splitting commits.
+  - [ ] After splitting, verify every host page variant still renders and functions (open each host page, confirm modals still appear/behave) before considering this done — a missing or mis-pathed partial fails silently with the current fetch-and-`innerHTML` pattern.
 
 ## Phase 8 — Sidecar dedup
 
