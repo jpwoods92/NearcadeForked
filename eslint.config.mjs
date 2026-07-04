@@ -68,7 +68,7 @@ export default [
   },
   {
     // Node-context: Electron main/preload, the Express/WS server, sidecar daemons.
-    files: ['app/electron-*.js', 'extract-text.js', 'app/src/scripts/server.js', 'app/src/sidecar/**/*.js', 'bin/**/*.js'],
+    files: ['app/electron-*.js', 'extract-text.js', 'app/src/scripts/server.js', 'app/src/scripts/server/**/*.js', 'app/src/sidecar/**/*.js', 'bin/**/*.js'],
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: 'commonjs',
