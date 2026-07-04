@@ -28,7 +28,7 @@ struct NearsecVRPacket {
 };
 #pragma pack(pop)
 
-class SteamVRNearsecDriver : public vr::ITrackedDeviceServerDriver, public vr::IVRDisplayComponent {
+class SteamVRNearsecDriver : public vr::ITrackedDeviceServerDriver, public vr::IVRDisplayComponent, public vr::IVRDriverDirectModeComponent {
 public:
     virtual vr::EVRInitError Activate(uint32_t unObjectId) override {
         m_unObjectId = unObjectId;
@@ -59,9 +59,16 @@ public:
         if (0 == strcmp(pchComponentNameAndVersion, vr::IVRDisplayComponent_Version)) {
             return (vr::IVRDisplayComponent*)this;
         }
+        if (0 == strcmp(pchComponentNameAndVersion, vr::IVRDriverDirectModeComponent_Version)) {
+            return (vr::IVRDriverDirectModeComponent*)this;
+        }
         return nullptr;
     }
     virtual void DebugRequest(const char* pchRequest, char* pchResponseBuffer, uint32_t unResponseBufferSize) override {}
+
+    // --- IVRDriverDirectModeComponent Implementation ---
+    // (We inherit empty implementations from the header, so no need to override them all)
+    // ---------------------------------------------------
 
     // --- IVRDisplayComponent Implementation ---
     virtual void GetWindowBounds(int32_t *pnX, int32_t *pnY, uint32_t *pnWidth, uint32_t *pnHeight) override {
@@ -70,7 +77,7 @@ public:
         *pnWidth = 1920;
         *pnHeight = 1080;
     }
-    virtual bool IsDisplayOnDesktop() override { return true; }
+    virtual bool IsDisplayOnDesktop() override { return false; }
     virtual bool IsDisplayRealDisplay() override { return false; }
     virtual void GetRecommendedRenderTargetSize(uint32_t *pnWidth, uint32_t *pnHeight) override {
         *pnWidth = 1920;
