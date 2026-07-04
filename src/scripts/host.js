@@ -1563,6 +1563,17 @@ async function sendOfferToViewer(viewerId) {
     pc.inputChannel = pc.createDataChannel('input', { ordered: false, maxRetransmits: 0 });
     pc.inputChannel.onmessage = (e) => {
         if (ws && ws.readyState === 1) {
+            if (e.data instanceof ArrayBuffer || e.data instanceof Blob) {
+                const isBlob = e.data instanceof Blob;
+                if (isBlob) {
+                    e.data.arrayBuffer().then(ab => processBinaryInput(ab, viewerId));
+                    return;
+                } else {
+                    processBinaryInput(e.data, viewerId);
+                    return;
+                }
+            }
+
             try {
                 const inner = JSON.parse(e.data);
                 // Fast-lane inputs bypass the VPS router, so we must manually stamp the correct session ID
@@ -1575,6 +1586,19 @@ async function sendOfferToViewer(viewerId) {
             }
         }
     };
+    
+    function processBinaryInput(ab, viewerId) {
+        const original = new Uint8Array(ab);
+        if (original[0] === 0x01) { // PKT::GAMEPAD
+            const vidBytes = new TextEncoder().encode(viewerId);
+            const outBuf = new Uint8Array(2 + vidBytes.length + original.length);
+            outBuf[0] = 0x80; // Custom magic for Host->Server Binary Input
+            outBuf[1] = vidBytes.length;
+            outBuf.set(vidBytes, 2);
+            outBuf.set(original, 2 + vidBytes.length);
+            ws.send(outBuf);
+        }
+    }
 
     currentStream.getTracks().forEach(track => {
         if (track.kind === 'video' && forceWc) {

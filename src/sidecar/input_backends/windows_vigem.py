@@ -12,6 +12,10 @@ All errors are emitted as JSON to stdout so the Node.js orchestrator
 import sys
 import json
 import gc
+import socket
+import struct
+import queue
+import threading
 
 
 # ── JSON protocol helpers ─────────────────────────────────────────────────────
@@ -92,6 +96,8 @@ PYAUTOGUI_KEY_MAP = {
 devices = {}
 # viewer_modes: viewer_id → 'gamepad' | 'kbm' | 'hybrid' | 'kbm_emulated'
 viewer_modes = {}
+devices_by_slot = {}
+event_queue = queue.Queue()
 
 
 # ── Axis conversion helpers ───────────────────────────────────────────────────
@@ -154,16 +160,83 @@ def _apply_btn(gp, btns: list, idx: int, const):
 
 # ── Main run loop ─────────────────────────────────────────────────────────────
 
+def stdin_thread():
+    stdin_raw = open(sys.stdin.fileno(), 'rb', buffering=0)
+    for raw_line in stdin_raw:
+        line = raw_line.decode('utf-8', errors='replace').strip()
+        if line:
+            event_queue.put(('json', line))
+
+def udp_thread(sock):
+    while True:
+        try:
+            data, _ = sock.recvfrom(1024)
+            if data and len(data) == 16 and data[0] == 0x01:
+                slot = data[15]
+                event_queue.put(('binary', slot, data))
+        except Exception:
+            pass
+
+def _emit_gp_binary(slot, payload):
+    gp = devices_by_slot.get(slot)
+    if not gp: return
+    
+    magic, lx, ly, rx, ry, lt, rt, cppBtns, hx, hy, slot_check = struct.unpack('<BhhhhBBHbbB', payload)
+    
+    def _bit(mask): return bool(cppBtns & mask)
+    def _press(const, state):
+        if state: gp.press_button(button=const)
+        else:     gp.release_button(button=const)
+    
+    _press(vg.XUSB_BUTTON.XUSB_GAMEPAD_A,              _bit(1 << 0))
+    _press(vg.XUSB_BUTTON.XUSB_GAMEPAD_B,              _bit(1 << 1))
+    _press(vg.XUSB_BUTTON.XUSB_GAMEPAD_X,              _bit(1 << 2))
+    _press(vg.XUSB_BUTTON.XUSB_GAMEPAD_Y,              _bit(1 << 3))
+    _press(vg.XUSB_BUTTON.XUSB_GAMEPAD_LEFT_SHOULDER,  _bit(1 << 4))
+    _press(vg.XUSB_BUTTON.XUSB_GAMEPAD_RIGHT_SHOULDER, _bit(1 << 5))
+    _press(vg.XUSB_BUTTON.XUSB_GAMEPAD_BACK,           _bit(1 << 8))
+    _press(vg.XUSB_BUTTON.XUSB_GAMEPAD_START,          _bit(1 << 9))
+    _press(vg.XUSB_BUTTON.XUSB_GAMEPAD_LEFT_THUMB,     _bit(1 << 10))
+    _press(vg.XUSB_BUTTON.XUSB_GAMEPAD_RIGHT_THUMB,    _bit(1 << 11))
+    
+    _press(vg.XUSB_BUTTON.XUSB_GAMEPAD_DPAD_UP,        hy == -1)
+    _press(vg.XUSB_BUTTON.XUSB_GAMEPAD_DPAD_DOWN,      hy == 1)
+    _press(vg.XUSB_BUTTON.XUSB_GAMEPAD_DPAD_LEFT,      hx == -1)
+    _press(vg.XUSB_BUTTON.XUSB_GAMEPAD_DPAD_RIGHT,     hx == 1)
+    
+    lx_f = _clamp(lx / 32767.0, -1.0, 1.0)
+    ly_f = -_clamp(ly / 32767.0, -1.0, 1.0)
+    gp.left_joystick_float(x_value_float=lx_f, y_value_float=ly_f)
+    
+    rx_f = _clamp(rx / 32767.0, -1.0, 1.0)
+    ry_f = -_clamp(ry / 32767.0, -1.0, 1.0)
+    gp.right_joystick_float(x_value_float=rx_f, y_value_float=ry_f)
+    
+    lt_f = _clamp(lt / 255.0, 0.0, 1.0)
+    rt_f = _clamp(rt / 255.0, 0.0, 1.0)
+    gp.left_trigger_float(value_float=lt_f)
+    gp.right_trigger_float(value_float=rt_f)
+    
+    gp.update()
+
 def run():
     _emit({"type": "ready", "message": "Windows vgamepad + pyautogui backend initialized"})
 
-    stdin_raw = open(sys.stdin.fileno(), 'rb', buffering=0)
+    udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    udp_sock.bind(('127.0.0.1', 0))
+    udp_port = udp_sock.getsockname()[1]
+    _emit({"type": "udp_ready", "udp_port": udp_port})
 
-    for raw_line in stdin_raw:
-        line = raw_line.decode('utf-8', errors='replace').strip()
-        if not line:
+    threading.Thread(target=stdin_thread, daemon=True).start()
+    threading.Thread(target=udp_thread, args=(udp_sock,), daemon=True).start()
+
+    while True:
+        ev = event_queue.get()
+        if ev[0] == 'binary':
+            _emit_gp_binary(ev[1], ev[2])
             continue
-
+            
+        line = ev[1]
         try:
             msg = json.loads(line)
         except json.JSONDecodeError:
@@ -182,6 +255,24 @@ def _process(msg: dict):
     # ── Mode updates ──────────────────────────────────────────────────────────
     if msg_type == "set-input-mode":
         viewer_modes[str(msg.get("viewerId", vid))] = msg.get("mode", "gamepad")
+        return
+
+    if msg_type == "allocate_slot":
+        pad_id = str(msg.get("pad_id", ""))
+        slot = msg.get("slot")
+        if pad_id not in devices:
+            # We don't have the gamepad instance yet, _handle_gamepad will lazy-create it.
+            # We can lazy-create it right here instead.
+            _handle_gamepad({"pad_id": pad_id})
+        
+        if pad_id in devices:
+            devices_by_slot[slot] = devices[pad_id]
+        return
+
+    if msg_type == "free_slot":
+        slot = msg.get("slot")
+        if slot in devices_by_slot:
+            del devices_by_slot[slot]
         return
 
     # ── Viewer cleanup ────────────────────────────────────────────────────────

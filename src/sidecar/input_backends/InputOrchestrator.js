@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 const { EventEmitter } = require('events');
+const dgram = require('dgram');
 
 // ── Visualizer event bus — host.js listens on inputDriver.events ──────────────
 const events = new EventEmitter();
@@ -88,6 +89,8 @@ const slotLastUsed = new Map();
 
 let _bridge = null;
 let _pythonProc = null;
+let _udpSocket = null;
+let _pythonUdpPort = 0;
 
 let GAME_PROFILES = {};
 let KBM_BINDINGS = { keys: {}, mouse: { sensitivity: 1.5, deadzone: 0.1 } };
@@ -156,6 +159,12 @@ function init(screenWidth, screenHeight) {
     } else {
         console.log('[input] macOS detected — skipping uinputBridge, using Python/pynput sidecar.');
     }
+    
+    _udpSocket = dgram.createSocket('udp4');
+    _udpSocket.on('error', (err) => {
+        console.error('[input] UDP socket error:\n' + err.stack);
+        _udpSocket.close();
+    });
 
     // 2. Python Sidecar — platform-aware script selection
     let scriptName;
@@ -193,6 +202,9 @@ function init(screenWidth, screenHeight) {
                 } else if (msg.type === 'ready') {
                     console.log('[input][python] Sidecar ready:', msg.message || '');
                     events.emit('input-ready', { message: msg.message });
+                } else if (msg.type === 'udp_ready') {
+                    _pythonUdpPort = msg.udp_port;
+                    console.log(`[input][python] UDP listening on port ${_pythonUdpPort}`);
                 } else if (msg.type === 'log') {
                     console.log('[input][python]', msg.message);
                 } else if (msg.type === 'rumble') {
@@ -297,10 +309,17 @@ function _claimSlot(slotIndex, viewerId, profileKey) {
     slotViewers.set(slotIndex, viewerId);
     slotLastUsed.set(slotIndex, Date.now());
 
-    if (!_bridge) return; // Python handles its own slots
-
     // Resolve the best profile: per-viewer override → host global default → xbox360
     const resolvedKey = profileKey || viewerCtrlType.get(viewerId) || _defaultProfileKey || 'xbox360';
+
+    if (_pythonProc) {
+        try {
+            _pythonProc.stdin.write(JSON.stringify({ type: 'allocate_slot', pad_id: viewerId, slot: slotIndex, profile: resolvedKey }) + '\n');
+        } catch (_) {}
+    }
+
+    if (!_bridge) return; // Python handles its own slots
+
     const profile = PROFILES[resolvedKey] || PROFILES.xbox360;
     _alBuf[1] = slotIndex;
     _alBuf.writeUInt16LE(profile.vendor, 2);
@@ -317,6 +336,12 @@ function _claimSlot(slotIndex, viewerId, profileKey) {
 function _freeSlot(viewerId) {
     const slot = viewerSlots.get(viewerId);
     if (slot === undefined) return;
+
+    if (_pythonProc) {
+        try {
+            _pythonProc.stdin.write(JSON.stringify({ type: 'free_slot', pad_id: viewerId, slot: slot }) + '\n');
+        } catch (_) {}
+    }
 
     if (_bridge) {
         _flBuf[1] = slot;
@@ -740,6 +765,37 @@ function send(msg) {
     }
 }
 
+function sendBinary(viewerId, buf) {
+    if (buf[0] !== 0x01) return; // Only GAMEPAD for now
+    
+    const padIndex = buf[1];
+    const padId = viewerId + '_' + padIndex;
+    const profileKey = viewerCtrlType.get(padId) || viewerCtrlType.get(viewerId) || _defaultProfileKey || 'xbox360';
+    const slotIndex = _allocateSlot(padId, profileKey);
+    if (slotIndex < 0) return;
+    
+    const jsBtns = buf.readUInt16LE(2);
+    const { cpp: cppBtns, hx, hy } = _jsBtnsToCpp(jsBtns);
+    
+    _gpBuf[0] = 0x01;
+    buf.copy(_gpBuf, 1, 4, 12);
+    _gpBuf[9] = buf[12];
+    _gpBuf[10] = buf[13];
+    _gpBuf.writeUInt16LE(cppBtns, 11);
+    _gpBuf.writeInt8(hx, 13);
+    _gpBuf.writeInt8(hy, 14);
+    _gpBuf[15] = slotIndex;
+    
+    if (_bridge && !_hybridInputEnabled) {
+        _bridge.submitInputPacket(_gpBuf);
+        return;
+    }
+    
+    if (_pythonUdpPort > 0 && _udpSocket) {
+        _udpSocket.send(_gpBuf, 0, 16, _pythonUdpPort, '127.0.0.1');
+    }
+}
+
 function destroy() {
     for (const vid of viewerSlots.keys()) {
         _freeSlot(vid);
@@ -761,4 +817,4 @@ function getViewerForSlot(slot) {
     return slotViewers.get(Number(slot)) || null;
 }
 
-module.exports = { init, send, destroy, events, getViewerForSlot, get _bridge() { return _bridge; } };
+module.exports = { init, send, sendBinary, destroy, events, getViewerForSlot, get _bridge() { return _bridge; } };

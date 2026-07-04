@@ -902,17 +902,28 @@ const mouseMap = { 0: 'BTN_LEFT', 1: 'BTN_MIDDLE', 2: 'BTN_RIGHT' };
 // ── Fast-Lane Input Dispatcher ────────────────────────────────────────────────
 // Tries WebRTC DataChannel first (zero-latency), falls back to inputWs, then ws.
 function sendInputData(data) {
-    const str = typeof data === 'string' ? data : JSON.stringify(data);
+    const isBin = data instanceof Uint8Array || data instanceof ArrayBuffer;
+    const str = isBin ? null : (typeof data === 'string' ? data : JSON.stringify(data));
     
     // 1. WebTransport Unreliable Datagrams (VPS Fast Lane)
     if (window.wtInputWriter) {
         try {
-            window.wtInputWriter.write(new TextEncoder().encode(str));
+            window.wtInputWriter.write(isBin ? data : new TextEncoder().encode(str));
             return;
         } catch (_) { }
     }
 
     // 2. WebRTC DataChannel (P2P Fast Lane)
+    if (window._fastLaneChannel && window._fastLaneChannel.readyState === 'open') {
+        try { window._fastLaneChannel.send(isBin ? data : str); return; } catch (_) { }
+    }
+    if (inputWs && inputWs.readyState === 1) {
+        inputWs.send(isBin ? data : str); return;
+    }
+    if (ws && ws.readyState === 1) {
+        ws.send(isBin ? data : str);
+    }
+}
     if (window._fastLaneChannel && window._fastLaneChannel.readyState === 'open') {
         try { window._fastLaneChannel.send(str); return; } catch (_) { }
     }
@@ -1483,8 +1494,43 @@ function pollGamepad() {
     const forceHb = now - (lastGpSend[vIndex] || 0) > 100;
     if (changed || forceHb) {
         lastGpSend[vIndex] = now;
-        sendInputData(JSON.stringify(state));
+        sendInputData(_packGamepadBinary(vIndex, state));
     }
+}
+
+function _packGamepadBinary(vIndex, state) {
+    const buf = new Uint8Array(14);
+    const view = new DataView(buf.buffer);
+    buf[0] = 0x01; // PKT::GAMEPAD
+    buf[1] = vIndex;
+    
+    let btnMask = 0;
+    if (state.buttons[0]?.pressed) btnMask |= 0x0001;
+    if (state.buttons[1]?.pressed) btnMask |= 0x0002;
+    if (state.buttons[2]?.pressed) btnMask |= 0x0004;
+    if (state.buttons[3]?.pressed) btnMask |= 0x0008;
+    if (state.buttons[4]?.pressed) btnMask |= 0x0100;
+    if (state.buttons[5]?.pressed) btnMask |= 0x0200;
+    if (state.buttons[8]?.pressed) btnMask |= 0x2000;
+    if (state.buttons[9]?.pressed) btnMask |= 0x1000;
+    if (state.buttons[10]?.pressed) btnMask |= 0x0400;
+    if (state.buttons[11]?.pressed) btnMask |= 0x0800;
+    if (state.buttons[12]?.pressed) btnMask |= 0x0010;
+    if (state.buttons[13]?.pressed) btnMask |= 0x0020;
+    if (state.buttons[14]?.pressed) btnMask |= 0x0040;
+    if (state.buttons[15]?.pressed) btnMask |= 0x0080;
+    if (state.buttons[16]?.pressed) btnMask |= 0x4000;
+
+    view.setUint16(2, btnMask, true);
+    view.setInt16(4, state.axes[0] || 0, true);
+    view.setInt16(6, state.axes[1] || 0, true);
+    view.setInt16(8, state.axes[2] || 0, true);
+    view.setInt16(10, state.axes[3] || 0, true);
+    
+    buf[12] = state.buttons[6]?.value || 0;
+    buf[13] = state.buttons[7]?.value || 0;
+    
+    return buf;
 }
 
 ['click', 'touchstart', 'keydown'].forEach(ev => document.addEventListener(ev, () => { if (!gpPolling) activateGamepad(); }, { once: true, passive: true }));

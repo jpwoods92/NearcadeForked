@@ -35,6 +35,9 @@ import sys
 import json
 import threading
 import time
+import socket
+import struct
+import queue
 from typing import Dict, Set, Tuple, Optional
 
 try:
@@ -96,6 +99,7 @@ keyboard = KeyboardController()
 mouse = MouseController()
 running = True
 viewer_ids: Set[str] = set()  # Track connected viewer IDs
+event_queue = queue.Queue()
 
 
 def clamp(val: float, min_val: float, max_val: float) -> float:
@@ -420,25 +424,80 @@ def check_permissions():
     print("[gamepad-bridge] ========================================", flush=True)
 
 
-def run():
-    """
-    Main macOS gamepad bridge loop.
-    Reads JSON packets from stdin and translates to KBM events.
-    """
-    global running
+def _emit_gp_binary(slot, payload):
+    magic, lx, ly, rx, ry, lt, rt, cppBtns, hx, hy, slot_check = struct.unpack('<BhhhhBBHbbB', payload)
+    
+    def _bit(mask): return bool(cppBtns & mask)
+    
+    handle_button_event(0, _bit(1 << 0)) # A
+    handle_button_event(1, _bit(1 << 1)) # B
+    handle_button_event(2, _bit(1 << 2)) # X
+    handle_button_event(3, _bit(1 << 3)) # Y
+    handle_button_event(4, _bit(1 << 4)) # LB
+    handle_button_event(5, _bit(1 << 5)) # RB
+    handle_button_event(8, _bit(1 << 8)) # BACK
+    handle_button_event(9, _bit(1 << 9)) # START
+    handle_button_event(10, _bit(1 << 10)) # L3
+    handle_button_event(11, _bit(1 << 11)) # R3
+    
+    handle_button_event(12, hy == -1)
+    handle_button_event(13, hy == 1)
+    handle_button_event(14, hx == -1)
+    handle_button_event(15, hx == 1)
 
+    lx_f = lx / 32767.0
+    ly_f = ly / 32767.0
+    handle_stick_movement("left", lx_f, -ly_f)
+    
+    rx_f = rx / 32767.0
+    ry_f = ry / 32767.0
+    handle_stick_movement("right", rx_f, -ry_f)
+    
+    lt_f = lt / 255.0
+    rt_f = rt / 255.0
+    handle_trigger("left", lt_f)
+    handle_trigger("right", rt_f)
+
+def stdin_thread():
+    stdin_raw = open(sys.stdin.fileno(), 'rb', buffering=0)
+    for raw_line in stdin_raw:
+        line = raw_line.decode('utf-8', errors='replace').strip()
+        if line:
+            event_queue.put(('json', line))
+
+def udp_thread(sock):
+    while True:
+        try:
+            data, _ = sock.recvfrom(1024)
+            if data and len(data) == 16 and data[0] == 0x01:
+                slot = data[15]
+                event_queue.put(('binary', slot, data))
+        except Exception:
+            pass
+
+def run():
+    global running
     check_permissions()
+    
+    udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    udp_sock.bind(('127.0.0.1', 0))
+    udp_port = udp_sock.getsockname()[1]
+    print(json.dumps({"type": "udp_ready", "udp_port": udp_port}), flush=True)
+
+    threading.Thread(target=stdin_thread, daemon=True).start()
+    threading.Thread(target=udp_thread, args=(udp_sock,), daemon=True).start()
 
     try:
-        stdin_raw = open(sys.stdin.fileno(), 'rb', buffering=0)
-        for raw_line in stdin_raw:
-            line = raw_line.decode('utf-8', errors='replace').strip()
-            if not line:
+        while True:
+            ev = event_queue.get()
+            if ev[0] == 'binary':
+                _emit_gp_binary(ev[1], ev[2])
                 continue
-
+                
+            line = ev[1]
             try:
                 msg = json.loads(line)
-
+                
                 # ── Disconnect / cleanup ────────────────────────────────────
                 if msg.get("type") in ["disconnect_viewer", "flush_neutral"]:
                     vid = str(msg.get("viewer_id", ""))

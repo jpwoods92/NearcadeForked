@@ -1457,6 +1457,20 @@ async function main() {
 
       ws.on("message", (raw, isBinary) => {
         if (isBinary) {
+          if (raw[0] === 0x80) { // Binary Input from Host
+             const vidLen = raw[1];
+             const viewerId = raw.toString('utf8', 2, 2 + vidLen);
+             const payload = raw.subarray(2 + vidLen);
+             
+             const padIndex = payload[1];
+             const padId = viewerId + '_' + padIndex;
+             const perms = inputPerms.get(padId) || inputPerms.get(viewerId + '_0') || { gp: true, kb: false };
+             if (!perms.gp) return; // Dropped by perms
+
+             if (inputDriver.sendBinary) inputDriver.sendBinary(viewerId, payload);
+             return;
+          }
+
           // Tunnel WebCodecs binary frames from Host -> Node.js Server -> Viewers
           viewers.forEach(vws => {
             if (vws && vws.readyState === 1) vws.send(raw);

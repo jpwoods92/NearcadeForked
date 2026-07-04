@@ -19,6 +19,8 @@ import sys, json, os, atexit, csv, gc
 import time
 import struct
 import threading
+import socket
+import queue
 import select
 from collections import deque
 
@@ -87,7 +89,9 @@ devices          = {}
 device_profiles  = {}
 viewer_modes     = {}   # vid → 'gamepad' | 'kbm' | 'kbm_emulated' | 'disabled'
 viewer_ctrl_type = {}   # vid → profile key
+devices_by_slot  = {}   # slot -> gp
 _input_queues    = {}
+event_queue      = queue.Queue()
 _active_binds    = None
 _auto_map_on     = True
 _is_hybrid       = False
@@ -335,6 +339,27 @@ def _emit_gp(pad_id, msg):
             
     gp.syn()
 
+def _emit_gp_binary(slot, payload):
+    if not UINPUT_OK: return
+    gp = devices_by_slot.get(slot)
+    if not gp: return
+    
+    magic, lx, ly, rx, ry, lt, rt, btns_mask, hx, hy, slot_check = struct.unpack('<BhhhhBBHbbB', payload)
+    
+    for w3c_idx, btn in W3C_MAP.items():
+        is_pressed = (btns_mask & (1 << w3c_idx)) != 0
+        gp.emit(btn, 1 if is_pressed else 0, syn=False)
+        
+    gp.emit(uinput.ABS_X, lx, syn=False)
+    gp.emit(uinput.ABS_Y, ly, syn=False)
+    gp.emit(uinput.ABS_RX, rx, syn=False)
+    gp.emit(uinput.ABS_RY, ry, syn=False)
+    gp.emit(uinput.ABS_Z, lt, syn=False)
+    gp.emit(uinput.ABS_RZ, rt, syn=False)
+    gp.emit(uinput.ABS_HAT0X, hx, syn=False)
+    gp.emit(uinput.ABS_HAT0Y, hy, syn=False)
+    gp.syn()
+
 def _ensure_gp(pad_id, vid):
     if not UINPUT_OK: return
     wanted = viewer_ctrl_type.get(pad_id) or viewer_ctrl_type.get(vid) or viewer_ctrl_type.get("") or 'xbox360'
@@ -460,20 +485,42 @@ def _maybe_reset_right_stick(pad_id, vid):
         _last_mouse_move[pad_id] = 0
 
 # ── Main loop ──────────────────────────────────────────────────────────────────
+def stdin_thread():
+    stdin_raw = open(sys.stdin.fileno(), 'rb', buffering=0)
+    for raw_line in stdin_raw:
+        line = raw_line.decode('utf-8', errors='replace').strip()
+        if line:
+            event_queue.put(('json', line))
+
+def udp_thread(sock):
+    while True:
+        try:
+            data, _ = sock.recvfrom(1024)
+            if data and len(data) == 16 and data[0] == 0x01:
+                slot = data[15]
+                event_queue.put(('binary', slot, data))
+        except Exception:
+            pass
+
 def run():
     global _active_binds, _auto_map_on, _is_hybrid
     print("[input] Loaded linux_uinput backend (stable, completely unified)", flush=True)
 
-    # Use unbuffered binary stdin so every line Node writes is dispatched immediately
-    # without waiting for the OS 8KB read buffer to fill. This is the main source
-    # of variable controller latency on the Python side.
-    stdin_raw = open(sys.stdin.fileno(), 'rb', buffering=0)
+    udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    udp_sock.bind(('127.0.0.1', 0))
+    udp_port = udp_sock.getsockname()[1]
+    print(json.dumps({"type": "udp_ready", "udp_port": udp_port}), flush=True)
 
-    for raw_line in stdin_raw:
-        line = raw_line.decode('utf-8', errors='replace').strip()
-        if not line:
+    threading.Thread(target=stdin_thread, daemon=True).start()
+    threading.Thread(target=udp_thread, args=(udp_sock,), daemon=True).start()
+
+    while True:
+        ev = event_queue.get()
+        if ev[0] == 'binary':
+            _emit_gp_binary(ev[1], ev[2])
             continue
-        
+            
+        line = ev[1]
         for _rspad in list(_last_mouse_move):
             if _last_mouse_move[_rspad]:
                 _maybe_reset_right_stick(_rspad, _rspad.split('_')[0])
@@ -481,6 +528,22 @@ def run():
         try:
             msg      = json.loads(line)
             msg_type = msg.get("type")
+            
+            if msg_type == "allocate_slot":
+                pad_id = msg.get("pad_id")
+                slot = msg.get("slot")
+                profile = msg.get("profile", "xbox360")
+                viewer_ctrl_type[pad_id] = profile
+                _ensure_gp(pad_id, pad_id.split('_')[0])
+                if pad_id in devices:
+                    devices_by_slot[slot] = devices[pad_id]
+                continue
+                
+            if msg_type == "free_slot":
+                slot = msg.get("slot")
+                if slot in devices_by_slot:
+                    del devices_by_slot[slot]
+                continue
 
             if msg_type == "window-focus":
                 if not _auto_map_on:
