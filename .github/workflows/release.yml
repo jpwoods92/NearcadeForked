@@ -28,7 +28,6 @@ jobs:
       - name: Save Commit Hash
         run: echo "${{ github.sha }}" > commit.txt
 
-
       - name: Remove broken launcher symlinks
         shell: bash
         run: |
@@ -81,7 +80,7 @@ jobs:
               cp "$APPIMAGE" dist/NearsecTogether-latest.AppImage
             fi
           fi
-          
+
           for file in dist/*.exe dist/*.dmg dist/*.AppImage dist/*.deb dist/*.rpm; do
             if [ -f "$file" ]; then
               echo "Uploading $file..."
@@ -90,8 +89,6 @@ jobs:
           done
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-
 
   # ── 2. ANDROID APK BUILD ──
   release-android:
@@ -102,7 +99,6 @@ jobs:
 
       - name: Save Commit Hash
         run: echo "${{ github.sha }}" > commit.txt
-
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -141,87 +137,6 @@ jobs:
       - name: Upload APK to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: "Nearsec Together (Android).apk"
+          files: 'Nearsec Together (Android).apk'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  # ── 3. ITCH.IO PUBLISHING ──
-  publish-itchio:
-    needs: [release-desktop, release-android]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Download all release assets
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release download ${{ github.ref_name }} --dir release-assets --clobber
-
-      - name: Rename Assets for Itch.io
-        run: |
-          cd release-assets
-          for file in NearsecTogether-Setup-*.exe; do [ -f "$file" ] && mv "$file" "Nearsec Together (Windows).exe"; done
-          for file in NearsecTogether-*-universal.dmg; do [ -f "$file" ] && mv "$file" "Nearsec Together (Mac).dmg"; done
-          for file in NearsecTogether-*.AppImage; do [ -f "$file" ] && [[ "$file" != *latest.AppImage ]] && mv "$file" "Nearsec Together (Linux).AppImage"; done
-          for file in NearsecTogether_*.deb; do [ -f "$file" ] && mv "$file" "Nearsec Together (Debian).deb"; done
-          for file in NearsecTogether-*.rpm; do [ -f "$file" ] && mv "$file" "Nearsec Together (RedHat).rpm"; done
-          for file in *.apk; do [ -f "$file" ] && mv "$file" "Nearsec Together (Android).apk"; done
-
-      - name: Wait for previous Itch.io processing (Rate Limit Bypass)
-        run: sleep 45
-
-      - name: Publish Windows to Itch.io
-        uses: yeslayla/butler-publish-itchio-action@master
-        env:
-          BUTLER_CREDENTIALS: ${{ secrets.BUTLER_CREDENTIALS }}
-          CHANNEL: windows
-          ITCH_GAME: nearsectogether
-          ITCH_USER: cutefame
-          PACKAGE: "release-assets/Nearsec Together (Windows).exe"
-
-      - name: Publish macOS to Itch.io
-        uses: yeslayla/butler-publish-itchio-action@master
-        env:
-          BUTLER_CREDENTIALS: ${{ secrets.BUTLER_CREDENTIALS }}
-          CHANNEL: mac
-          ITCH_GAME: nearsectogether
-          ITCH_USER: cutefame
-          PACKAGE: "release-assets/Nearsec Together (Mac).dmg"
-
-      - name: Publish Linux (AppImage) to Itch.io
-        uses: yeslayla/butler-publish-itchio-action@master
-        env:
-          BUTLER_CREDENTIALS: ${{ secrets.BUTLER_CREDENTIALS }}
-          CHANNEL: linux
-          ITCH_GAME: nearsectogether
-          ITCH_USER: cutefame
-          PACKAGE: "release-assets/Nearsec Together (Linux).AppImage"
-
-      - name: Publish Linux (Debian) to Itch.io
-        uses: yeslayla/butler-publish-itchio-action@master
-        env:
-          BUTLER_CREDENTIALS: ${{ secrets.BUTLER_CREDENTIALS }}
-          CHANNEL: linux-deb
-          ITCH_GAME: nearsectogether
-          ITCH_USER: cutefame
-          PACKAGE: "release-assets/Nearsec Together (Debian).deb"
-
-      - name: Publish Linux (RedHat) to Itch.io
-        uses: yeslayla/butler-publish-itchio-action@master
-        env:
-          BUTLER_CREDENTIALS: ${{ secrets.BUTLER_CREDENTIALS }}
-          CHANNEL: linux-rpm
-          ITCH_GAME: nearsectogether
-          ITCH_USER: cutefame
-          PACKAGE: "release-assets/Nearsec Together (RedHat).rpm"
-
-      - name: Publish Android to Itch.io
-        uses: yeslayla/butler-publish-itchio-action@master
-        env:
-          BUTLER_CREDENTIALS: ${{ secrets.BUTLER_CREDENTIALS }}
-          CHANNEL: android
-          ITCH_GAME: nearsectogether
-          ITCH_USER: cutefame
-          PACKAGE: "release-assets/Nearsec Together (Android).apk"
