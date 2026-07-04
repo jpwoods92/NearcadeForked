@@ -50,6 +50,7 @@ Goal: reduce these into small, single-responsibility modules with a safety net (
 - [ ] Split root `package.json` scripts/deps so Capacitor and Wrangler deps aren't installed for people just running the desktop app, and vice versa.
 - [ ] Add a top-level `docs/ARCHITECTURE.md` (or promote `src/docs/ADVANCED_LOGIC.md`) that states these boundaries explicitly, so future contributors don't blur them again.
 - [ ] This phase is mechanical (moving folders, updating import paths) — do it after Phase 1 so there's less to move.
+- [ ] **Carried over from Phase 1**: replace `src/scripts/trystero-bundle.js` (hand-vendored, 3015 lines) with a real build step. Needs a minimal bundler (esbuild is the natural fit — fast, zero-config for this case) that bundles `@trystero-p2p/torrent` (which imports `@trystero-p2p/core` via a bare specifier the browser can't resolve unbundled) into a single browser-consumable file, replacing the hand-copy `p2p-signaler.js` currently imports from. Since this is on the critical path of P2P viewer connections: build it as its own PR, diff the generated output against the current vendored file to confirm the module surface (`joinRoom` etc.) matches, and manually verify a host/viewer session actually connects before merging — don't rely on lint/unit tests alone for this one.
 
 ## Phase 3 — Break up `server.js` (2431 lines → modules)
 
