@@ -1,6 +1,5 @@
 const express = require("express");
 const http = require("http");
-const https = require("https");
 const WebSocket = require("ws");
 const crypto = require('crypto');
 require('dotenv').config();
@@ -10,6 +9,7 @@ const si = require('systeminformation');
 function hashIp(ip) { return crypto.createHash('sha256').update(ip).digest('hex'); }
 const os = require("os");
 const serverEnv = require('./server/env.js');
+const serverNetwork = require('./server/network-info.js');
 
 // --- STREAMER PRIVACY SCRUBBER ---
 const _origLog = console.log;
@@ -45,14 +45,12 @@ console.log = function (...args) {
   _origLog.call(console, msg);
 };
 
-const net = require("net");
 const fs = require("fs");
 const path = require('path');
 const sidecarPath = __dirname.includes('app.asar')
   ? path.join(process.resourcesPath, 'app.asar.unpacked', 'src', 'sidecar', 'input_driver.py')
   : path.join(__dirname, "..", "sidecar", "input_driver.py");
 const { exec, spawn } = require("child_process");
-const open = (...args) => import('open').then(({ default: open }) => open(...args));
 const which = require("which");
 const killPort = require("kill-port");
 const captureManager = require('../sidecar/CaptureManager.js');
@@ -327,49 +325,7 @@ function normalizeGamepadMsg(msg) {
 // live in ./server/env.js now — it runs its setup on require(), same as this
 // code used to run inline here.
 const { projectRoot, dataDir, loadConfig, saveConfig, readEnv, getAppVersionInfo } = serverEnv;
-
-function getLanIP() {
-  for (const iface of Object.values(os.networkInterfaces()))
-    for (const n of iface)
-      if (n.family === "IPv4" && !n.internal) return n.address;
-  return "127.0.0.1";
-}
-function shouldRequirePin(ip, hasTunnelHeader = false) {
-  // REQ 5: Arcade Mode PIN Stripping
-  if (process.argv.includes('--arcade-worker')) return false;
-
-  if (!ip) return true;
-  if (ip.startsWith('192.168.') || ip.startsWith('::ffff:192.168.')) return false;
-  if (ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1') {
-    if (hasTunnelHeader || process.env.USING_TUNNEL === 'true') return true;
-    return false;
-  }
-  if (ip.startsWith('100.')) return false;
-  return true;
-}
-function getTailscaleIP() {
-  for (const iface of Object.values(os.networkInterfaces()))
-    for (const n of iface)
-      if (n.family === "IPv4" && n.address.startsWith("100.")) return n.address;
-  return null;
-}
-function findFreePort(start) {
-  return new Promise(resolve => {
-    const s = net.createServer();
-    s.listen(start, () => { const p = s.address().port; s.close(() => resolve(p)); });
-    s.on("error", () => findFreePort(start + 1).then(resolve));
-  });
-}
-function openBrowser(url) {
-  open(url).catch(() => { });
-}
-function getPublicIP() {
-  return new Promise(resolve => {
-    https.get("https://api.ipify.org", res => {
-      let d = ""; res.on("data", c => d += c); res.on("end", () => resolve(d.trim()));
-    }).on("error", () => resolve(null));
-  });
-}
+const { getLanIP, shouldRequirePin, getTailscaleIP, findFreePort, openBrowser, getPublicIP } = serverNetwork;
 
 // ── Binary path resolver ─────────────────────────────────────────────
 const FALLBACK_PATHS = {
