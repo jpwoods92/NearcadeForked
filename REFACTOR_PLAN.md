@@ -124,8 +124,22 @@ This is the biggest and riskiest phase — do it last, after Phases 0–4 give y
 - [ ] Re-run the Phase 0 characterization tests after each phase to confirm no behavior drift; expand unit test coverage opportunistically as modules are extracted (test the new small module, not the old giant one).
 - [ ] Close out the Phase 0 lint/format debt deliberately deferred at the start: once the extracted modules from Phases 3–8 are small and settled, remove the `legacyRuleOverrides` block in `eslint.config.mjs` (`no-unused-vars`/`no-undef`/`no-empty`/`no-fallthrough`/`no-useless-assignment`/`no-case-declarations`/`no-async-promise-executor`/`no-cond-assign`/`no-useless-escape`/`no-extra-boolean-cast` are all currently downgraded to `warn` repo-wide) — file-by-file as each is refactored and its warnings cleaned up is easier than one big-bang pass. Then run `npm run format:write` once (a large, refactor-only, no-behavior-change commit on its own) and add `npm run format` as a required CI step in `.github/workflows/ci.yml` alongside `lint`/`test:unit`. Doing this now, before the file splits, would just mean re-diffing everything again later.
 
+## Phase 10 — Dependency upgrades (last, once the codebase is easier to test)
+
+Deliberately last: upgrading a dependency while the code is still one giant tangled file makes it hard to tell "did my refactor break this" from "did the upgrade break this." Once Phases 3–9 land, regressions are much easier to isolate to a single small module.
+
+Current gaps as of this writing (`npm outdated`):
+
+- [ ] **`electron` — 33.4.11 installed, 43.0.0 latest.** This is the big one: 10 major versions behind, meaning 10 major versions of Chromium security patches and API changes not yet picked up. Don't jump straight to latest — Electron majors do break things (deprecated/removed APIs, changed default sandboxing behavior). Upgrade one major version at a time, running the app for real after each hop, paying particular attention to `app/electron-main.js`'s Chromium command-line switches (`enable-features=WebRTCPipeWireCapturer`, `VaapiVideoEncoder`/`VaapiVideoDecoder`, gamescope/Wayland handling) since flag names and defaults shift across Electron/Chromium versions and this app already has documented GPU-flag troubleshooting steps tied to specific behavior.
+- [ ] **`electron-builder` — 24.13.3 → 26.15.3.** Upgrade alongside or right after Electron itself; check the NSIS/AppImage/deb/rpm/pacman packaging config in `package.json`'s `build` block still produces working installers on each target platform before trusting it.
+- [ ] **`express` — 4.22.2 → 5.2.1.** Major version bump with known breaking changes (removed methods, changed `req.query` parsing, middleware signature changes). Review Express's own migration guide against `app/src/scripts/server.js`'s actual route/middleware usage before attempting this — don't do it opportunistically alongside other Phase 10 upgrades.
+- [ ] **`which` — 4.0.0 → 7.0.0** and **`open` — 10.2.0 → 11.0.0**: smaller surface area (both used in a handful of places — binary path resolution in `server/tunnel.js`, browser-opening in `server/network-info.js`) but still major bumps; check their changelogs for breaking changes before updating.
+- [ ] Patch/minor bumps with low expected risk — batch these together: `@capacitor/*` (8.4.0 → 8.4.1), `@fails-components/webtransport` (1.6.3 → 1.6.4), `systeminformation` (5.31.7 → 5.31.12), `wrangler` (4.103.0 → 4.107.0).
+- [ ] After each upgrade (or batch of low-risk patch upgrades), re-run the full verification pass established in earlier phases: lint, unit tests, `bin/verify.js` smoke test, and a real `electron-builder --dir` packaging dry run — the same bar every extraction in Phases 3+ was held to.
+- [ ] Re-run `npm outdated` at the end to confirm the gap actually closed rather than assuming it did.
+
 ---
 
 ### Suggested order of execution
 
-Phase 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9. Phases 0–2 are foundational and low-risk; 3–4 are medium (server/electron are more mechanical, well-bounded); 5 is the highest-risk and highest-payoff and should only start once the pattern is proven on smaller files.
+Phase 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10. Phases 0–2 are foundational and low-risk; 3–4 are medium (server/electron are more mechanical, well-bounded); 5 is the highest-risk and highest-payoff and should only start once the pattern is proven on smaller files. Phase 10 (dependency upgrades) is deliberately last, once the codebase is small and well-tested enough to tell upgrade regressions apart from refactor regressions.
