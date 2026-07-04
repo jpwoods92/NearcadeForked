@@ -3563,7 +3563,6 @@ function sendCtrlSettings() {
             hybridInput:      ctrlSettings.hybridInput,
             ctrlType:         ctrlSettings.ctrlType,
             touchLayout:      ctrlSettings.touchLayout,
-            allowVR:          appSettings.allowVR,
             expDevices:       expDevices,
         }));
     }
@@ -4039,7 +4038,6 @@ function applyAppSettingsUI() {
         ['alwaysOnTop',       'settingTrackAlwaysOnTop', 'settingRowAlwaysOnTop'],
         ['hidePreviewOnStart','settingTrackHidePreview', 'settingRowHidePreview'],
         ['captureMic',        'settingTrackMic',         'settingRowMic'],
-        ['allowVR',           'settingTrackAllowVR',     'settingRowAllowVR'],
     ];
     pairs.forEach(([key, trackId, rowId]) => {
         const track = document.getElementById(trackId);

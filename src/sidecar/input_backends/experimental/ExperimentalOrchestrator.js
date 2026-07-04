@@ -40,7 +40,7 @@ function send(msg) {
         }
 
         const pythonCmd = isWin ? 'python' : 'python3';
-        const args = ['-u', pythonScript];
+        const args = [pythonScript];
         if (scriptName === 'backend_eyetracking.py') args.push('--joystick');
         
         proc = spawn(pythonCmd, args, { stdio: ['pipe', 'inherit', 'inherit'] });
