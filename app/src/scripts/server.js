@@ -15,6 +15,10 @@ const {
   startTunnelCloudflared, startTunnelVps, startTunnelPlayit,
   startTunnelLocalhostRun, startTunnelServeo, startTunnelZrok, startTunnel,
 } = require('./server/tunnel.js');
+const {
+  arcadeSessions, arcadeClients, nextArcadeHostId, broadcastToArcade,
+  _arcadePost, stopArcadeHeartbeatWorker,
+} = require('./server/arcade-signaling.js');
 
 // --- STREAMER PRIVACY SCRUBBER ---
 const _origLog = console.log;
@@ -71,10 +75,6 @@ const viewerNames = new Map();
 const inputPerms = new Map();
 const pinAttempts = new Map();
 
-const { Worker } = require('worker_threads');
-
-const PusherRaw = require('pusher-js');
-
 const isPackaged = __dirname.includes('app.asar');
 const inputDriver = require('../sidecar/input_backends/InputOrchestrator.js');
 const experimentalDriver = require('../sidecar/input_backends/experimental/ExperimentalOrchestrator.js');
@@ -93,71 +93,9 @@ const { initVirtualAudio, routeGameAudio, stopRouting, destroyVirtualAudio } = r
 // Now create the sink — venmic is already listening to the PipeWire graph
 initVirtualAudio();
 
-// ── Bulletproof Electron/Node Module Extractor ──
-let Pusher;
-if (typeof PusherRaw === 'function') {
-  Pusher = PusherRaw;
-} else if (PusherRaw && typeof PusherRaw.Pusher === 'function') {
-  Pusher = PusherRaw.Pusher;
-} else if (PusherRaw && typeof PusherRaw.default === 'function') {
-  Pusher = PusherRaw.default;
-} else {
-  console.error("PUSHER DIAGNOSTIC:", PusherRaw);
-  Pusher = class DummyPusher {
-    subscribe() { return { trigger: () => { } }; }
-  };
-}
-
-const pusher = new Pusher('a93f5405058cd9fc7967', {
-  cluster: 'us2',
-  authEndpoint: 'https://nearsec.cutefame.net/api/pusher-auth'
-});
-
-const globalArcadeChannel = pusher.subscribe('private-arcade-global');
-
-// ── Arcade Heartbeat Worker ───────────────────────────────────────────────────
-// All arcadePingInterval / Pusher sync loops run in a dedicated thread so they
-// can never delay the signaling event loop, even under heavy load.
-let _arcadeWorker = null;
-
-function spawnArcadeHeartbeatWorker() {
-  _arcadeWorker = new Worker(path.join(__dirname, '..', 'sidecar', 'arcade_heartbeat_worker.js'), {
-    workerData: { syncIntervalMs: 30_000, pingIntervalMs: 25_000 }
-  });
-
-  _arcadeWorker.on('message', (msg) => {
-    switch (msg.type) {
-      case 'log': console.log(msg.message); break;
-      case 'error': console.error(msg.message); break;
-
-      // Worker asks main thread to fire the Pusher trigger
-      // (pusher-js channels must live on the thread that owns the WebSocket)
-      case 'pusher-trigger':
-        try {
-          if (typeof globalArcadeChannel !== 'undefined') {
-            globalArcadeChannel.trigger(msg.event, msg.data);
-          }
-        } catch (e) {
-          console.warn('[arcade_heartbeat] Pusher trigger failed:', e.message);
-        }
-        break;
-    }
-  });
-
-  _arcadeWorker.on('error', (e) => console.error('[arcade_heartbeat] Runtime error:', e.message));
-  _arcadeWorker.on('exit', (code) => {
-    if (code !== 0) console.warn(`[arcade_heartbeat] Exited with code ${code}`);
-    _arcadeWorker = null;
-  });
-}
-
-// Helper — post to arcade worker only when it's alive
-function _arcadePost(msg) {
-  if (_arcadeWorker) _arcadeWorker.postMessage(msg);
-}
-
-// Boot the worker immediately (it idles quietly until a session goes active)
-spawnArcadeHeartbeatWorker();
+// Pusher setup, the arcade heartbeat worker, and the arcade session registry
+// all live in ./server/arcade-signaling.js now (it spawns the heartbeat
+// worker on require(), same as this code used to run inline here).
 
 // toUinput() and normalizeGamepadMsg() live in ./server/input-bridge.js now.
 
@@ -177,30 +115,8 @@ function makePin() {
   return String(crypto.randomInt(1000, 10000));
 }
 
-// ── Arcade session registry ───────────────────────────────────────────────────
-const arcadeSessions = new Map();
-const arcadeClients = new Set();
-let arcadeHostId = 0;
-
-const ARCADE_ALLOWED_DOMAINS = [
-  'trycloudflare.com',
-  'zrok.io',
-  'localhost.run',
-  'serveo.net',
-];
-function isAllowedArcadeUrl(rawUrl) {
-  try {
-    const u = new URL(rawUrl);
-    if (u.protocol !== 'https:') return false;
-    return ARCADE_ALLOWED_DOMAINS.some(d =>
-      u.hostname === d || u.hostname.endsWith('.' + d)
-    );
-  } catch { return false; }
-}
-function broadcastToArcade(msg) {
-  const data = JSON.stringify(msg);
-  arcadeClients.forEach(c => { if (c.readyState === 1) c.send(data); });
-}
+// arcadeSessions/arcadeClients/broadcastToArcade/isAllowedArcadeUrl all live
+// in ./server/arcade-signaling.js now.
 
 // loadConfig()/saveConfig() live in ./server/env.js now.
 
@@ -1052,7 +968,7 @@ async function main() {
 
             const cfg = loadConfig(); // Fetch live config
             const sessionName = cfg.hostName || 'Host';
-            const sessionId = 'ns-' + Date.now() + '-' + (++arcadeHostId);
+            const sessionId = 'ns-' + Date.now() + '-' + nextArcadeHostId();
             const session = {
               id: sessionId,
               game: msg.config?.title || 'Arcade Game',
@@ -1736,10 +1652,7 @@ function cleanup(isElectron = false) {
   destroyVirtualAudio();
 
   // Arcade heartbeat worker: clean shutdown
-  if (_arcadeWorker) {
-    try { _arcadeWorker.postMessage({ type: 'stop' }); } catch (_) { }
-    setTimeout(() => { try { _arcadeWorker && _arcadeWorker.terminate(); } catch (_) { } }, 500);
-  }
+  stopArcadeHeartbeatWorker();
 
   if (activeTunnelProc) { try { activeTunnelProc.kill(); } catch (_) { } }
   if (activeTunnelProc) { try { activeTunnelProc.kill(); } catch (_) { } }
