@@ -2910,7 +2910,7 @@ function connectVps(cfg) {
                 inner.viewer_id = viewerId;
                 if (inner.type === 'gamepad' && !inner.pad_id) inner.pad_id = viewerId + '_0';
 
-                if (inner.type === 'answer' || inner.type === 'ice-viewer' || inner.type === 'viewer-mic-ready') {
+                if (inner.type === 'answer' || inner.type === 'ice-viewer' || inner.type === 'viewer-mic-ready' || inner.type === 'viewer-vr-active') {
                     inner._viewerId = viewerId;
                     // Feed directly to the local host's websocket handler so it processes the WebRTC handshake
                     if (ws && typeof ws.onmessage === 'function') {
@@ -3551,18 +3551,24 @@ function sendCtrlSettings() {
         else expDevices = JSON.parse(localStorage.getItem('ns_exp_devices') || '[]');
     } catch(e) {}
 
+    const payload = JSON.stringify({
+        type: 'ctrl-settings',
+        forceXboxOne:     ctrlSettings.forceXboxOne,
+        enableDualShock:  ctrlSettings.enableDualShock,
+        enableMotion:     ctrlSettings.enableMotion,
+        defaultInputMode: ctrlSettings.defaultInputMode,
+        hybridInput:      ctrlSettings.hybridInput,
+        ctrlType:         ctrlSettings.ctrlType,
+        touchLayout:      ctrlSettings.touchLayout,
+        expDevices:       expDevices,
+    });
+
     if (ws && ws.readyState === 1) {
-        ws.send(JSON.stringify({
-            type: 'ctrl-settings',
-            forceXboxOne:     ctrlSettings.forceXboxOne,
-            enableDualShock:  ctrlSettings.enableDualShock,
-            enableMotion:     ctrlSettings.enableMotion,
-            defaultInputMode: ctrlSettings.defaultInputMode,
-            hybridInput:      ctrlSettings.hybridInput,
-            ctrlType:         ctrlSettings.ctrlType,
-            touchLayout:      ctrlSettings.touchLayout,
-            expDevices:       expDevices,
-        }));
+        ws.send(payload);
+    }
+    
+    if (typeof _vpsWs !== 'undefined' && _vpsWs && _vpsWs.readyState === 1) {
+        _vpsWs.send(payload);
     }
 }
 
