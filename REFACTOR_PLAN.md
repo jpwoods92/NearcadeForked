@@ -36,13 +36,13 @@ Goal: reduce these into small, single-responsibility modules with a safety net (
 
 ## Phase 1 — Cleanup / dead code (quick wins, no behavior risk)
 
-- [ ] Delete `dist-android/` from git tracking, add it to `.gitignore`.
-- [ ] Delete committed native build artifacts under `src/sidecar/input_backends/**/build/` and `experimental/steamvr_driver/build/`; gitignore build dirs.
-- [ ] Delete `src/scripts/trystero-torrent.min.js` (0 bytes, unused).
-- [ ] Delete stray `src/package-lock.json`.
-- [ ] Resolve the `electron-main.js` / `.gitignore` inconsistency — either untrack-and-ignore intentionally or remove the stale gitignore entry. Confirm which is intended before acting.
-- [ ] Replace `src/scripts/trystero-bundle.js` (hand-vendored, 3015 lines) with the actual `trystero` / `@trystero-p2p/core` npm dependency already in `package.json`. If a fork/patch was needed, document why in a comment at the import site instead of committing a full copy.
-- [ ] Move `src/sidecar/input_backends/experimental/steamvr_driver` out of the main sidecar tree into a clearly-labeled `experimental/` top-level folder (or a separate branch) so it's not mixed with production-path code.
+- [x] Delete `dist-android/` from git tracking, add it to `.gitignore`.
+- [x] Delete committed native build artifacts under `src/sidecar/input_backends/**/build/` and `experimental/steamvr_driver/build/`; gitignore build dirs. Turned out `build/Release/uinputBridge.node` (the compiled addon) wasn't disposable — it's referenced directly by electron-builder's `files`/`asarUnpack` config and there was no CI step regenerating it, so the checked-in binary *was* the release artifact. Rather than leave that gap, added `node-addon-api`/`node-gyp` as devDependencies, a `npm run build:uinput` script (`cd src/sidecar/input_backends && node-gyp rebuild`), and a "Build Linux uinput native addon" step in `.github/workflows/release.yml` (Linux-only, before packaging) so the binary is now built fresh instead of committed. `InputOrchestrator.js` already null-checks/falls back to the Python sidecar if the addon is missing, so local dev without running the build script still works. `experimental/steamvr_driver/build/` (CMake cache/intermediates, unreferenced by any packaging config) was just deleted outright.
+- [x] Delete `src/scripts/trystero-torrent.min.js` (0 bytes, unused — confirmed zero references anywhere).
+- [x] Delete stray `src/package-lock.json`.
+- [x] Resolve the `electron-main.js` / `.gitignore` inconsistency — removed the stale `.gitignore` entry; it's the app's real entrypoint and was already tracked, so the ignore line was dead weight.
+- [ ] **Deferred, not done in this pass.** Replace `src/scripts/trystero-bundle.js` (hand-vendored, 3015 lines) with the actual `trystero`/`@trystero-p2p/torrent` npm dependency. Investigated: `p2p-signaler.js` loads it as a real ES module (`<script type="module">`, no bundler in this repo), and `@trystero-p2p/torrent`'s own npm dist imports `@trystero-p2p/core` via a bare specifier a browser can't resolve without either a bundler or an import map — neither exists here yet. Fixing this properly means introducing real bundling infrastructure (e.g. esbuild) for the first time, and it's on the critical path of P2P viewer connections, so it's deferred to Phase 2 (where workspace/tooling boundaries are being established anyway) rather than rushed into a "quick wins" pass.
+- [x] `src/sidecar/input_backends/experimental/` — re-scoped this item after inspection: it's not just `steamvr_driver`, the whole `experimental/` folder (several Python input backends + `ExperimentalOrchestrator.js`) is already actively `require()`'d by `server.js` and already lives under a clearly-named `experimental/` subdirectory. The actual problem (committed CMake build artifacts under `steamvr_driver/build/`) is fixed above; physically relocating the whole tree now would only mean editing `server.js`'s require path for no functional benefit, so left in place.
 
 ## Phase 2 — Establish workspace boundaries
 

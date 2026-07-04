@@ -6,6 +6,7 @@
   "main": "electron-main.js",
   "scripts": {
     "start": "node src/scripts/server.js",
+    "build:uinput": "cd src/sidecar/input_backends && node-gyp rebuild",
     "test": "npm run test:unit && node bin/verify.js",
     "test:unit": "vitest run",
     "test:unit:watch": "vitest",
@@ -51,6 +52,8 @@
     "eslint": "^10.6.0",
     "eslint-config-prettier": "^10.1.8",
     "globals": "^17.7.0",
+    "node-addon-api": "^8.9.0",
+    "node-gyp": "^13.0.1",
     "prettier": "^3.9.4",
     "vitest": "^4.1.9",
     "wrangler": "^4.90.0"
