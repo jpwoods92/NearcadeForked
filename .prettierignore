@@ -1,0 +1,10 @@
+node_modules/
+dist/
+dist-android/
+android/
+website/
+vps/
+build/
+src/scripts/trystero-bundle.js
+src/sidecar/**/build/
+*.min.js

@@ -28,11 +28,11 @@ Goal: reduce these into small, single-responsibility modules with a safety net (
 
 ## Phase 0 — Safety net (do this before touching any logic)
 
-- [ ] Add ESLint (flat config) + Prettier, scoped initially just to `src/scripts/`, `electron-*.js`. Don't fight existing style everywhere at once — start with `no-unused-vars`, `no-undef`, and formatting only.
-- [ ] Add `.editorconfig` for consistent indentation across the JS/Python/C++/Rust files in the repo.
-- [ ] Pick a lightweight test runner (`vitest` or `node:test` — no need for a heavy framework given current scope) and wire it into `npm test` alongside the existing `bin/verify.js` smoke test rather than replacing it.
-- [ ] Write characterization tests for the highest-risk shared logic before extracting it: codec negotiation in `host.js`, chat functions, `pactl` audio routing. These tests exist to catch regressions during Phases 3–6, not for full coverage.
-- [ ] Add CI workflow (or extend an existing one in `.github/workflows/`) to run lint + tests on PRs.
+- [x] Add ESLint (flat config, `eslint.config.mjs`) + Prettier, scoped initially just to `src/scripts/`, `electron-*.js`, sidecar/bin. `no-unused-vars`/`no-undef`/etc. are downgraded to `warn` on existing files (hundreds of pre-existing findings — not fixed here, see individual phases) so CI can still gate genuinely new problems. `npm run lint` / `npm run format` (check) / `npm run format:write`.
+- [x] Add `.editorconfig` for consistent indentation across the JS/Python/C++/Rust files in the repo.
+- [x] Picked `vitest` (+ `jsdom` env, already a dependency) as the test runner. `npm test` now runs `npm run test:unit` (vitest) then `bin/verify.js`, so the existing smoke test is preserved, not replaced. `npm run test:unit:watch` for local iteration.
+- [x] Wrote characterization tests (`test/unit/`) for the highest-risk shared logic: chat functions (`log`/`appendChat`/`sendChat` in both `host.js` and `viewer.js` — including the dedup behavior that already differs between the two copies), `preferVideoCodec` codec-sorting/H264-profile-fix/RTX-pairing logic in `host.js`, and the `pactl` output parsers (`parseSinkInputs`/`parseSinks`/`isBlacklisted`) in `audio_blacklist_daemon.js`. To make this possible without moving any logic yet, added a small inert `if (typeof module !== 'undefined') module.exports = {...}` shim at the end of `host.js`/`viewer.js` (no-op in the browser, since `module` doesn't exist there) and exported the three pure parser functions from `audio_blacklist_daemon.js`. See `test/helpers/browser-shims.js` for the jsdom/stub setup this required (Pusher, I18N, fetch, and localStorage all needed stubbing to load these files under Node). 22 tests passing.
+- [x] Added `.github/workflows/ci.yml` running `npm run lint` + `npm run test:unit` on PRs and pushes to `main`. Deliberately does **not** run `bin/verify.js` in CI yet — it shells out to `pactl`/uinput/sidecar binaries that a bare `ubuntu-latest` runner doesn't have configured; wiring that up is future work, not part of this pass.
 
 ## Phase 1 — Cleanup / dead code (quick wins, no behavior risk)
 
@@ -106,6 +106,7 @@ This is the biggest and riskiest phase — do it last, after Phases 0–4 give y
 - [ ] Add a `CLAUDE.md` (or expand `README.md`) documenting the new module boundaries so contributors don't collapse them back into monoliths.
 - [ ] Add a soft file-size guideline (e.g. "flag PRs that push a file past ~400 lines") enforced via a simple CI check or just PR review convention.
 - [ ] Re-run the Phase 0 characterization tests after each phase to confirm no behavior drift; expand unit test coverage opportunistically as modules are extracted (test the new small module, not the old giant one).
+- [ ] Close out the Phase 0 lint/format debt deliberately deferred at the start: once the extracted modules from Phases 3–8 are small and settled, remove the `legacyRuleOverrides` block in `eslint.config.mjs` (`no-unused-vars`/`no-undef`/`no-empty`/`no-fallthrough`/`no-useless-assignment`/`no-case-declarations`/`no-async-promise-executor`/`no-cond-assign`/`no-useless-escape`/`no-extra-boolean-cast` are all currently downgraded to `warn` repo-wide) — file-by-file as each is refactored and its warnings cleaned up is easier than one big-bang pass. Then run `npm run format:write` once (a large, refactor-only, no-behavior-change commit on its own) and add `npm run format` as a required CI step in `.github/workflows/ci.yml` alongside `lint`/`test:unit`. Doing this now, before the file splits, would just mean re-diffing everything again later.
 
 ---
 

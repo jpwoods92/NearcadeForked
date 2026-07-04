@@ -251,7 +251,16 @@ function stopDaemon(handle) {
   if (handle) clearInterval(handle);
 }
 
-module.exports = { startDaemon, stopDaemon, DEFAULT_BLACKLIST };
+module.exports = {
+  startDaemon,
+  stopDaemon,
+  DEFAULT_BLACKLIST,
+  // Exported for characterization tests (REFACTOR_PLAN.md Phase 0) — pure
+  // parsing/matching logic, no behavior change to the daemon itself.
+  parseSinkInputs,
+  parseSinks,
+  isBlacklisted,
+};
 
 // ── Standalone mode ───────────────────────────────────────────────────────────
 // node audio_blacklist_daemon.js [extra-term ...]

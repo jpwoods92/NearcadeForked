@@ -4455,3 +4455,12 @@ function addExpDevice(inVal, inText, inEnabled = true) {
     list.appendChild(el);
     saveExpDevices();
 }
+
+// ── Test-only export shim ──────────────────────────────────────────────────
+// `module` does not exist in the browser, so this block is inert there and
+// changes no runtime behavior. It exists purely so Vitest (Node) can import
+// these functions directly instead of re-parsing the whole file. See
+// REFACTOR_PLAN.md Phase 0 / test/unit/chat.test.js.
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { log, appendChat, sendChat, preferVideoCodec };
+}
