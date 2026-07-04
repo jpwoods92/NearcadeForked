@@ -15,6 +15,19 @@ let isWebCodecs = process.argv.includes('--webcodecs');
 let isFFmpegCapture = process.argv.includes('--ffmpeg');
 const gotTheLock = isArcadeWorker ? true : app.requestSingleInstanceLock();
 
+// ── DISCORD PROTOCOL REGISTRATION (Linux fix) ────────────────────────────────
+// DiscordRPC.register() creates the ~/.local/share/applications/discord-<id>.desktop
+// file that XDG uses to route "Ask to Join" deep links to our app.
+// This MUST run at startup (not lazily) or the protocol handler never exists.
+try {
+  const _earlySettings = (() => {
+    try { return JSON.parse(fs.readFileSync(path.join(_getConfigDir(), 'nearsectogether.config.json'), 'utf8')); } catch { return {}; }
+  })();
+  const _discordClientId = _earlySettings.discordClientId || '1241907722765324391';
+  if (!isArcadeWorker) require('discord-rpc').register(_discordClientId);
+} catch (_) {}
+// ─────────────────────────────────────────────────────────────────────────────
+
 
 // ── CONFIGURATION DIR UTILS ──
 function _getConfigDir() {
@@ -831,10 +844,39 @@ app.on('before-quit', () => {
 
 app.on('window-all-closed', () => app.quit());
 
-app.on('second-instance', () => {
+app.on('second-instance', (_event, argv) => {
   if (win) {
     if (win.isMinimized()) win.restore();
     if (!win.isVisible()) win.show();
     win.focus();
+  }
+
+  // ── Discord "Ask to Join" deep link handler (Linux) ──
+  // When a friend clicks "Join" on Discord, it spawns a second instance of the app
+  // with the joinSecret passed as a discord-<clientId>:// URI in argv.
+  // We parse that URI here and navigate the window to the session.
+  if (!win || !serverPort) return;
+  const joinArg = argv.find(a => a.startsWith('discord-'));
+  if (!joinArg) return;
+
+  try {
+    // The URI is: discord-<clientId>://discord/join?secret=<joinSecret>
+    const url = new URL(joinArg);
+    const secret = url.searchParams.get('secret');
+    if (!secret || secret === 'none') return;
+
+    console.log('[Discord] Ask-to-Join received, secret:', secret);
+
+    // The joinSecret is either a P2P room code or a tunnel URL.
+    // Tunnel URLs start with http(s)://; everything else is a P2P room code.
+    // viewer.js expects P2P codes as: ?host=p2p://ROOMCODE
+    const isUrl = secret.startsWith('http://') || secret.startsWith('https://');
+    const viewerUrl = isUrl
+      ? `http://localhost:${serverPort}/?client=1&compat=1&host=${encodeURIComponent(secret)}`
+      : `http://localhost:${serverPort}/?client=1&compat=1&host=${encodeURIComponent('p2p://' + secret)}`;
+
+    win.loadURL(viewerUrl);
+  } catch (e) {
+    console.error('[Discord] Failed to parse join URI:', e.message);
   }
 });

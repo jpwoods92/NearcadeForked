@@ -106,6 +106,14 @@ const KBM_BTN_MAP = {
     'START': 0x1000, 'SELECT': 0x2000, 'GUIDE': 0x4000
 };
 
+const BUTTON_ALIASES = {
+    BTN_SOUTH: 'A', BTN_EAST: 'B', BTN_WEST: 'X', BTN_NORTH: 'Y',
+    BTN_TL: 'LB', BTN_TR: 'RB', BTN_TL2: 'LT', BTN_TR2: 'RT',
+    BTN_SELECT: 'SELECT', BTN_START: 'START',
+    BTN_THUMBL: 'L3', BTN_THUMBR: 'R3',
+    BTN_DPAD_UP: 'UP', BTN_DPAD_DOWN: 'DOWN', BTN_DPAD_LEFT: 'LEFT', BTN_DPAD_RIGHT: 'RIGHT'
+};
+
 const PROFILES = {
     xbox360: { vendor: 0x045E, product: 0x028E, version: 0x0114, name: "Microsoft X-Box 360 pad" },
     xbox: { vendor: 0x045E, product: 0x028E, version: 0x0114, name: "Microsoft X-Box 360 pad" },
@@ -474,7 +482,9 @@ function _handleKbm(msg) {
     if (typeof KBM_BINDINGS !== 'undefined' && KBM_BINDINGS) {
         if (KBM_BINDINGS.buttons) {
             for (const [k, v] of Object.entries(KBM_BINDINGS.buttons)) {
-                flatKeys[k] = v.replace('BTN_', '');
+                if (!v) continue;
+                const normalized = String(v).trim().toUpperCase();
+                flatKeys[k] = BUTTON_ALIASES[normalized] || normalized.replace(/^BTN_/, '');
             }
         }
         if (KBM_BINDINGS.left_stick) {
@@ -483,10 +493,21 @@ function _handleKbm(msg) {
                 if (v.axis === 'ABS_X') flatKeys[k] = v.val < 0 ? 'LS_LEFT' : 'LS_RIGHT';
             }
         }
+        if (KBM_BINDINGS.right_stick) {
+            for (const [k, v] of Object.entries(KBM_BINDINGS.right_stick)) {
+                if (v.axis === 'ABS_RY') flatKeys[k] = v.val < 0 ? 'RS_UP' : 'RS_DOWN';
+                if (v.axis === 'ABS_RX') flatKeys[k] = v.val < 0 ? 'RS_LEFT' : 'RS_RIGHT';
+            }
+        }
         if (KBM_BINDINGS.dpad) {
             for (const [k, v] of Object.entries(KBM_BINDINGS.dpad)) {
                 if (v.axis === 'ABS_HAT0Y') flatKeys[k] = v.val < 0 ? 'UP' : 'DOWN';
                 if (v.axis === 'ABS_HAT0X') flatKeys[k] = v.val < 0 ? 'LEFT' : 'RIGHT';
+            }
+        }
+        if (KBM_BINDINGS.triggers) {
+            for (const [k, v] of Object.entries(KBM_BINDINGS.triggers)) {
+                flatKeys[k] = String(v).toUpperCase();
             }
         }
     }
@@ -522,6 +543,9 @@ function _handleKbm(msg) {
             // Revert back to -1.0 to 1.0 float range, because _sendKbmStateToBuffer multiplies by 32767
             state.lx = (state.keys['LS_RIGHT'] ? 1.0 : 0) - (state.keys['LS_LEFT'] ? 1.0 : 0);
             state.ly = (state.keys['LS_DOWN'] ? 1.0 : 0) - (state.keys['LS_UP'] ? 1.0 : 0);
+        } else if (action.startsWith('RS_')) {
+            state.rx = (state.keys['RS_RIGHT'] ? 1.0 : 0) - (state.keys['RS_LEFT'] ? 1.0 : 0);
+            state.ry = (state.keys['RS_DOWN'] ? 1.0 : 0) - (state.keys['RS_UP'] ? 1.0 : 0);
         }
     }
     else if (msg.event === 'mousemove') {

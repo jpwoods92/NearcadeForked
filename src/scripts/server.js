@@ -1914,7 +1914,7 @@ async function main() {
         const provided = url.searchParams.get('password') || url.searchParams.get('pin') || '';
         if (provided !== sessionPassword) {
           try { ws.send(JSON.stringify({ type: 'session-password-required', reason: 'Session password incorrect.' })); } catch {}
-          ws.close();
+          ws.close(4004, "SESSION_PASSWORD_REJECTED");
           console.log(`[viewer] rejected — wrong session password (non-PIN path) from ${clientIp}`);
           return;
         }

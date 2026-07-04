@@ -1682,7 +1682,10 @@ async function connect() {
                 for (const c of (pc._iceBuf || [])) { try { await pc.addIceCandidate(new RTCIceCandidate(c)); } catch { } }
                 pc._iceBuf = [];
                 const answer = await pc.createAnswer();
-                await pc.setLocalDescription(answer);
+                // ── LOW-LATENCY SDP MUNGING (answer side) ──
+                let ansSdp = answer.sdp;
+                ansSdp = ansSdp.replace(/(a=rtpmap:\d+ opus\/48000\/2)/g, '$1\na=ptime:1\na=maxptime:1');
+                await pc.setLocalDescription({ type: answer.type, sdp: ansSdp });
                 ws.send(JSON.stringify({ type: 'answer', sdp: pc.localDescription }));
                 // Apply bandwidth profile now that transceivers are negotiated
                 _applyBwProfile(pc);
@@ -1931,12 +1934,20 @@ async function connect() {
             // do NOT schedule another reconnect — that's what causes the cascade loop.
             if (ws !== thisWs) return;
 
-            const AUTH_CODES = new Set([4001, 4002, 4003]);
+            const AUTH_CODES = new Set([4001, 4002, 4003, 4004]);
             if (AUTH_CODES.has(event.code) || stopReconnect) {
-                document.getElementById('pinScreen').classList.remove('gone');
-                const errEl = document.getElementById('pinErr');
-                if (errEl) errEl.textContent = event.code === 4003 ? 'You were kicked by the host.' : event.code === 4001 ? 'Too many attempts. Wait 2 minutes.' : 'Incorrect PIN.';
-                document.getElementById('pinInput').value = '';
+                if (event.code === 4004) {
+                    // Wrong session password — show the password input, not the PIN screen
+                    const pwScreen = document.getElementById('passwordScreen');
+                    const pwErr = document.getElementById('passwordErr');
+                    if (pwScreen) pwScreen.classList.remove('gone');
+                    if (pwErr) pwErr.textContent = 'Incorrect session password.';
+                } else {
+                    document.getElementById('pinScreen').classList.remove('gone');
+                    const errEl = document.getElementById('pinErr');
+                    if (errEl) errEl.textContent = event.code === 4003 ? 'You were kicked by the host.' : event.code === 4001 ? 'Too many attempts. Wait 2 minutes.' : 'Incorrect PIN.';
+                    document.getElementById('pinInput').value = '';
+                }
                 enteredPin = ''; enteredPassword = ''; stopReconnect = false; return;
             }
             setTimeout(connect, 2000);
@@ -2103,7 +2114,47 @@ async function updateStats() {
         }
     } catch { }
 }
-setInterval(updateStats, 2000);
+setInterval(updateStats, 500);
+
+// ── LOW-LATENCY ENFORCEMENT: Proactive buffer drain ──
+// Runs every 500ms. Uses jitterBufferTarget + playoutDelayHint to force the
+// browser's WebRTC stack to minimize the jitter buffer. playbackRate acts as
+// a secondary mechanism when the browser ignores the hints.
+let _prevJitterBufMs = 0;
+setInterval(async () => {
+    if (!pc || pc.connectionState !== 'connected') return;
+    // Force minimum jitter buffer on all video receivers
+    pc.getReceivers().forEach(r => {
+        if (r.track?.kind !== 'video') return;
+        try {
+            if ('playoutDelayHint' in r) r.playoutDelayHint = 0;
+            if ('jitterBufferTarget' in r) r.jitterBufferTarget = 0;
+        } catch (_) {}
+    });
+    // Measure buffer and adjust playback rate as secondary drain mechanism
+    try {
+        const stats = await pc.getStats();
+        for (const r of stats.values()) {
+            if (r.type === 'inbound-rtp' && r.kind === 'video') {
+                const emitted = r.jitterBufferEmittedCount || 1;
+                const delay = r.jitterBufferDelay || 0;
+                const bufMs = (delay / emitted) * 1000;
+                const videoEl = document.getElementById('video');
+                if (videoEl && !videoEl.paused) {
+                    if (bufMs < 5) videoEl.playbackRate = 1.0;
+                    else if (bufMs < 15) videoEl.playbackRate = 1.02;
+                    else if (bufMs < 30) videoEl.playbackRate = 1.08;
+                    else if (bufMs < 50) videoEl.playbackRate = 1.15;
+                    else videoEl.playbackRate = 1.25;
+                }
+                if (bufMs > 40 && bufMs > _prevJitterBufMs + 5) {
+                    requestKeyframeFromHost();
+                }
+                _prevJitterBufMs = bufMs;
+            }
+        }
+    } catch (_) {}
+}, 500);
 
 // ── FULLSCREEN ────────────────────────────────────────────────────────────────
 function landscape() { if (screen.orientation?.lock) screen.orientation.lock('landscape').catch(() => { }); }
@@ -2237,11 +2288,17 @@ function initWebCodecsViewer(config) {
     const decoderConfig = {
         codec: config.codec,
         codedWidth: config.codedWidth,
-        codedHeight: config.codedHeight
+        codedHeight: config.codedHeight,
+        optimizeForLatency: true
     };
 
     if (config.description) decoderConfig.description = new Uint8Array(config.description);
-    wcDecoder.configure(decoderConfig);
+    try {
+        wcDecoder.configure(decoderConfig);
+    } catch (_) {
+        delete decoderConfig.optimizeForLatency;
+        wcDecoder.configure(decoderConfig);
+    }
     console.log('[WebCodecs] Hardware Decoder Ready!');
 }
 

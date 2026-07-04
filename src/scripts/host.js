@@ -2568,12 +2568,34 @@ async function startWebCodecsNetworkPipeline(videoTrack) {
                 const { done, value: frame } = await reader.read();
                 if (done) break;
 
+                if (encoder.state === 'closed') {
+                    frame.close();
+                    continue;
+                }
+
+                // FIX: Dynamic Resolution Handling
+                // Capture cards and emulators (e.g., Smash Ultimate) frequently resize frames.
+                // If the encoder isn't reconfigured, it throws an error and permanently dies, causing a black screen.
+                const fW = (frame.displayWidth || frame.codedWidth) & ~1;
+                const fH = (frame.displayHeight || frame.codedHeight) & ~1;
+                if (fW > 0 && fH > 0 && (fW !== encoder._lastConfig.width || fH !== encoder._lastConfig.height)) {
+                    console.log(`[WebCodecs] Resolution changed: ${encoder._lastConfig.width}x${encoder._lastConfig.height} -> ${fW}x${fH}`);
+                    encoder._lastConfig.width = fW;
+                    encoder._lastConfig.height = fH;
+                    try { encoder.configure(encoder._lastConfig); } catch (e) { console.error(e); }
+                    _wcForceKeyframe = true;
+                }
+
                 if (encoder.encodeQueueSize > 2) {
                     frame.close();
                 } else {
                     const keyFrame = _wcForceKeyframe;
                     if (keyFrame) _wcForceKeyframe = false;
-                    encoder.encode(frame, { keyFrame });
+                    try {
+                        encoder.encode(frame, { keyFrame });
+                    } catch (e) {
+                        console.error('[WebCodecs] Encode frame error:', e);
+                    }
                     frame.close();
                 }
             }
