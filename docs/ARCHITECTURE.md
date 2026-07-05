@@ -13,7 +13,7 @@ This repository holds four independent projects that happen to share one git his
 
 ## Why `@capacitor/*` and `wrangler` are `optionalDependencies`
 
-Nothing under `app/` or `bin/` ever `require()`s a Capacitor or Wrangler package — they're invoked purely as CLIs (`npx cap sync android`, `wrangler deploy`/`dev`). So they're declared as `optionalDependencies` in the root `package.json`: a plain `npm install` still installs everything (no behavior change for existing workflows), but anyone who only cares about the desktop app can run `npm install --omit=optional` (or `npm ci --omit=optional`, as CI now does for the lint/test and desktop-release jobs) and skip ~365 packages of Android/Cloudflare tooling entirely.
+Nothing under `app/` or `bin/` ever `require()`s a Capacitor or Wrangler package — they're invoked purely as CLIs (`npx cap sync android`, `wrangler deploy`/`dev`). So they're declared as `optionalDependencies` in the root `package.json`: a plain `npm install` still installs everything (no behavior change for existing workflows), but anyone who only cares about the desktop app can run `npm install` (or `npm ci`, as CI now does for the lint/test and desktop-release jobs) and skip ~365 packages of Android/Cloudflare tooling entirely.
 
 This is deliberately **not** npm workspaces. Workspaces exist to manage multiple *npm packages* sharing one lockfile — but `android/` and `website/` have no `package.json` of their own and don't need one (they're not npm-managed), so there's nothing genuine for a `workspaces` array to list. A directory-level split plus `optionalDependencies` gets the practical benefit (smaller installs, clear ownership) without inventing dependency-management structure that has no second member.
 

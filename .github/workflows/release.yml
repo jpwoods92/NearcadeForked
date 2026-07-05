@@ -51,7 +51,7 @@ jobs:
       # This job only builds the Electron desktop app — Capacitor/Android and
       # Wrangler/website deps are optionalDependencies and unused here.
       - name: Install Dependencies
-        run: npm ci --omit=optional
+        run: npm ci
 
       # uinputBridge.node (Linux-only native addon, src/sidecar/input_backends)
       # is no longer committed to git — it's rebuilt fresh here via node-gyp

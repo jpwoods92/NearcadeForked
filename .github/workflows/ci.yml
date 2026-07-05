@@ -18,9 +18,12 @@ jobs:
           node-version: '22.x'
           cache: npm
 
-      # Lint/tests don't touch Capacitor or Wrangler — both optionalDependencies.
+      # Note: can't use --omit=optional here — vite's rolldown bundler ships its
+      # platform native binding as an optionalDependency, so omitting optional
+      # deps tree-wide breaks vitest, not just the Capacitor/Wrangler deps we
+      # actually meant to skip.
       - name: Install Dependencies
-        run: npm ci --omit=optional
+        run: npm ci
 
       - name: Lint
         run: npm run lint
