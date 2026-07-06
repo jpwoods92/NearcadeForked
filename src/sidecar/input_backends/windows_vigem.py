@@ -367,8 +367,12 @@ def _handle_gamepad(msg: dict):
         try:
             gp = vg.VX360Gamepad()
             
+            # Capture pad_id in a closure — vgamepad 0.1.0's register_notification()
+            # does not accept a user_data kwarg, but still passes user_data=None to
+            # the callback, so we ignore the callback's user_data and use our own.
+            _captured_pad_id = pad_id
             def _on_vibration(client, target, large_motor, small_motor, led_number, user_data):
-                vid = str(user_data).split('_')[0] if "_" in str(user_data) else str(user_data)
+                vid = str(_captured_pad_id).split('_')[0] if "_" in str(_captured_pad_id) else str(_captured_pad_id)
                 _emit({
                     "type": "rumble",
                     "viewerId": vid,
@@ -377,7 +381,7 @@ def _handle_gamepad(msg: dict):
                     "duration": 250
                 })
 
-            gp.register_notification(callback_function=_on_vibration, user_data=pad_id)
+            gp.register_notification(callback_function=_on_vibration)
 
             gp.update()  # Send an initial neutral state to register with ViGEmBus
             devices[pad_id] = gp
