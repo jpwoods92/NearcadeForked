@@ -405,13 +405,20 @@ async function createWindow() {
   win.webContents.session.setPermissionCheckHandler(() => true);
   win.webContents.session.setPermissionRequestHandler((wc, permission, callback) => callback(true));
 
-  // ── UNIFIED CAPTURE HANDLER (Fixes PipeWire Deadlocks & UI Freezes) ──
+  // ── UNIFIED CAPTURE HANDLER (Fixes PipeWire Deadlocks & UI Freezes & Windows Bugs) ──
   win.webContents.session.setDisplayMediaRequestHandler((request, callback) => {
     desktopCapturer.getSources({ types: ['screen', 'window'] }).then(sources => {
       if (sources && sources.length > 0) {
+        let chosenSource = sources[0]; // Default to screen
+        if (global.selectedSourceId) {
+          const match = sources.find(s => s.id === global.selectedSourceId);
+          if (match) chosenSource = match;
+          global.selectedSourceId = null; // Consume the ID
+        }
+        
         // WINDOWS AUDIO FIX: 'loopback' enables capturing desktop audio
-        if (process.platform === 'win32') callback({ video: sources[0], audio: 'loopback' });
-        else callback({ video: sources[0] });
+        if (process.platform === 'win32') callback({ video: chosenSource, audio: 'loopback' });
+        else callback({ video: chosenSource });
       } else {
         console.log('[electron] Capture blocked or no sources found. Cancelling.');
         callback(); // Empty callback safely aborts without crashing PipeWire
@@ -613,6 +620,10 @@ async function createWindow() {
       });
       return sources.map(s => ({ id: s.id, name: s.name, thumbnail: s.thumbnail.toDataURL(), isScreen: s.id.startsWith('screen:') }));
     } catch (_) { return []; }
+  });
+  
+  ipcMain.on('set-selected-source', (event, id) => {
+    global.selectedSourceId = id;
   });
 
   // Fix: Listen for 'run-setup', matching what the dashboard actually sends
