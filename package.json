@@ -42,6 +42,12 @@
     "ws": "^8.0.0"
   },
   "devDependencies": {
+    "@capacitor/android": "^8.4.1",
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^8.4.1",
+    "@capacitor/core": "^8.4.1",
+    "@capacitor/filesystem": "^8.1.2",
+    "@capacitor/ios": "^8.3.4",
     "@eslint/js": "^10.0.1",
     "electron": "^43.0.0",
     "electron-builder": "^26.15.3",
@@ -56,14 +62,6 @@
     "prettier": "^3.9.4",
     "vitest": "^4.1.10",
     "wrangler": "^4.107.0"
-  },
-  "optionalDependencies": {
-    "@capacitor/android": "^8.4.1",
-    "@capacitor/assets": "^3.0.5",
-    "@capacitor/cli": "^8.4.1",
-    "@capacitor/core": "^8.4.1",
-    "@capacitor/filesystem": "^8.1.2",
-    "@capacitor/ios": "^8.3.4"
   },
   "build": {
     "appId": "com.nearsectogether.app",
