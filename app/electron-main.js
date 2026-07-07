@@ -76,6 +76,22 @@ if (process.platform === 'darwin') app.dock.setIcon(path.join(__dirname, '..', '
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 
 // ── WAYLAND & HARDWARE ENCODING OPTIMIZATIONS ──
+// REFACTOR_PLAN.md Phase 10 (post Electron 33->43 upgrade): re-checked
+// whether these forced-X11 paths are still needed now that Electron's
+// native Wayland support (ozone-platform-hint=auto, stable since ~v38) is
+// far more mature. They still are — this isn't stale workaround debt:
+//   https://github.com/ValveSoftware/steam-runtime/issues/830 is an actively
+//   open (reported June 2026) Electron/Chromium GPU-compositing crash under
+//   native Wayland + GPU on NVIDIA specifically (SkSurface/ANGLE failures);
+//   the only reliable fixes upstream are XWayland or disabling the GPU
+//   entirely, which isn't viable for an app whose whole point is hardware
+//   video encoding. The isArcadeWorker branch forces X11 for the same
+//   reason, as a stability-over-performance default for an unattended
+//   background service where nobody's around to notice/restart a crash.
+// The non-gamescope "else" branch below (ozone-platform-hint=auto) is
+// already the correct modern approach and needs no change — confirmed by
+// actually launching this app on a real KDE Plasma/Wayland session post-
+// upgrade: it renders and runs correctly under native Wayland, not XWayland.
 if (flags.isArcadeWorker && process.platform === 'linux') {
   app.commandLine.appendSwitch('ozone-platform-hint', 'x11');
   app.commandLine.appendSwitch('enable-features', 'WebRTCPipeWireCapturer');
