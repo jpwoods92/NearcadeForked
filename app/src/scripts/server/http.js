@@ -74,7 +74,7 @@ function registerHttpRoutes(app, deps) {
   app.use('/assets', express.static(path.join(__dirname, '..', '..', '..', '..', 'assets')));
 
   // FIX: Serve the favicon explicitly so the browser finds it
-  app.get('/favicon.ico', (req, res) => res.sendFile(path.join(projectRoot, 'favicon.ico')));
+  app.get('/favicon.ico', (req, res) => res.sendFile('favicon.ico', { root: projectRoot }));
 
   app.get('/', (req, res) => {
     const indexPath = path.join(pagesDir, 'index.html');
@@ -82,7 +82,7 @@ function registerHttpRoutes(app, deps) {
     try {
       html = fs.readFileSync(indexPath, 'utf8');
     } catch (_) {
-      return res.sendFile(indexPath);
+      return res.sendFile('index.html', { root: pagesDir });
     }
     const sess = arcadeSessions.size > 0 ? [...arcadeSessions.values()][0] : null;
 
@@ -105,28 +105,28 @@ function registerHttpRoutes(app, deps) {
   });
   app.get('/dashboard', (req, res) => {
     res.setHeader('Content-Type', 'text/html');
-    res.sendFile(path.join(pagesDir, 'dashboard.html'));
+    res.sendFile('dashboard.html', { root: pagesDir });
   });
   app.get('/host', (req, res) => {
     res.setHeader('Content-Type', 'text/html');
-    res.sendFile(path.join(pagesDir, 'host.html'));
+    res.sendFile('host.html', { root: pagesDir });
   });
 
   app.get('/host-minimal', (req, res) => {
     res.setHeader('Content-Type', 'text/html');
-    res.sendFile(path.join(pagesDir, 'host-minimal.html'));
+    res.sendFile('host-minimal.html', { root: pagesDir });
   });
   app.get('/host-playground', (req, res) => {
     res.setHeader('Content-Type', 'text/html');
-    res.sendFile(path.join(pagesDir, 'host-playground.html'));
+    res.sendFile('host-playground.html', { root: pagesDir });
   });
   app.get('/host-custom', (req, res) => {
     res.setHeader('Content-Type', 'text/html');
-    res.sendFile(path.join(pagesDir, 'host-custom.html'));
+    res.sendFile('host-custom.html', { root: pagesDir });
   });
   app.get('/gamepad-popup.html', (req, res) => {
     res.setHeader('Content-Type', 'text/html');
-    res.sendFile(path.join(pagesDir, 'gamepad-popup.html'));
+    res.sendFile('gamepad-popup.html', { root: pagesDir });
   });
   app.use('/css', express.static(path.join(__dirname, '..', '..', 'css')));
   app.use('/pages', express.static(pagesDir));
