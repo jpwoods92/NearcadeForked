@@ -22,7 +22,8 @@
     "dist": "electron-builder --publish always",
     "dist:win": "electron-builder --win --publish always",
     "dist:mac": "electron-builder --mac --publish always",
-    "dist:linux": "electron-builder --linux --publish always"
+    "dist:linux": "electron-builder --linux --publish always",
+    "prepare": "husky"
   },
   "dependencies": {
     "@fails-components/webtransport": "^1.6.3",
@@ -48,6 +49,8 @@
     "eslint": "^10.6.0",
     "eslint-config-prettier": "^10.1.8",
     "globals": "^17.7.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.0.8",
     "node-addon-api": "^8.9.0",
     "node-gyp": "^13.0.1",
     "prettier": "^3.9.4",
