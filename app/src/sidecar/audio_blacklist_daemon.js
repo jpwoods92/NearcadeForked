@@ -3,18 +3,26 @@
  * NearsecTogether — Audio Blacklist Ejection Daemon
  *
  * TOPOLOGY:
- *   NearsecAppAudio (virtual null-sink)
+ *   NearsecVirtual (virtual null-sink)
  *       │
- *       ├─ module-remap-source  →  NearsecAppMic  →  WebRTC capture (viewers hear this)
- *       └─ module-loopback      →  Hardware sink  →  Host's headphones (host hears this)
+ *       ├─ module-remap-source  →  NearsecVirtualCapture  →  WebRTC capture (viewers hear this)
+ *       └─ module-loopback      →  Hardware sink          →  Host's headphones (host hears this)
  *
- * The daemon watches every sink-input currently landing on NearsecAppAudio.
+ * The daemon watches every sink-input currently landing on NearsecVirtual.
  * When a blacklisted app is found there it immediately issues:
  *
  *   pactl move-sink-input <id> <hardware-sink>
  *
  * This pins Discord/Spotify/etc. directly to the host's real audio hardware so
  * they are heard locally but are NOT captured by the WebRTC stream monitor.
+ *
+ * Runs as a complementary safety net alongside audio_worker.js's own
+ * allow-list router (routeGameAudio/_routeViaPatctl), which actively moves
+ * the target game's audio ONTO NearsecVirtual — this daemon instead reacts
+ * to blacklisted apps that end up there anyway (e.g. via PulseAudio's
+ * stream-restore remembering a prior sink assignment). Started/stopped from
+ * audio_worker.js's initVirtualAudio()/destroyVirtualAudio() (see
+ * REFACTOR_PLAN.md Phase 8 — previously wired up to nothing).
  *
  * BLACKLIST FORMAT: fuzzy, case-insensitive substrings matched against:
  *   application.process.binary, application.name, node.name, media.name
@@ -36,12 +44,15 @@ const { execFile, exec } = require('child_process');
 // ── Default blacklist ─────────────────────────────────────────────────────────
 // These substrings are matched against every audio stream's identity fields.
 // Lower-case, fuzzy — "discord" catches "Discord", "Vesktop (Discord)", etc.
-// ── Default blacklist ─────────────────────────────────────────────────────────
+// Union of this daemon's original list and audio_worker.js's inline
+// AUDIO_BLACKLIST (REFACTOR_PLAN.md Phase 8 — the two lists had drifted
+// apart with different entries each was missing).
 const DEFAULT_BLACKLIST = [
-  'chrome', 'firefox', 'discord', 'vesktop', 'armcord', 'webcord', 'legcord',
-'teamspeak', 'ts3client', 'mumble',
-'slack', 'zoom', 'teams', 'telegram-desktop',
-'spotify',
+  'chrome', 'firefox', 'brave', 'vivaldi',
+  'discord', 'vesktop', 'armcord', 'webcord', 'legcord',
+  'teamspeak', 'ts3client', 'mumble',
+  'slack', 'zoom', 'teams', 'telegram-desktop',
+  'spotify',
 ];
 
 // Target the new virtual sink architecture

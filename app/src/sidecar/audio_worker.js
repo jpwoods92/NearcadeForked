@@ -7,9 +7,10 @@
 
 'use strict';
 
-const { parentPort, workerData } = require('worker_threads');
+const { parentPort } = require('worker_threads');
 const { exec }  = require('child_process');
-const fs        = require('fs');
+const { parseStaleModuleIds } = require('./audio-module-utils.js');
+const { startDaemon: startBlacklistDaemon, stopDaemon: stopBlacklistDaemon, DEFAULT_BLACKLIST } = require('./audio_blacklist_daemon.js');
 
 // ── Module-ID tracking ────────────────────────────────────────────────────────
 const _vAudioModules = { sink: null, remap: null, loopback: null, daemonHandle: null };
@@ -32,16 +33,7 @@ async function cleanupStaleSinks() {
   const list = await _pactlExec('pactl list short modules');
   if (!list) return;
 
-  const staleIds = [];
-  for (const line of list.split('\n')) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    if (trimmed.includes('NearsecAppAudio') || trimmed.includes('NearsecAppMic') ||
-      trimmed.includes('NearsecVirtual')  || trimmed.includes('NearsecVirtualCapture')) {
-      const id = trimmed.split(/\s+/)[0];
-    if (id && /^\d+$/.test(id)) staleIds.push(id);
-      }
-  }
+  const staleIds = parseStaleModuleIds(list);
 
   if (staleIds.length > 0) {
     log(`Cleaning up ${staleIds.length} stale audio modules...`);
@@ -97,6 +89,11 @@ async function initVirtualAudio() {
     err('Could not find hardware sink for loopback. You may not hear game audio.');
   }
 
+  // 6. Start the blacklist ejection daemon — a safety net alongside
+  // routeGameAudio()'s allow-list router below (see audio_blacklist_daemon.js's
+  // header comment for how the two complement each other).
+  _vAudioModules.daemonHandle = startBlacklistDaemon(DEFAULT_BLACKLIST, hwSink || null);
+
   log(`Ready. Stream virtual cable active.`);
   parentPort.postMessage({ type: 'module-ids', ids: {
     sink: _vAudioModules.sink,
@@ -110,6 +107,8 @@ async function initVirtualAudio() {
 async function destroyVirtualAudio() {
   if (process.platform !== 'linux') return;
 
+  stopBlacklistDaemon(_vAudioModules.daemonHandle);
+  _vAudioModules.daemonHandle = null;
   stopRoutingDaemon();
   stopLoopbackWatcher();
 
@@ -173,10 +172,11 @@ function stopLoopbackWatcher() {
 }
 
 // ── Game audio routing ────────────────────────────────────────────────────────
-const AUDIO_BLACKLIST = [
-  'webrtc', 'teamspeak', 'discord', 'vesktop', 'firefox', 'chrome', 'brave', 'vivaldi', 'sd_dummy',
-  'spotify', 'zoom', 'teams', 'telegram-desktop', 'mumble', 'slack'
-];
+// Shared app-name blacklist (audio_blacklist_daemon.js's DEFAULT_BLACKLIST),
+// plus technical/self exclusions specific to this allow-list router — not
+// app names, so they don't belong in the daemon's shared list (REFACTOR_PLAN.md
+// Phase 8 — this used to be its own independent, drifted copy of the list).
+const AUDIO_BLACKLIST = [...DEFAULT_BLACKLIST, 'webrtc', 'sd_dummy'];
 
 let _targetProcess = null;
 let _routingInterval = null;

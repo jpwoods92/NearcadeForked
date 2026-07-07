@@ -53,20 +53,17 @@ process.on('unhandledRejection', (e) => {
 });
 
 // ── REQ 3: Robust signal handlers ────────────────────────────────────────────
+// Both branches below defer the actual pactl matching/purging to
+// audio-routing.js's purgeStaleModules() — previously each reimplemented its
+// own copy of the same "which modules are ours" logic (REFACTOR_PLAN.md
+// Phase 8). Lazily required so this file doesn't pay for server.js's require
+// graph unless a stale-module purge is actually needed.
 function _electronSignalCleanup(signal) {
   console.log(`\n[electron] Received ${signal} — triggering cleanup...`);
   if (state.runtime.serverCore && state.runtime.serverCore.cleanup) {
     state.runtime.serverCore.cleanup(false);
   } else {
-    const { execSync } = require('child_process');
-    if (process.platform === 'linux') {
-      try {
-        execSync(
-          "pactl list short modules | awk '/NearsecVirtual|NearsecVirtualCapture/{print $1}' | xargs -r pactl unload-module",
-          { stdio: 'ignore' }
-        );
-      } catch (_) { }
-    }
+    require('./src/scripts/server/audio-routing.js').purgeStaleModules();
     process.exit(0);
   }
 }
@@ -74,30 +71,7 @@ process.on('SIGINT', () => _electronSignalCleanup('SIGINT'));
 process.on('SIGTERM', () => _electronSignalCleanup('SIGTERM'));
 
 // ── REQ 3: Startup purge ─────────────────────────────────────────────────────
-if (process.platform === 'linux') {
-  try {
-    const { execSync } = require('child_process');
-    const moduleList = execSync('pactl list short modules 2>/dev/null', {
-      encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'],
-    });
-    const staleIds = [];
-    for (const line of moduleList.split('\n')) {
-      if (
-        line.includes('NearsecVirtual') || line.includes('NearsecVirtualCapture') ||
-        line.includes('NearsecAppAudio') || line.includes('NearsecAppMic')
-      ) {
-        const id = line.trim().split(/\s+/)[0];
-        if (id && /^\d+$/.test(id)) staleIds.push(id);
-      }
-    }
-    if (staleIds.length > 0) {
-      console.log(`[electron] Startup purge: removing ${staleIds.length} stale PA module(s)`);
-      for (const id of staleIds) {
-        try { execSync(`pactl unload-module ${id}`, { stdio: 'ignore' }); } catch (_) { }
-      }
-    }
-  } catch (_) { }
-}
+require('./src/scripts/server/audio-routing.js').purgeStaleModules();
 
 if (process.platform === 'darwin') app.dock.setIcon(path.join(__dirname, '..', 'assets/NearsecTogetherLogo.png'));
 

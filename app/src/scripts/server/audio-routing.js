@@ -1,7 +1,7 @@
 'use strict';
-const fs = require('fs');
 const path = require('path');
 const { Worker } = require('worker_threads');
+const { parseStaleModuleIds } = require('../../sidecar/audio-module-utils.js');
 
 const isPackaged = __dirname.includes('app.asar');
 
@@ -22,13 +22,11 @@ let _audioWorker = null;
 function spawnAudioWorker() {
   if (process.platform !== 'linux') return;
 
-  const daemonPath = path.join(__dirname, '..', '..', 'sidecar', 'audio_blacklist_daemon.js');
-
+  // audio_worker.js requires its sibling audio_blacklist_daemon.js directly
+  // (same directory, no packaging concern) — no path needs threading through
+  // workerData for that anymore. See REFACTOR_PLAN.md Phase 8.
   _audioWorker = new Worker(path.join(__dirname, '..', '..', 'sidecar', 'audio_worker.js'), {
-    workerData: {
-      isPackaged,
-      daemonPath: fs.existsSync(daemonPath) ? daemonPath : null,
-    }
+    workerData: { isPackaged }
   });
 
   _audioWorker.on('message', (msg) => {
@@ -109,6 +107,31 @@ function stopRouting() {
 }
 
 /**
+ * PUBLIC — Purge any leftover Nearsec PulseAudio modules from a previous
+ * run (e.g. after a crash that skipped destroyVirtualAudio()). Synchronous
+ * and safe to call before the audio worker exists — used by this module's
+ * own teardown as well as electron-main.js's startup purge and
+ * signal-cleanup fallback (REFACTOR_PLAN.md Phase 8 — previously each of
+ * those reimplemented this same module-name matching independently).
+ */
+function purgeStaleModules() {
+  if (process.platform !== 'linux') return;
+  const { execSync } = require('child_process');
+  try {
+    const moduleList = execSync('pactl list short modules 2>/dev/null', {
+      encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    const staleIds = parseStaleModuleIds(moduleList);
+    if (staleIds.length > 0) {
+      console.log(`[VirtualAudio] Purging ${staleIds.length} stale PA module(s)`);
+      for (const id of staleIds) {
+        try { execSync(`pactl unload-module ${id}`, { stdio: 'ignore' }); } catch (_) { }
+      }
+    }
+  } catch (_) { }
+}
+
+/**
  * PUBLIC — Full virtual audio teardown: ask the worker to destroy its
  * PipeWire/PulseAudio modules, then belt-and-braces cleanup any modules
  * that survive (e.g. because the worker already exited).
@@ -126,7 +149,7 @@ function destroyVirtualAudio() {
     const { execSync } = require('child_process');
 
     // THE FIX: Unload loopback BEFORE the sink to prevent the audio buzz
-    const unloadOrder = ['loopback', 'remap', 'sink', 'daemonHandle'];
+    const unloadOrder = ['loopback', 'remap', 'sink'];
     for (const key of unloadOrder) {
       const id = _vAudioModules[key];
       if (id) {
@@ -136,7 +159,7 @@ function destroyVirtualAudio() {
     }
 
     // Belt and braces PulseAudio cleanup
-    try { execSync("pactl list short modules | awk '/NearsecAppAudio|NearsecAppMic|NearsecVirtualCapture|NearsecVirtual/{print $1}' | xargs -r pactl unload-module", { stdio: 'ignore' }); } catch (_) { }
+    purgeStaleModules();
 
     // PipeWire node cleanup — destroy any pw-loopback nodes created by the worker
     try {
@@ -152,4 +175,5 @@ module.exports = {
   routeGameAudio,
   stopRouting,
   destroyVirtualAudio,
+  purgeStaleModules,
 };
