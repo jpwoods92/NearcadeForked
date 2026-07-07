@@ -7,12 +7,17 @@ import prettier from 'eslint-config-prettier';
 // `files` globs below as later refactor phases touch more of the tree.
 //
 // This is a legacy codebase with no prior linting, so a first `eslint .` run
-// surfaces hundreds of pre-existing findings (unused vars, empty catch
+// surfaced hundreds of pre-existing findings (unused vars, empty catch
 // blocks, a few real no-undef typos). Failing CI on all of that immediately
-// isn't useful — these rules are downgraded to 'warn' on existing source so
-// CI can still gate genuinely new problems. Ratchet individual rules back to
-// 'error' file-by-file as each area gets cleaned up in later refactor phases
-// (see REFACTOR_PLAN.md), rather than fixing everything at once here.
+// wasn't useful, so these rules were downgraded to 'warn' repo-wide at first.
+//
+// Phase 9 flipped this from an allow-list to a deny-list: the browser/ESM/
+// node-context blocks below no longer reference legacyRuleOverrides at all,
+// so any file NOT explicitly named in the legacyDebtFiles block just below
+// gets full 'error' severity by default — including every new file added
+// from here on. legacyDebtFiles is the shrinking list of pre-existing files
+// that still have violations; as each gets cleaned up, remove it from that
+// list rather than leaving the whole codebase downgraded.
 const legacyRuleOverrides = {
   'no-unused-vars': 'warn',
   'no-undef': 'warn',
@@ -34,6 +39,57 @@ const legacyRuleOverrides = {
   // above.
   'no-unassigned-vars': 'warn',
 };
+
+// Files still carrying at least one legacyRuleOverrides violation as of
+// Phase 9 (REFACTOR_PLAN.md) — computed from a full `eslint . --format json`
+// pass, not hand-picked. Remove a file from this list once it's clean; don't
+// add new files to it.
+const legacyDebtFiles = [
+  'app/electron-viewer-preload.js',
+  'app/electron/cli-flags.js',
+  'app/electron/discord-rpc.js',
+  'app/electron/ipc/app-info.js',
+  'app/electron/ipc/clipboard.js',
+  'app/electron/ipc/gamepad.js',
+  'app/electron/ipc/setup-runner.js',
+  'app/electron/logger.js',
+  'app/electron/settings.js',
+  'app/electron/window.js',
+  'app/src/scripts/arcade-registration.js',
+  'app/src/scripts/audio-mixing.js',
+  'app/src/scripts/audio-util.js',
+  'app/src/scripts/capture.js',
+  'app/src/scripts/dashboard.js',
+  'app/src/scripts/host-minimal-tunnel-commands.js',
+  'app/src/scripts/host.js',
+  'app/src/scripts/i18n.js',
+  'app/src/scripts/input/gamepad.js',
+  'app/src/scripts/p2p-viewer.js',
+  'app/src/scripts/server.js',
+  'app/src/scripts/server/arcade-signaling.js',
+  'app/src/scripts/server/audio-routing.js',
+  'app/src/scripts/server/env.js',
+  'app/src/scripts/server/http.js',
+  'app/src/scripts/server/tunnel.js',
+  'app/src/scripts/server/ws.js',
+  'app/src/scripts/stats-hud.js',
+  'app/src/scripts/tunnel-modal.js',
+  'app/src/scripts/ui/modals.js',
+  'app/src/scripts/ui/roster.js',
+  'app/src/scripts/viewer-page-bootstrap.js',
+  'app/src/scripts/viewer.js',
+  'app/src/scripts/vps-sfu.js',
+  'app/src/scripts/webcodecs-decoder.js',
+  'app/src/scripts/webcodecs-encoder.js',
+  'app/src/scripts/webrtc/codec-negotiation.js',
+  'app/src/sidecar/CaptureManager.js',
+  'app/src/sidecar/arcade_heartbeat_worker.js',
+  'app/src/sidecar/audio_worker.js',
+  'app/src/sidecar/input_backends/InputOrchestrator.js',
+  'app/src/sidecar/input_backends/backend-init.js',
+  'app/src/sidecar/input_backends/validation.js',
+  'bin/verify.js',
+];
 
 export default [
   {
@@ -63,7 +119,6 @@ export default [
       sourceType: 'script',
       globals: { ...globals.browser, module: 'writable', require: 'readonly', exports: 'writable' },
     },
-    rules: legacyRuleOverrides,
   },
   {
     // Loaded via <script type="module"> — real ESM, unlike the plain globals above.
@@ -73,7 +128,6 @@ export default [
       sourceType: 'module',
       globals: { ...globals.browser },
     },
-    rules: legacyRuleOverrides,
   },
   {
     // Node-context: Electron main/preload, the Express/WS server, sidecar daemons.
@@ -83,6 +137,12 @@ export default [
       sourceType: 'commonjs',
       globals: { ...globals.node },
     },
+  },
+  {
+    // Phase 9 deny-list — see legacyDebtFiles above. Applied after the
+    // context blocks so it only downgrades severity for files still on the
+    // list; every other file (including all new ones) stays at 'error'.
+    files: legacyDebtFiles,
     rules: legacyRuleOverrides,
   },
   {
