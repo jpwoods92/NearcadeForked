@@ -18,6 +18,11 @@ if (typeof PusherRaw === 'function') {
   };
 }
 
+// This app key/cluster/authEndpoint and the 'private-arcade-global' channel
+// name are also hardcoded client-side in app/src/scripts/arcade-registration.js
+// — there's no shared-constants module linking them today since one runs in
+// Node and the other in the browser with no bundler between them. Keep both
+// in sync by hand if either changes. See REFACTOR_PLAN.md Phase 5.7.
 const pusher = new Pusher('a93f5405058cd9fc7967', {
   cluster: 'us2',
   authEndpoint: 'https://nearsec.cutefame.net/api/pusher-auth'

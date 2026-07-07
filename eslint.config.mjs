@@ -24,6 +24,15 @@ const legacyRuleOverrides = {
   'no-cond-assign': 'warn',
   'no-useless-escape': 'warn',
   'no-extra-boolean-cast': 'warn',
+  // Phase 5's module extractions (app/src/scripts/*.js) moved some functions
+  // that assign shared host.js state (e.g. capture.js's startCapture/
+  // stopCapture assigning currentStream) into their own files, while the
+  // `let` declaration stays in host.js as shared cross-file state. ESLint
+  // analyzes each file in isolation, so it sees host.js's declaration with
+  // no assignment anywhere in that same file and flags it — a false
+  // positive from the single-file view, same class of issue as no-undef
+  // above.
+  'no-unassigned-vars': 'warn',
 };
 
 export default [
@@ -48,7 +57,7 @@ export default [
     // `require` are recognized too: host.js/viewer.js end with a guarded
     // `if (typeof module !== 'undefined') module.exports = {...}` shim purely
     // for Vitest (see app/test/helpers/browser-shims.js) — inert in the browser.
-    files: ['app/src/scripts/host.js', 'app/src/scripts/viewer.js', 'app/src/scripts/i18n.js', 'app/src/scripts/audio-util.js'],
+    files: ['app/src/scripts/host.js', 'app/src/scripts/viewer.js', 'app/src/scripts/chat.js', 'app/src/scripts/audio-mixing.js', 'app/src/scripts/stats-hud.js', 'app/src/scripts/arcade-registration.js', 'app/src/scripts/tunnel-modal.js', 'app/src/scripts/vps-sfu.js', 'app/src/scripts/capture.js', 'app/src/scripts/webcodecs-encoder.js', 'app/src/scripts/webcodecs-decoder.js', 'app/src/scripts/p2p-viewer.js', 'app/src/scripts/webrtc/**/*.js', 'app/src/scripts/ui/**/*.js', 'app/src/scripts/input/**/*.js', 'app/src/scripts/i18n.js', 'app/src/scripts/audio-util.js'],
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: 'script',
