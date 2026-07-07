@@ -1,0 +1,152 @@
+/* ══════════════════════════════════════════════════════════════════════════
+   tunnel-modal.css — the tunnel-provider selection modal: provider cards,
+   the "remember" checkbox row, the P2P warning/loading/error states, the
+   copy-command button, and the VPS SFU URL/key input fields. Pairs with
+   scripts/tunnel-modal.js. Generic modal chrome lives in modals.css instead.
+   Split from host.css — see REFACTOR_PLAN.md Phase 6.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* Provider grid */
+.provider-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.provider-card {
+    background: rgba(255,255,255,0.03);
+    border: 2px solid transparent;
+    border-radius: 10px;
+    padding: 10px;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.provider-card:hover { border-color: var(--accent); background: var(--accent-dim); }
+.provider-card.selected { border-color: var(--accent); background: var(--accent-dim); }
+.provider-card input[type=radio] { position: absolute; opacity: 0; pointer-events: none; }
+
+.prov-emoji { font-size: 22px; flex-shrink: 0; margin-top: 1px; }
+.prov-info  { flex: 1; min-width: 0; }
+
+.prov-name {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    flex-wrap: wrap;
+    line-height: 1.3;
+}
+
+.prov-desc {
+    font-size: 9px;
+    color: var(--muted);
+    line-height: 1.4;
+    margin: 2px 0;
+}
+
+.prov-pills { display: flex; gap: 4px; margin-top: 4px; flex-wrap: wrap; }
+
+.pill-easy   { background: #1a3d2a; color: #4ade80; font-size:8px; padding:1px 6px; border-radius:6px; font-weight:600; }
+.pill-medium { background: #3a2e00; color: #fbbf24; font-size:8px; padding:1px 6px; border-radius:6px; font-weight:600; }
+.pill-hard   { background: #3a1a1a; color: #f87171; font-size:8px; padding:1px 6px; border-radius:6px; font-weight:600; }
+.pill-lat    { background: rgba(255,255,255,0.06); color: var(--muted); font-size:8px; padding:1px 6px; border-radius:6px; border:1px solid var(--border); }
+.pill-star   { background: var(--accent-dim); color: var(--accent2); font-size:8px; padding:1px 6px; border-radius:6px; border:1px solid rgba(139,92,246,0.4); font-weight:600; }
+
+.prov-install {
+    margin-top: 4px;
+    padding: 8px 10px;
+    background: rgba(0,0,0,0.2);
+    border-radius: 4px;
+    font-size: 10px;
+    color: #a3b3c2;
+    font-family: var(--mono);
+    line-height: 1.4;
+    border-left: 2px solid var(--accent);
+    word-break: break-all;
+    display: none;
+}
+
+.provider-card.selected .prov-install { display: flex; }
+.prov-install .cmd     { color: var(--green); }
+.prov-install .comment { color: var(--muted2); }
+
+.remember-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 14px 16px 0;
+    font-size: 10px;
+    color: var(--muted);
+}
+
+.remember-row input { accent-color: var(--accent); width: 14px; height: 14px; }
+
+
+/* Loading overlay */
+.modal-loading {
+    position: absolute;
+    inset: 0;
+    background: rgba(13,15,22,0.95);
+    backdrop-filter: blur(2px);
+    z-index: 10;
+    border-radius: 16px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+.modal-loading.gone { display: none; }
+
+.spinner {
+    width: 36px;
+    height: 36px;
+    border: 3px solid rgba(255,255,255,0.1);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.85s linear infinite;
+    margin-bottom: 16px;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.loading-text  { font-size: 14px; font-weight: 700; color: var(--text); margin-bottom: 8px; }
+.error-text    { font-size: 12px; color: var(--danger); text-align: center; padding: 0 30px; line-height: 1.5; margin-bottom: 20px; }
+.btn-retry     { background: var(--danger); color: #fff; padding: 10px 24px; border: none; border-radius: 6px; font-weight: 700; font-size: 12px; cursor: pointer; }
+.btn-retry:hover { filter: brightness(1.1); }
+
+.copy-btn {
+    background: rgba(255,255,255,0.08);
+    border: 1px solid var(--border2);
+    color: var(--text);
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: 9px;
+    cursor: pointer;
+    margin-left: 6px;
+    transition: all 0.15s;
+}
+.copy-btn:hover { background: rgba(255,255,255,0.14); }
+
+
+/* VPS input */
+#vpsHostInput, #vpsUrlInput, #vpsKeyInput {
+width: 100%;
+box-sizing: border-box;
+background: rgba(0,0,0,0.5);
+border: 1px solid var(--border2);
+color: var(--text);
+font-size: 12px;
+padding: 8px;
+border-radius: 6px;
+font-family: inherit;
+}
+#vpsKeyInput { font-family: var(--mono); }
+

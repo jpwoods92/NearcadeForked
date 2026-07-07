@@ -1,0 +1,67 @@
+/* ══════════════════════════════════════════════════════════════════════════
+   audio-mixing.css — the audio-level mini-meters in the quality grid and the
+   desktop/mic volume sliders in the bottom dock. Pairs with
+   scripts/audio-mixing.js. Split from host.css — see REFACTOR_PLAN.md
+   Phase 6.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── AUDIO SECTION in quality grid ── */
+.aud-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.aud-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.aud-label-text {
+    font-size: 9px;
+    font-family: var(--mono);
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+}
+.aud-mini-meter {
+    height: 2px;
+    background: rgba(255,255,255,0.06);
+    border-radius: 1px;
+    overflow: hidden;
+    margin-top: 1px;
+}
+.aud-mini-fill {
+    height: 100%;
+    background: var(--accent);
+    width: 0%;
+    border-radius: 1px;
+    transition: width 0.06s;
+}
+/* ── DOCK AUDIO SLIDERS ──────────────────────────────────────────── */
+.dock-slider-row {
+    display: flex; align-items: center; gap: 6px;
+}
+.dock-slider-label {
+    font-size: 10px; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--muted2);
+    width: 48px; flex-shrink: 0; font-weight: 600;
+}
+.dock-slider {
+    flex: 1; -webkit-appearance: none; appearance: none;
+    height: 3px; background: rgba(255,255,255,0.1);
+    border-radius: 2px; outline: none; cursor: pointer;
+}
+.dock-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 12px; height: 12px; border-radius: 50%;
+    background: var(--accent2); border: 1.5px solid var(--accent);
+    cursor: pointer; transition: transform 0.1s;
+}
+.dock-slider::-webkit-slider-thumb:hover { transform: scale(1.25); }
+.dock-slider-val {
+    font-size: 10px; font-family: var(--mono);
+    color: var(--muted2); width: 28px; text-align: right; flex-shrink: 0;
+}
+

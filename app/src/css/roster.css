@@ -1,0 +1,155 @@
+/* ══════════════════════════════════════════════════════════════════════════
+   roster.css — the draggable viewer roster overlay (.roster-overlay/.rcard*)
+   and the master-mic-kill rail button state, plus the settings modal's
+   "Viewers" tab cards (.viewer-panel-card/.vpc-*). Pairs with
+   scripts/ui/roster.js. Split from host.css — see REFACTOR_PLAN.md Phase 6.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* Roster overlay – top right of preview */
+.roster-overlay {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    width: 264px;
+    background: rgba(9,10,16,0.78);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid var(--border2);
+    border-radius: 18px;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.roster-title {
+    font-size: 9px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--accent2);
+    font-weight: 600;
+}
+
+#roster { display: flex; flex-direction: column; gap: 4px; }
+
+.rcard {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--border);
+    border-radius: 11px;
+    cursor: grab;
+    transition: background 0.15s, border-color 0.15s;
+    font-family: Outfit, sans-serif;
+    min-width: 160px;
+    flex-shrink: 0;
+}
+
+.rcard:hover { background: rgba(255,255,255,0.08); border-color: var(--border2); }
+.rcard.drag-over { border-top: 2px solid var(--accent); }
+
+.rnum {
+    width: 20px; height: 20px;
+    border-radius: 6px;
+    background: var(--accent-dim);
+    color: var(--accent2);
+    font-size: 10px;
+    font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+}
+
+.rname {
+    flex: 1;
+    font-size: 11px;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    pointer-events: none;
+}
+
+.rstat { font-size: 9px; color: var(--muted2); }
+
+.rlock {
+    background: none; border: none;
+    cursor: pointer; padding: 0 2px;
+    display: flex; align-items: center;
+}
+
+.rkick {
+    background: none; border: none;
+    color: var(--muted2); cursor: pointer;
+    font-size: 14px; padding: 0 2px;
+    line-height: 1;
+    transition: color 0.15s;
+}
+.rkick:hover { color: var(--danger); }
+
+.empty-note {
+    font-size: 10px;
+    color: var(--muted2);
+    text-align: center;
+    padding: 4px 0;
+}
+
+
+/* ── MASTER MIC KILL SWITCH ──────────────────────────────────────── */
+.rail-btn.master-mic-kill {
+    background: rgba(248,113,113,0.12) !important;
+    color: var(--danger) !important;
+    border-color: rgba(248,113,113,0.4) !important;
+}
+.rail-btn.master-mic-kill:hover:not(:disabled) {
+    background: rgba(248,113,113,0.25) !important;
+}
+
+
+
+
+
+/* ── v2.0.6: Viewer card styles (used inside settingsModal Viewers tab) ──────── */
+.viewer-panel-card {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--border2);
+    border-radius: 8px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.viewer-panel-card.revoked {
+    border-color: rgba(248,113,113,0.35);
+    background: rgba(248,113,113,0.06);
+}
+.vpc-name {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text);
+}
+.vpc-profile {
+    font-size: 9px;
+    color: var(--muted2);
+    font-family: var(--mono);
+}
+.vpc-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.vpc-revoke-btn {
+    font-size: 9px;
+    padding: 3px 8px;
+    border-radius: 5px;
+    border: 1px solid var(--border2);
+    background: rgba(255,255,255,0.05);
+    color: var(--muted);
+    cursor: pointer;
+    font-family: var(--mono);
+    transition: all 0.15s;
+}
+.vpc-revoke-btn:hover    { border-color: var(--danger); color: var(--danger); }
+.vpc-revoke-btn.revoked  { border-color: var(--green); color: var(--green); background: rgba(52,211,153,0.08); }
+

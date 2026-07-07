@@ -1,0 +1,29 @@
+/* ══════════════════════════════════════════════════════════════════════════
+   stats-hud.css — the inline stats HUD cells in the bottom dock
+   (.stats-inline-*). Pairs with scripts/stats-hud.js. Split from host.css —
+   see REFACTOR_PLAN.md Phase 6.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── v2.0.6: Stats HUD (inline in dock) ────────────────────────────────────── */
+.stats-inline-cell {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1px;
+}
+.stats-inline-key {
+    font-size: 7px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted2);
+    font-family: var(--mono);
+    line-height: 1;
+}
+.stats-inline-val {
+    font-size: 10px;
+    font-family: var(--mono);
+    color: var(--accent);
+    font-weight: 600;
+    line-height: 1.2;
+}
+
