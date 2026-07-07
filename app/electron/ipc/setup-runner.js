@@ -24,8 +24,7 @@ function register() {
           event.reply('setup-success');
         }
       });
-    }
-    else if (os.platform() === 'linux') {
+    } else if (os.platform() === 'linux') {
       let scriptPath = path.join(__dirname, '..', '..', '..', 'bin', 'linux_setup.sh');
       let iconPath = path.join(__dirname, '..', '..', '..', 'assets', 'NearsecTogetherLogo.png');
 
@@ -35,7 +34,11 @@ function register() {
         iconPath = path.join(process.resourcesPath, 'app.asar.unpacked', 'assets', 'NearsecTogetherLogo.png');
       }
 
-      try { fs.chmodSync(scriptPath, 0o755); } catch (e) { console.warn('[Setup] chmod:', e.message); }
+      try {
+        fs.chmodSync(scriptPath, 0o755);
+      } catch (e) {
+        console.warn('[Setup] chmod:', e.message);
+      }
 
       const wrapperPath = path.join(os.tmpdir(), 'nearsec_setup_wrapper.sh');
       const statusFile = path.join(os.tmpdir(), 'nearsec_setup_status');

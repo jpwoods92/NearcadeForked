@@ -48,25 +48,35 @@ const { execFile, exec } = require('child_process');
 // AUDIO_BLACKLIST (REFACTOR_PLAN.md Phase 8 — the two lists had drifted
 // apart with different entries each was missing).
 const DEFAULT_BLACKLIST = [
-  'chrome', 'firefox', 'brave', 'vivaldi',
-  'discord', 'vesktop', 'armcord', 'webcord', 'legcord',
-  'teamspeak', 'ts3client', 'mumble',
-  'slack', 'zoom', 'teams', 'telegram-desktop',
+  'chrome',
+  'firefox',
+  'brave',
+  'vivaldi',
+  'discord',
+  'vesktop',
+  'armcord',
+  'webcord',
+  'legcord',
+  'teamspeak',
+  'ts3client',
+  'mumble',
+  'slack',
+  'zoom',
+  'teams',
+  'telegram-desktop',
   'spotify',
 ];
 
 // Target the new virtual sink architecture
-const VIRTUAL_SINK  = 'NearsecVirtual';
-const POLL_MS       = 1500;
+const VIRTUAL_SINK = 'NearsecVirtual';
+const POLL_MS = 1500;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 /** Run a command and return its stdout as a string (empty string on error). */
 function run(cmd, args, timeout = 6000) {
-  return new Promise(resolve => {
-    execFile(cmd, args, { timeout }, (err, stdout) =>
-      resolve(err ? '' : (stdout || ''))
-    );
+  return new Promise((resolve) => {
+    execFile(cmd, args, { timeout }, (err, stdout) => resolve(err ? '' : stdout || ''));
   });
 }
 
@@ -92,19 +102,19 @@ function parseSinkInputs(raw) {
 
     const g = (re) => (block.match(re) || [])[1] || '';
 
-    const id        = idMatch[1];
+    const id = idMatch[1];
     const appBinary = g(/application\.process\.binary\s*=\s*"([^"]+)"/);
-    const appName   = g(/application\.name\s*=\s*"([^"]+)"/);
-    const clientId  = g(/client\.id\s*=\s*"([^"]+)"/);
+    const appName = g(/application\.name\s*=\s*"([^"]+)"/);
+    const clientId = g(/client\.id\s*=\s*"([^"]+)"/);
     const processId = g(/application\.process\.id\s*=\s*"([^"]+)"/);
 
     results.push({
       id,
       // Sink number on which this stream currently lives (numeric string)
-      sinkId:    g(/^\s*Sink:\s*(\d+)/m),
+      sinkId: g(/^\s*Sink:\s*(\d+)/m),
       appBinary,
       appName,
-      nodeName:  g(/node\.name\s*=\s*"([^"]+)"/),
+      nodeName: g(/node\.name\s*=\s*"([^"]+)"/),
       mediaName: g(/media\.name\s*=\s*"([^"]+)"/),
       // Stable client reference for ejection cache
       clientKey: clientId || processId || id,
@@ -119,10 +129,14 @@ function parseSinkInputs(raw) {
  * Returns { byName: { sinkName → id }, byId: { id → sinkName } }
  */
 function parseSinks(raw) {
-  const byName = {}, byId = {};
+  const byName = {},
+    byId = {};
   for (const line of (raw || '').split('\n').filter(Boolean)) {
     const p = line.trim().split(/\s+/);
-    if (p.length >= 2) { byId[p[0]] = p[1]; byName[p[1]] = p[0]; }
+    if (p.length >= 2) {
+      byId[p[0]] = p[1];
+      byName[p[1]] = p[0];
+    }
   }
   return { byName, byId };
 }
@@ -133,7 +147,7 @@ function parseSinks(raw) {
  */
 function isBlacklisted(input, blacklist) {
   const rawLower = (input.rawBlock || '').toLowerCase();
-  return blacklist.some(entry => rawLower.includes(entry.toLowerCase()));
+  return blacklist.some((entry) => rawLower.includes(entry.toLowerCase()));
 }
 
 // ── Ejection cache ────────────────────────────────────────────────────────────
@@ -165,10 +179,11 @@ async function tick(blacklist) {
     const inputsRaw = await run('pactl', ['list', 'sink-inputs']);
     const inputs = parseSinkInputs(inputsRaw);
 
-    const loopbackInput = inputs.find(i =>
-    (i.appName && i.appName.toLowerCase().includes('loopback')) ||
-    (i.mediaName && i.mediaName.toLowerCase().includes('loopback')) ||
-    (i.nodeName && i.nodeName.toLowerCase().includes('loopback'))
+    const loopbackInput = inputs.find(
+      (i) =>
+        (i.appName && i.appName.toLowerCase().includes('loopback')) ||
+        (i.mediaName && i.mediaName.toLowerCase().includes('loopback')) ||
+        (i.nodeName && i.nodeName.toLowerCase().includes('loopback'))
     );
 
     if (loopbackInput && loopbackInput.sinkId) {
@@ -183,7 +198,9 @@ async function tick(blacklist) {
 
   // ── THE FIX: No more random guessing ──
   if (!hwSink) {
-    process.stderr.write('[blacklist] Cannot confidently resolve hardware sink — skipping tick to prevent ghost routing.\n');
+    process.stderr.write(
+      '[blacklist] Cannot confidently resolve hardware sink — skipping tick to prevent ghost routing.\n'
+    );
     return;
   }
 
@@ -192,7 +209,7 @@ async function tick(blacklist) {
   // ── Step 3: get verbose sink-input data ──────────────────────────────────
   const inputsRaw = await run('pactl', ['list', 'sink-inputs']);
   const inputs = parseSinkInputs(inputsRaw);
-  const liveClientKeys = new Set(inputs.map(i => i.clientKey));
+  const liveClientKeys = new Set(inputs.map((i) => i.clientKey));
 
   // ── Step 4: scan and eject ────────────────────────────────────────────────
   for (const input of inputs) {
@@ -242,16 +259,17 @@ function startDaemon(blacklist = DEFAULT_BLACKLIST, targetSink = null) {
   }
 
   _fallbackSink = targetSink;
-  const list = [...new Set(blacklist.map(s => s.toLowerCase()))];
+  const list = [...new Set(blacklist.map((s) => s.toLowerCase()))];
 
   process.stdout.write(`[blacklist] Daemon started  |  sink: ${VIRTUAL_SINK}  |  poll: ${POLL_MS}ms\n`);
   process.stdout.write(`[blacklist] Target hardware: ${targetSink || 'Dynamic'}\n`);
 
-  const interval = setInterval(() =>
-  tick(list).catch(e => {
-    if (!e.message?.includes('ENOENT')) process.stderr.write(`[blacklist] Tick error: ${e.message}\n`);
-  }),
-  POLL_MS
+  const interval = setInterval(
+    () =>
+      tick(list).catch((e) => {
+        if (!e.message?.includes('ENOENT')) process.stderr.write(`[blacklist] Tick error: ${e.message}\n`);
+      }),
+    POLL_MS
   );
 
   tick(list).catch(() => {});
@@ -277,8 +295,11 @@ module.exports = {
 // node audio_blacklist_daemon.js [extra-term ...]
 if (require.main === module) {
   const extra = process.argv.slice(2);
-  const list  = extra.length ? [...DEFAULT_BLACKLIST, ...extra] : DEFAULT_BLACKLIST;
+  const list = extra.length ? [...DEFAULT_BLACKLIST, ...extra] : DEFAULT_BLACKLIST;
   startDaemon(list);
-  process.on('SIGINT',  () => { process.stdout.write('\n[blacklist] Stopped.\n'); process.exit(0); });
+  process.on('SIGINT', () => {
+    process.stdout.write('\n[blacklist] Stopped.\n');
+    process.exit(0);
+  });
   process.on('SIGTERM', () => process.exit(0));
 }

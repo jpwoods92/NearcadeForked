@@ -1,452 +1,697 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
+  <head>
+    <script src="https://js.pusher.com/8.2.0/pusher.min.js"></script>
+    <link rel="icon" type="image/x-icon" href="../favicon.ico" />
+    <meta charset="utf-8" />
+    <title>NearsecTogether</title>
+    <link rel="stylesheet" href="/css/host.css" />
+    <link rel="stylesheet" href="/css/chat.css" />
+    <link rel="stylesheet" href="/css/roster.css" />
+    <link rel="stylesheet" href="/css/stats-hud.css" />
+    <link rel="stylesheet" href="/css/audio-mixing.css" />
+    <link rel="stylesheet" href="/css/modals.css" />
+    <link rel="stylesheet" href="/css/tunnel-modal.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=IBM+Plex+Mono:wght@400;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/lipis/flag-icons@7.2.3/css/flag-icons.min.css" />
+  </head>
 
-<head>
-  <script src="https://js.pusher.com/8.2.0/pusher.min.js"></script>
-  <link rel="icon" type="image/x-icon" href="../favicon.ico">
-  <meta charset="utf-8">
-  <title>NearsecTogether</title>
-  <link rel="stylesheet" href="/css/host.css">
-  <link rel="stylesheet" href="/css/chat.css">
-  <link rel="stylesheet" href="/css/roster.css">
-  <link rel="stylesheet" href="/css/stats-hud.css">
-  <link rel="stylesheet" href="/css/audio-mixing.css">
-  <link rel="stylesheet" href="/css/modals.css">
-  <link rel="stylesheet" href="/css/tunnel-modal.css">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link
-    href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=IBM+Plex+Mono:wght@400;600&display=swap"
-    rel="stylesheet">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/lipis/flag-icons@7.2.3/css/flag-icons.min.css">
-
-</head>
-
-<body>
-  <div class="app-shell">
-
-    <aside class="left-rail glass">
-      <div class="rail-logo">
-        <img src="/assets/NearsecTogetherLogo.png" alt="Logo">
-      </div>
-
-      <div class="rail-btn-group">
-        <button class="rail-btn primary" id="btnStart" onclick="showSourceSelectionModal()" title="Start Sharing">
-          <svg viewBox="0 0 24 24" fill="currentColor">
-            <circle cx="12" cy="12" r="8" />
-          </svg>
-        </button>
-
-        <button class="rail-btn danger-btn" id="btnStop" onclick="stopCapture()" disabled title="Stop Capture">
-          <svg viewBox="0 0 24 24" fill="currentColor">
-            <rect x="6" y="6" width="12" height="12" rx="1" />
-          </svg>
-        </button>
-
-        <button class="rail-btn danger-btn" id="btnKbmPanic" onclick="toggleKbmPanic()" title="Freeze Viewer Inputs"
-          style="border: none; background: transparent;">
-          <span
-            style="font-size: 10px; font-weight: bold; color: inherit; letter-spacing: 0.5px; line-height: 1.1; text-align: center;">KBM<br>PANIC</span>
-        </button>
-      </div>
-
-      <div class="rail-divider"></div>
-
-      <button class="rail-btn" id="btnArcade" onclick="showArcadeModal()" title="Arcade Mode">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <rect x="2" y="3" width="20" height="14" rx="2" />
-          <line x1="8" y1="21" x2="16" y2="21" />
-          <line x1="12" y1="17" x2="12" y2="21" />
-        </svg>
-      </button>
-
-      <button class="rail-btn" id="ctrlSettingsBtn" onclick="showSettingsModal('input')" title="Settings">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path
-            d="M17.32 5H6.68a4 4 0 0 0-3.978 3.59c-.006.052-.01.101-.017.152L2 17a1 1 0 0 0 1 1h2.128a1 1 0 0 0 .958-.71l.635-2.115C7.14 14.155 8.13 13.5 9.25 13.5h5.5c1.12 0 2.11.655 2.529 1.675l.635 2.115a1 1 0 0 0 .958.71H21a1 1 0 0 0 1-1l-.685-8.258A4 4 0 0 0 17.32 5z" />
-        </svg>
-      </button>
-
-      <div class="rail-spacer"></div>
-
-      <button class="rail-btn" onclick="togglePreview()" id="btnPreviewToggle" title="Toggle Preview">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-          <circle cx="12" cy="12" r="3" />
-        </svg>
-      </button>
-
-      <button class="rail-btn" id="btnMasterMic" onclick="toggleGlobalMicKill()" title="Mute All Viewer Mics">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-          <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-          <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-          <line x1="12" y1="19" x2="12" y2="23" />
-          <line x1="8" y1="23" x2="16" y2="23" />
-        </svg>
-      </button>
-
-      <!-- Master Audio Killswitch: zeroes the desktop gain node to cut audio from the WebRTC stream -->
-      <button class="rail-btn" id="btnMasterAudioKill" onclick="window.toggleMasterMute()"
-        title="Cut Desktop Audio to Stream">
-        <img id="speakerIcon" src="/assets/icons/speaker.svg"
-          style="width:20px;height:20px;pointer-events:none;filter:invert(0.6);" alt="">
-      </button>
-
-      <button class="rail-btn" onclick="showAppSettings()" title="Settings">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="3" />
-          <path
-            d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
-        </svg>
-      </button>
-    </aside>
-
-    <main class="main-stage">
-
-      <header class="topbar glass">
-        <div class="host-meta">
-          <img src="/assets/NearsecTogetherTitle.png" alt="NearsecTogether" style="height: 32px; width: auto; flex-shrink: 0; object-fit: contain; filter: drop-shadow(0 0 6px var(--accent-glow)); margin-right: 8px;">
-          <div>
-            <div class="host-eyebrow" style="margin-bottom: 2px;">Host Session</div>
-            <div class="host-name">Connected as: <span id="displayHostName"
-                style="color:var(--accent2);">Guest</span></div>
-          </div>
+  <body>
+    <div class="app-shell">
+      <aside class="left-rail glass">
+        <div class="rail-logo">
+          <img src="/assets/NearsecTogetherLogo.png" alt="Logo" />
         </div>
 
-        <div class="topbar-right">
-          <div class="status-pill" id="capStatusPill"><span class="dot" id="capDot"></span><span id="capStatus"
-              style="font-size:10px;">Idle</span></div>
-        </div>
+        <div class="rail-btn-group">
+          <button class="rail-btn primary" id="btnStart" onclick="showSourceSelectionModal()" title="Start Sharing">
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <circle cx="12" cy="12" r="8" />
+            </svg>
+          </button>
 
-      </header>
+          <button class="rail-btn danger-btn" id="btnStop" onclick="stopCapture()" disabled title="Stop Capture">
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <rect x="6" y="6" width="12" height="12" rx="1" />
+            </svg>
+          </button>
 
-      <section class="preview-stage glass">
-        <video id="preview" autoplay playsinline muted disablePictureInPicture></video>
-
-        <div class="preview-empty" id="prevOverlay">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-            <rect x="2" y="3" width="20" height="14" rx="2" />
-            <path d="M8 21h8M12 17v4" />
-          </svg>
-          <span>Click Start to begin sharing</span>
-        </div>
-
-
-      </section>
-
-      <section class="bottom-dock glass">
-
-        <div class="dock-card">
-          <div class="dock-label" style="display:flex;justify-content:space-between;align-items:center;">
-            <span>Stream Dashboard</span>
-            <button onclick="showSettingsModal('video')"
-              style="font-size:9px;padding:3px 8px;background:rgba(255,255,255,0.06);color:var(--muted);border:1px solid var(--border2);border-radius:5px;cursor:pointer;font-family:inherit;">Configure</button>
-          </div>
-
-          <div class="aud-field"
-            style="margin-bottom:8px;background:rgba(0,0,0,0.2);padding:6px 8px;border-radius:6px;">
-            <div class="q-label" style="margin-bottom:3px;">Audio</div>
-            <div class="aud-row" style="margin-bottom:3px;">
-              <span class="dot" id="audDot"></span>
-              <span class="aud-label-text" id="audStatus">—</span>
-            </div>
-            <div class="aud-mini-meter">
-              <div class="aud-mini-fill" id="meter"></div>
-            </div>
-          </div>
-
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
-            <span id="trackInfoAlt" class="info-text"
-              style="font-size:10px;color:var(--muted2);line-height:1.4;flex:1;">No stream active</span>
-            <span class="codec-badge" id="codecBadge" style="flex-shrink:0;">—</span>
-          </div>
-
-          <div id="liveResDisplay" style="font-size:9px;color:var(--muted2);display:none;margin-top:4px;">
-            <span id="liveResText" style="font-family:var(--mono);color:var(--accent);"></span>
-          </div>
-
-          <div id="statsHud"
-            style="display:none;gap:10px;margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.05);flex-wrap:wrap;">
-            <span class="stats-inline-cell"><span class="stats-inline-key">PIPE</span><span class="stats-inline-val"
-                id="hudPipeline">—</span></span>
-            <span class="stats-inline-cell"><span class="stats-inline-key">CODEC</span><span class="stats-inline-val"
-                id="hudCodec">—</span></span>
-            <span class="stats-inline-cell"><span class="stats-inline-key">RES</span><span class="stats-inline-val"
-                id="hudRes">—</span></span>
-            <span class="stats-inline-cell"><span class="stats-inline-key">FPS</span><span class="stats-inline-val"
-                id="hudFps">—</span></span>
-            <span class="stats-inline-cell"><span class="stats-inline-key">RTT</span><span class="stats-inline-val"
-                id="hudRtt">—</span></span>
-            <span class="stats-inline-cell"><span class="stats-inline-key">KBPS</span><span class="stats-inline-val"
-                id="hudBitrate">—</span></span>
-            <span class="stats-inline-cell"><span class="stats-inline-key">ENC.LAT</span><span class="stats-inline-val"
-                id="hudEncodeLat">—</span></span>
-          </div>
-        </div>
-
-        <div class="dock-card">
-          <div class="dock-label" style="display:flex;justify-content:space-between;align-items:center;">
-            <span>Viewer URL</span>
-            <span class="tunnel-link" onclick="showTunnelModal()">change tunnel</span>
-          </div>
-          <div class="url-card-inner">
-            <div id="urlList"></div>
-            <div class="pin-row">
-              <div class="pin-num" id="pinVal">----</div>
-              <button class="pin-regen" title="Regenerate PIN" onclick="regeneratePin()">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"
-                  stroke-linejoin="round">
-                  <polyline points="1 4 1 10 7 10" />
-                  <polyline points="23 20 23 14 17 14" />
-                  <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15" />
-                </svg>
-              </button>
-              <button class="pin-toggle-btn on" id="pinToggle" onclick="togglePin()">ON</button>
-            </div>
-            <div id="sysinfoWidget" style="font-size:10px; color:var(--muted2); display:flex; justify-content:space-between; margin-top:10px; padding-top:10px; border-top:1px solid rgba(255,255,255,0.05); font-family:var(--mono);">
-              <span id="sysCpu" title="CPU Load">CPU: —</span>
-              <span id="sysRam" title="Active Memory">RAM: —</span>
-              <span id="sysNet" title="Network Throughput">NET: —</span>
-            </div>
-          </div>
-        </div>
-
-        <div class="dock-card">
-          <div class="dock-label">Volume Mixer</div>
-          <div style="flex:1; display:flex; flex-direction:column; gap:8px; justify-content:center; padding-top:4px;">
-            <div class="dock-slider-row" style="display:flex; align-items:center; gap:8px;">
-              <span class="dock-slider-label"
-                style="width:90px; flex-shrink:0; font-size:10px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">Desktop</span>
-              <input type="range" id="desktopVolSlider" class="dock-slider" style="flex:1; min-width:60px; height:4px;"
-                min="0" max="100" value="100"
-                oninput="document.getElementById('desktopVolVal').textContent = this.value; setDesktopVolume(this.value)">
-              <span class="dock-slider-val" id="desktopVolVal"
-                style="width:24px; text-align:right; flex-shrink:0; font-size:10px; font-family:var(--mono); color:var(--text);">100</span>
-            </div>
-            <div class="dock-slider-row" style="display:flex; align-items:center; gap:8px;">
-              <span class="dock-slider-label"
-                style="width:90px; flex-shrink:0; font-size:10px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">Mic</span>
-              <input type="range" id="hostMicSlider" class="dock-slider" style="flex:1; min-width:60px; height:4px;"
-                min="0" max="100" value="100"
-                oninput="document.getElementById('hostMicVal').textContent = this.value; setHostMicGain(this.value)">
-              <span class="dock-slider-val" id="hostMicVal"
-                style="width:24px; text-align:right; flex-shrink:0; font-size:10px; font-family:var(--mono); color:var(--text);">100</span>
-            </div>
-            <div class="dock-slider-row" style="display:flex; align-items:center; gap:8px;">
-              <span class="dock-slider-label"
-                style="width:90px; flex-shrink:0; font-size:10px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">Viewers</span>
-              <input type="range" id="globalViewerVolSlider" class="dock-slider"
-                style="flex:1; min-width:60px; height:4px;" min="0" max="100" value="100"
-                oninput="document.getElementById('globalViewerVolVal').textContent = this.value; setGlobalViewerVolume(this.value)">
-              <span class="dock-slider-val" id="globalViewerVolVal"
-                style="width:24px; text-align:right; flex-shrink:0; font-size:10px; font-family:var(--mono); color:var(--text);">100</span>
-            </div>
-          </div>
-        </div>
-
-      </section>
-    </main>
-
-    <aside class="right-panel glass">
-      <div class="panel-header">
-        <span>Session Chat</span>
-        <div style="display:flex;gap:6px;align-items:center;">
-          <button onclick="showSettingsModal('viewers')" title="Viewer Management"
-            style="background:var(--surface);border:1px solid var(--border);padding:4px 8px;border-radius:6px;color:var(--muted);cursor:pointer;font-size:10px;font-weight:bold;font-family:var(--mono);transition:all 0.2s;"
-            onmouseover="this.style.color='#fff'; this.style.borderColor='var(--accent)';"
-            onmouseleave="this.style.color='var(--muted)'; this.style.borderColor='var(--border)';">VIEWERS</button>
-          <button onclick="window.electronAPI && window.electronAPI.backToDashboard()" title="Back to Dashboard"
-            style="background: var(--surface); border: 1px solid var(--border); padding: 4px 10px; border-radius: 6px; color: var(--muted); cursor: pointer; font-size: 10px; font-weight: bold; font-family: var(--mono); transition: all 0.2s;"
-            onmouseover="this.style.color='#fff'; this.style.borderColor='var(--accent)';"
-            onmouseleave="this.style.color='var(--muted)'; this.style.borderColor='var(--border)';">
-            ← DASHBOARD
+          <button
+            class="rail-btn danger-btn"
+            id="btnKbmPanic"
+            onclick="toggleKbmPanic()"
+            title="Freeze Viewer Inputs"
+            style="border: none; background: transparent"
+          >
+            <span
+              style="
+                font-size: 10px;
+                font-weight: bold;
+                color: inherit;
+                letter-spacing: 0.5px;
+                line-height: 1.1;
+                text-align: center;
+              "
+              >KBM<br />PANIC</span
+            >
           </button>
         </div>
-      </div>
-      <div class="last-log-strip" id="lastLogLine">Waiting for connection...</div>
-      <div id="chatLog" class="flex-1"></div>
-      <div class="chat-input-row">
-        <input id="chatMsg" placeholder="Message viewers..." maxlength="300"
-          onkeydown="if(event.key==='Enter'){event.preventDefault();sendChat()}">
-        <button class="chat-send-btn" onclick="sendChat()">Send</button>
-      </div>
-    </aside>
 
-  </div>
-  <script>
-    // Synchronously load the modals before other scripts run
-    var xhr = new XMLHttpRequest();
-    xhr.open('GET', '/pages/host-modals.html', false);
-    xhr.send(null);
-    if (xhr.status === 200) {
-      document.body.insertAdjacentHTML('beforeend', xhr.responseText);
-    } else {
-      console.error("Failed to load modals, status:", xhr.status);
-    }
-  </script>
-  <script src="/js/version.js"></script>
-  <script src="/js/i18n.js"></script>
-  <script type="module" src="/js/p2p-signaler.js"></script>
-  <script src="/js/chat.js"></script>
-  <script src="/js/webrtc/peer-connection.js"></script>
-  <script src="/js/webrtc/codec-negotiation.js"></script>
-  <script src="/js/ui/modals.js"></script>
-  <script src="/js/ui/roster.js"></script>
-  <script src="/js/audio-mixing.js"></script>
-  <script src="/js/stats-hud.js"></script>
-  <script src="/js/arcade-registration.js"></script>
-  <script src="/js/vps-sfu.js"></script>
-  <script src="/js/capture.js"></script>
-  <script src="/js/webcodecs-encoder.js"></script>
-  <script src="/js/tunnel-modal.js"></script>
-  <script src="/js/host.js"></script>
+        <div class="rail-divider"></div>
 
-  <script>
-    function copyText(id) {
-      const el = document.getElementById(id);
-      if (!el) return;
-      const orig = el.dataset.orig || el.innerText;
-      if (!el.dataset.orig) el.dataset.orig = orig;
+        <button class="rail-btn" id="btnArcade" onclick="showArcadeModal()" title="Arcade Mode">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="2" y="3" width="20" height="14" rx="2" />
+            <line x1="8" y1="21" x2="16" y2="21" />
+            <line x1="12" y1="17" x2="12" y2="21" />
+          </svg>
+        </button>
 
-      navigator.clipboard.writeText(orig);
-      el.innerText = 'Copied!';
-      setTimeout(() => { el.innerText = orig; }, 1500);
-    }
-  </script>
+        <button class="rail-btn" id="ctrlSettingsBtn" onclick="showSettingsModal('input')" title="Settings">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path
+              d="M17.32 5H6.68a4 4 0 0 0-3.978 3.59c-.006.052-.01.101-.017.152L2 17a1 1 0 0 0 1 1h2.128a1 1 0 0 0 .958-.71l.635-2.115C7.14 14.155 8.13 13.5 9.25 13.5h5.5c1.12 0 2.11.655 2.529 1.675l.635 2.115a1 1 0 0 0 .958.71H21a1 1 0 0 0 1-1l-.685-8.258A4 4 0 0 0 17.32 5z"
+            />
+          </svg>
+        </button>
 
-  <script>
-    // ── LIVE PILL — MutationObserver on capDot ───────────────────────────────
-    // DOMContentLoaded may already have fired by the time this inline script runs.
-    // Use a helper that runs immediately or defers correctly.
-    function _whenReady(fn) {
-      if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', fn);
-      else fn();
-    }
+        <div class="rail-spacer"></div>
 
-    _whenReady(() => {
-      const capDotEl = document.getElementById('capDot');
-      const livePill = document.getElementById('livePill');
-      const dot2 = document.getElementById('capDot2');
-      if (!capDotEl) return;
+        <button class="rail-btn" onclick="togglePreview()" id="btnPreviewToggle" title="Toggle Preview">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+            <circle cx="12" cy="12" r="3" />
+          </svg>
+        </button>
 
-      function syncLivePill() {
-        const isLive = capDotEl.classList.contains('live');
-        const isErr = capDotEl.classList.contains('err');
-        if (livePill) livePill.style.display = isLive ? 'flex' : 'none';
-        if (dot2) dot2.className = 'dot' + (isLive ? ' live' : isErr ? ' err' : '');
+        <button class="rail-btn" id="btnMasterMic" onclick="toggleGlobalMicKill()" title="Mute All Viewer Mics">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+            <line x1="12" y1="19" x2="12" y2="23" />
+            <line x1="8" y1="23" x2="16" y2="23" />
+          </svg>
+        </button>
+
+        <!-- Master Audio Killswitch: zeroes the desktop gain node to cut audio from the WebRTC stream -->
+        <button
+          class="rail-btn"
+          id="btnMasterAudioKill"
+          onclick="window.toggleMasterMute()"
+          title="Cut Desktop Audio to Stream"
+        >
+          <img
+            id="speakerIcon"
+            src="/assets/icons/speaker.svg"
+            style="width: 20px; height: 20px; pointer-events: none; filter: invert(0.6)"
+            alt=""
+          />
+        </button>
+
+        <button class="rail-btn" onclick="showAppSettings()" title="Settings">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3" />
+            <path
+              d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"
+            />
+          </svg>
+        </button>
+      </aside>
+
+      <main class="main-stage">
+        <header class="topbar glass">
+          <div class="host-meta">
+            <img
+              src="/assets/NearsecTogetherTitle.png"
+              alt="NearsecTogether"
+              style="
+                height: 32px;
+                width: auto;
+                flex-shrink: 0;
+                object-fit: contain;
+                filter: drop-shadow(0 0 6px var(--accent-glow));
+                margin-right: 8px;
+              "
+            />
+            <div>
+              <div class="host-eyebrow" style="margin-bottom: 2px">Host Session</div>
+              <div class="host-name">
+                Connected as: <span id="displayHostName" style="color: var(--accent2)">Guest</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="topbar-right">
+            <div class="status-pill" id="capStatusPill">
+              <span class="dot" id="capDot"></span><span id="capStatus" style="font-size: 10px">Idle</span>
+            </div>
+          </div>
+        </header>
+
+        <section class="preview-stage glass">
+          <video id="preview" autoplay playsinline muted disablePictureInPicture></video>
+
+          <div class="preview-empty" id="prevOverlay">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <rect x="2" y="3" width="20" height="14" rx="2" />
+              <path d="M8 21h8M12 17v4" />
+            </svg>
+            <span>Click Start to begin sharing</span>
+          </div>
+        </section>
+
+        <section class="bottom-dock glass">
+          <div class="dock-card">
+            <div class="dock-label" style="display: flex; justify-content: space-between; align-items: center">
+              <span>Stream Dashboard</span>
+              <button
+                onclick="showSettingsModal('video')"
+                style="
+                  font-size: 9px;
+                  padding: 3px 8px;
+                  background: rgba(255, 255, 255, 0.06);
+                  color: var(--muted);
+                  border: 1px solid var(--border2);
+                  border-radius: 5px;
+                  cursor: pointer;
+                  font-family: inherit;
+                "
+              >
+                Configure
+              </button>
+            </div>
+
+            <div
+              class="aud-field"
+              style="margin-bottom: 8px; background: rgba(0, 0, 0, 0.2); padding: 6px 8px; border-radius: 6px"
+            >
+              <div class="q-label" style="margin-bottom: 3px">Audio</div>
+              <div class="aud-row" style="margin-bottom: 3px">
+                <span class="dot" id="audDot"></span>
+                <span class="aud-label-text" id="audStatus">—</span>
+              </div>
+              <div class="aud-mini-meter">
+                <div class="aud-mini-fill" id="meter"></div>
+              </div>
+            </div>
+
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px">
+              <span
+                id="trackInfoAlt"
+                class="info-text"
+                style="font-size: 10px; color: var(--muted2); line-height: 1.4; flex: 1"
+                >No stream active</span
+              >
+              <span class="codec-badge" id="codecBadge" style="flex-shrink: 0">—</span>
+            </div>
+
+            <div id="liveResDisplay" style="font-size: 9px; color: var(--muted2); display: none; margin-top: 4px">
+              <span id="liveResText" style="font-family: var(--mono); color: var(--accent)"></span>
+            </div>
+
+            <div
+              id="statsHud"
+              style="
+                display: none;
+                gap: 10px;
+                margin-top: 10px;
+                padding-top: 10px;
+                border-top: 1px solid rgba(255, 255, 255, 0.05);
+                flex-wrap: wrap;
+              "
+            >
+              <span class="stats-inline-cell"
+                ><span class="stats-inline-key">PIPE</span
+                ><span class="stats-inline-val" id="hudPipeline">—</span></span
+              >
+              <span class="stats-inline-cell"
+                ><span class="stats-inline-key">CODEC</span><span class="stats-inline-val" id="hudCodec">—</span></span
+              >
+              <span class="stats-inline-cell"
+                ><span class="stats-inline-key">RES</span><span class="stats-inline-val" id="hudRes">—</span></span
+              >
+              <span class="stats-inline-cell"
+                ><span class="stats-inline-key">FPS</span><span class="stats-inline-val" id="hudFps">—</span></span
+              >
+              <span class="stats-inline-cell"
+                ><span class="stats-inline-key">RTT</span><span class="stats-inline-val" id="hudRtt">—</span></span
+              >
+              <span class="stats-inline-cell"
+                ><span class="stats-inline-key">KBPS</span><span class="stats-inline-val" id="hudBitrate">—</span></span
+              >
+              <span class="stats-inline-cell"
+                ><span class="stats-inline-key">ENC.LAT</span
+                ><span class="stats-inline-val" id="hudEncodeLat">—</span></span
+              >
+            </div>
+          </div>
+
+          <div class="dock-card">
+            <div class="dock-label" style="display: flex; justify-content: space-between; align-items: center">
+              <span>Viewer URL</span>
+              <span class="tunnel-link" onclick="showTunnelModal()">change tunnel</span>
+            </div>
+            <div class="url-card-inner">
+              <div id="urlList"></div>
+              <div class="pin-row">
+                <div class="pin-num" id="pinVal">----</div>
+                <button class="pin-regen" title="Regenerate PIN" onclick="regeneratePin()">
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <polyline points="1 4 1 10 7 10" />
+                    <polyline points="23 20 23 14 17 14" />
+                    <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15" />
+                  </svg>
+                </button>
+                <button class="pin-toggle-btn on" id="pinToggle" onclick="togglePin()">ON</button>
+              </div>
+              <div
+                id="sysinfoWidget"
+                style="
+                  font-size: 10px;
+                  color: var(--muted2);
+                  display: flex;
+                  justify-content: space-between;
+                  margin-top: 10px;
+                  padding-top: 10px;
+                  border-top: 1px solid rgba(255, 255, 255, 0.05);
+                  font-family: var(--mono);
+                "
+              >
+                <span id="sysCpu" title="CPU Load">CPU: —</span>
+                <span id="sysRam" title="Active Memory">RAM: —</span>
+                <span id="sysNet" title="Network Throughput">NET: —</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="dock-card">
+            <div class="dock-label">Volume Mixer</div>
+            <div
+              style="
+                flex: 1;
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+                justify-content: center;
+                padding-top: 4px;
+              "
+            >
+              <div class="dock-slider-row" style="display: flex; align-items: center; gap: 8px">
+                <span
+                  class="dock-slider-label"
+                  style="
+                    width: 90px;
+                    flex-shrink: 0;
+                    font-size: 10px;
+                    color: var(--muted);
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    white-space: nowrap;
+                  "
+                  >Desktop</span
+                >
+                <input
+                  type="range"
+                  id="desktopVolSlider"
+                  class="dock-slider"
+                  style="flex: 1; min-width: 60px; height: 4px"
+                  min="0"
+                  max="100"
+                  value="100"
+                  oninput="
+                    document.getElementById('desktopVolVal').textContent = this.value;
+                    setDesktopVolume(this.value);
+                  "
+                />
+                <span
+                  class="dock-slider-val"
+                  id="desktopVolVal"
+                  style="
+                    width: 24px;
+                    text-align: right;
+                    flex-shrink: 0;
+                    font-size: 10px;
+                    font-family: var(--mono);
+                    color: var(--text);
+                  "
+                  >100</span
+                >
+              </div>
+              <div class="dock-slider-row" style="display: flex; align-items: center; gap: 8px">
+                <span
+                  class="dock-slider-label"
+                  style="
+                    width: 90px;
+                    flex-shrink: 0;
+                    font-size: 10px;
+                    color: var(--muted);
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    white-space: nowrap;
+                  "
+                  >Mic</span
+                >
+                <input
+                  type="range"
+                  id="hostMicSlider"
+                  class="dock-slider"
+                  style="flex: 1; min-width: 60px; height: 4px"
+                  min="0"
+                  max="100"
+                  value="100"
+                  oninput="
+                    document.getElementById('hostMicVal').textContent = this.value;
+                    setHostMicGain(this.value);
+                  "
+                />
+                <span
+                  class="dock-slider-val"
+                  id="hostMicVal"
+                  style="
+                    width: 24px;
+                    text-align: right;
+                    flex-shrink: 0;
+                    font-size: 10px;
+                    font-family: var(--mono);
+                    color: var(--text);
+                  "
+                  >100</span
+                >
+              </div>
+              <div class="dock-slider-row" style="display: flex; align-items: center; gap: 8px">
+                <span
+                  class="dock-slider-label"
+                  style="
+                    width: 90px;
+                    flex-shrink: 0;
+                    font-size: 10px;
+                    color: var(--muted);
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    white-space: nowrap;
+                  "
+                  >Viewers</span
+                >
+                <input
+                  type="range"
+                  id="globalViewerVolSlider"
+                  class="dock-slider"
+                  style="flex: 1; min-width: 60px; height: 4px"
+                  min="0"
+                  max="100"
+                  value="100"
+                  oninput="
+                    document.getElementById('globalViewerVolVal').textContent = this.value;
+                    setGlobalViewerVolume(this.value);
+                  "
+                />
+                <span
+                  class="dock-slider-val"
+                  id="globalViewerVolVal"
+                  style="
+                    width: 24px;
+                    text-align: right;
+                    flex-shrink: 0;
+                    font-size: 10px;
+                    font-family: var(--mono);
+                    color: var(--text);
+                  "
+                  >100</span
+                >
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <aside class="right-panel glass">
+        <div class="panel-header">
+          <span>Session Chat</span>
+          <div style="display: flex; gap: 6px; align-items: center">
+            <button
+              onclick="showSettingsModal('viewers')"
+              title="Viewer Management"
+              style="
+                background: var(--surface);
+                border: 1px solid var(--border);
+                padding: 4px 8px;
+                border-radius: 6px;
+                color: var(--muted);
+                cursor: pointer;
+                font-size: 10px;
+                font-weight: bold;
+                font-family: var(--mono);
+                transition: all 0.2s;
+              "
+              onmouseover="
+                this.style.color = '#fff';
+                this.style.borderColor = 'var(--accent)';
+              "
+              onmouseleave="
+                this.style.color = 'var(--muted)';
+                this.style.borderColor = 'var(--border)';
+              "
+            >
+              VIEWERS
+            </button>
+            <button
+              onclick="window.electronAPI && window.electronAPI.backToDashboard()"
+              title="Back to Dashboard"
+              style="
+                background: var(--surface);
+                border: 1px solid var(--border);
+                padding: 4px 10px;
+                border-radius: 6px;
+                color: var(--muted);
+                cursor: pointer;
+                font-size: 10px;
+                font-weight: bold;
+                font-family: var(--mono);
+                transition: all 0.2s;
+              "
+              onmouseover="
+                this.style.color = '#fff';
+                this.style.borderColor = 'var(--accent)';
+              "
+              onmouseleave="
+                this.style.color = 'var(--muted)';
+                this.style.borderColor = 'var(--border)';
+              "
+            >
+              ← DASHBOARD
+            </button>
+          </div>
+        </div>
+        <div class="last-log-strip" id="lastLogLine">Waiting for connection...</div>
+        <div id="chatLog" class="flex-1"></div>
+        <div class="chat-input-row">
+          <input
+            id="chatMsg"
+            placeholder="Message viewers..."
+            maxlength="300"
+            onkeydown="
+              if (event.key === 'Enter') {
+                event.preventDefault();
+                sendChat();
+              }
+            "
+          />
+          <button class="chat-send-btn" onclick="sendChat()">Send</button>
+        </div>
+      </aside>
+    </div>
+    <script>
+      // Synchronously load the modals before other scripts run
+      var xhr = new XMLHttpRequest();
+      xhr.open('GET', '/pages/host-modals.html', false);
+      xhr.send(null);
+      if (xhr.status === 200) {
+        document.body.insertAdjacentHTML('beforeend', xhr.responseText);
+      } else {
+        console.error('Failed to load modals, status:', xhr.status);
+      }
+    </script>
+    <script src="/js/version.js"></script>
+    <script src="/js/i18n.js"></script>
+    <script type="module" src="/js/p2p-signaler.js"></script>
+    <script src="/js/chat.js"></script>
+    <script src="/js/webrtc/peer-connection.js"></script>
+    <script src="/js/webrtc/codec-negotiation.js"></script>
+    <script src="/js/ui/modals.js"></script>
+    <script src="/js/ui/roster.js"></script>
+    <script src="/js/audio-mixing.js"></script>
+    <script src="/js/stats-hud.js"></script>
+    <script src="/js/arcade-registration.js"></script>
+    <script src="/js/vps-sfu.js"></script>
+    <script src="/js/capture.js"></script>
+    <script src="/js/webcodecs-encoder.js"></script>
+    <script src="/js/tunnel-modal.js"></script>
+    <script src="/js/host.js"></script>
+
+    <script>
+      function copyText(id) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        const orig = el.dataset.orig || el.innerText;
+        if (!el.dataset.orig) el.dataset.orig = orig;
+
+        navigator.clipboard.writeText(orig);
+        el.innerText = 'Copied!';
+        setTimeout(() => {
+          el.innerText = orig;
+        }, 1500);
+      }
+    </script>
+
+    <script>
+      // ── LIVE PILL — MutationObserver on capDot ───────────────────────────────
+      // DOMContentLoaded may already have fired by the time this inline script runs.
+      // Use a helper that runs immediately or defers correctly.
+      function _whenReady(fn) {
+        if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', fn);
+        else fn();
       }
 
-      new MutationObserver(syncLivePill)
-        .observe(capDotEl, { attributes: true, attributeFilter: ['class'] });
+      _whenReady(() => {
+        const capDotEl = document.getElementById('capDot');
+        const livePill = document.getElementById('livePill');
+        const dot2 = document.getElementById('capDot2');
+        if (!capDotEl) return;
 
-      syncLivePill(); // sync on load in case stream already running
-    });
+        function syncLivePill() {
+          const isLive = capDotEl.classList.contains('live');
+          const isErr = capDotEl.classList.contains('err');
+          if (livePill) livePill.style.display = isLive ? 'flex' : 'none';
+          if (dot2) dot2.className = 'dot' + (isLive ? ' live' : isErr ? ' err' : '');
+        }
 
-    // ── PREVIEW TOGGLE — host.js owns togglePreview() with SVG icons ───────
-    // No override needed here; host.js has been fixed to use innerHTML + SVGs.
+        new MutationObserver(syncLivePill).observe(capDotEl, { attributes: true, attributeFilter: ['class'] });
 
-    // ── trackInfo → trackInfoAlt mirror ─────────────────────────────────────
-    _whenReady(() => {
-      const src = document.getElementById('trackInfo');
-      const dst = document.getElementById('trackInfoAlt');
-      if (src && dst) {
-        new MutationObserver(() => { dst.innerHTML = src.innerHTML; })
-          .observe(src, { childList: true, characterData: true, subtree: true });
-      }
-    });
+        syncLivePill(); // sync on load in case stream already running
+      });
 
-    _whenReady(() => {
-      const dv = localStorage.getItem('ns_host_desktop_vol') ?? '100';
-      const mv = localStorage.getItem('ns_host_mic_gain') ?? '100';
-      const gv = localStorage.getItem('ns_vol_others') ?? '100';
+      // ── PREVIEW TOGGLE — host.js owns togglePreview() with SVG icons ───────
+      // No override needed here; host.js has been fixed to use innerHTML + SVGs.
 
-      const dvEl = document.getElementById('desktopVolSlider');
-      const mvEl = document.getElementById('hostMicSlider');
-      const gvEl = document.getElementById('globalViewerVolSlider');
+      // ── trackInfo → trackInfoAlt mirror ─────────────────────────────────────
+      _whenReady(() => {
+        const src = document.getElementById('trackInfo');
+        const dst = document.getElementById('trackInfoAlt');
+        if (src && dst) {
+          new MutationObserver(() => {
+            dst.innerHTML = src.innerHTML;
+          }).observe(src, { childList: true, characterData: true, subtree: true });
+        }
+      });
 
-      if (dvEl) { dvEl.value = dv; setDesktopVolume(dv); }
-      if (mvEl) { mvEl.value = mv; setHostMicGain(mv); }
-      if (gvEl) { gvEl.value = gv; if (window.setGlobalViewerVolume) window.setGlobalViewerVolume(gv); }
-    });
+      _whenReady(() => {
+        const dv = localStorage.getItem('ns_host_desktop_vol') ?? '100';
+        const mv = localStorage.getItem('ns_host_mic_gain') ?? '100';
+        const gv = localStorage.getItem('ns_vol_others') ?? '100';
 
-  </script>
+        const dvEl = document.getElementById('desktopVolSlider');
+        const mvEl = document.getElementById('hostMicSlider');
+        const gvEl = document.getElementById('globalViewerVolSlider');
 
-  <script>
-    (function initTunnelModal() {
-      // Tunnel provider cards now show URLs and manual instructions only.
-      // No platform-specific package commands are shown.
-      (function () {
-        const orig = window.setCapDot;
-        if (typeof orig !== 'function') return;
-        window.setCapDot = function (state) {
-          orig(state);
-          const pill = document.getElementById('livePill');
-          if (pill) pill.style.display = state === 'live' ? 'flex' : 'none';
-        };
+        if (dvEl) {
+          dvEl.value = dv;
+          setDesktopVolume(dv);
+        }
+        if (mvEl) {
+          mvEl.value = mv;
+          setHostMicGain(mv);
+        }
+        if (gvEl) {
+          gvEl.value = gv;
+          if (window.setGlobalViewerVolume) window.setGlobalViewerVolume(gv);
+        }
+      });
+    </script>
+
+    <script>
+      (function initTunnelModal() {
+        // Tunnel provider cards now show URLs and manual instructions only.
+        // No platform-specific package commands are shown.
+        (function () {
+          const orig = window.setCapDot;
+          if (typeof orig !== 'function') return;
+          window.setCapDot = function (state) {
+            orig(state);
+            const pill = document.getElementById('livePill');
+            if (pill) pill.style.display = state === 'live' ? 'flex' : 'none';
+          };
+        })();
       })();
-    })();
-  </script>
+    </script>
 
-  <span id="trackInfo" style="display:none;"></span>
-  <span id="viewerCount" style="display:none;"></span>
+    <span id="trackInfo" style="display: none"></span>
+    <span id="viewerCount" style="display: none"></span>
 
-  <script>
-    // ── Window-title auto-mapping (Linux only) ────────────────────────────────────
-    // Polls the active window title every 2s and sends it to the server so
-    // linux_uinput.py can look it up in game_profiles.csv and auto-switch
-    // all viewers to the correct KBM preset + controller type.
-    (function startWindowFocusPoller() {
-      if (!window.electronAPI) return; // only in Electron
-      let _lastTitle = '';
-      setInterval(() => {
-        // Electron exposes the active window title via a dedicated IPC call.
-        // If that's unavailable, fall back to document.title of the captured source.
-        const captureTitle = (typeof currentStream !== 'undefined' && currentStream)
-          ? (currentStream.getVideoTracks()[0]?.label || '')
-          : '';
-        if (captureTitle && captureTitle !== _lastTitle) {
-          _lastTitle = captureTitle;
-          if (ws && ws.readyState === 1) {
-            ws.send(JSON.stringify({ type: 'window-focus', title: captureTitle }));
+    <script>
+      // ── Window-title auto-mapping (Linux only) ────────────────────────────────────
+      // Polls the active window title every 2s and sends it to the server so
+      // linux_uinput.py can look it up in game_profiles.csv and auto-switch
+      // all viewers to the correct KBM preset + controller type.
+      (function startWindowFocusPoller() {
+        if (!window.electronAPI) return; // only in Electron
+        let _lastTitle = '';
+        setInterval(() => {
+          // Electron exposes the active window title via a dedicated IPC call.
+          // If that's unavailable, fall back to document.title of the captured source.
+          const captureTitle =
+            typeof currentStream !== 'undefined' && currentStream ? currentStream.getVideoTracks()[0]?.label || '' : '';
+          if (captureTitle && captureTitle !== _lastTitle) {
+            _lastTitle = captureTitle;
+            if (ws && ws.readyState === 1) {
+              ws.send(JSON.stringify({ type: 'window-focus', title: captureTitle }));
+            }
+          }
+        }, 2000);
+      })();
+    </script>
+
+    <!-- inputVizOverlay relocated inline into settingsModal Input tab -->
+
+    <!-- viewerPanel relocated as a tab inside settingsModal -->
+
+    <!-- ── Unified Settings Modal ────────────────────────────────────────────── -->
+
+    <script>
+      document.addEventListener('DOMContentLoaded', () => {
+        const radios = document.querySelectorAll('input[name="provider"]');
+        const wtOpt = document.getElementById('optWebTransport');
+        const pSelect = document.getElementById('pipelineSelect');
+
+        function updateWt() {
+          const selected = document.querySelector('input[name="provider"]:checked');
+          if (selected && selected.value === 'vps-sfu') {
+            wtOpt.style.display = 'block';
+            wtOpt.disabled = false;
+          } else {
+            wtOpt.style.display = 'none';
+            wtOpt.disabled = true;
+            if (pSelect.value === 'webtransport') {
+              pSelect.value = 'native';
+              if (typeof saveCaptureMethod === 'function') saveCaptureMethod('native');
+            }
           }
         }
-      }, 2000);
-    })();
-  </script>
 
-  <!-- inputVizOverlay relocated inline into settingsModal Input tab -->
-
-  <!-- viewerPanel relocated as a tab inside settingsModal -->
-
-  <!-- ── Unified Settings Modal ────────────────────────────────────────────── -->
-
-  <script>
-    document.addEventListener('DOMContentLoaded', () => {
-      const radios = document.querySelectorAll('input[name="provider"]');
-      const wtOpt = document.getElementById('optWebTransport');
-      const pSelect = document.getElementById('pipelineSelect');
-
-      function updateWt() {
-        const selected = document.querySelector('input[name="provider"]:checked');
-        if (selected && selected.value === 'vps-sfu') {
-          wtOpt.style.display = 'block';
-          wtOpt.disabled = false;
-        } else {
-          wtOpt.style.display = 'none';
-          wtOpt.disabled = true;
-          if (pSelect.value === 'webtransport') {
-            pSelect.value = 'native';
-            if (typeof saveCaptureMethod === 'function') saveCaptureMethod('native');
-          }
-        }
-      }
-
-      radios.forEach(r => r.addEventListener('change', updateWt));
-      updateWt(); // Check on load
-    });
-  </script>
-
-
-</body>
-
+        radios.forEach((r) => r.addEventListener('change', updateWt));
+        updateWt(); // Check on load
+      });
+    </script>
+  </body>
 </html>

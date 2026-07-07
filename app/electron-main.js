@@ -1,6 +1,4 @@
-const {
-  app, powerSaveBlocker, globalShortcut,
-} = require('electron');
+const { app, powerSaveBlocker, globalShortcut } = require('electron');
 const path = require('path');
 
 const state = require('./electron/state.js');
@@ -82,7 +80,8 @@ if (flags.isArcadeWorker && process.platform === 'linux') {
   app.commandLine.appendSwitch('ozone-platform-hint', 'x11');
   app.commandLine.appendSwitch('enable-features', 'WebRTCPipeWireCapturer');
 } else if (process.platform === 'linux') {
-  const isGamescope = (process.env.XDG_CURRENT_DESKTOP || '').toLowerCase().includes('gamescope') ||
+  const isGamescope =
+    (process.env.XDG_CURRENT_DESKTOP || '').toLowerCase().includes('gamescope') ||
     (process.env.DESKTOP_SESSION || '').toLowerCase().includes('gamescope') ||
     process.env.SteamDeck === '1' ||
     process.env.SteamGamepadUI === '1';
@@ -97,7 +96,10 @@ if (flags.isArcadeWorker && process.platform === 'linux') {
   } else {
     // Force native Wayland with decorations on other Linux DEs
     app.commandLine.appendSwitch('ozone-platform-hint', 'auto');
-    app.commandLine.appendSwitch('enable-features', 'WebRTCPipeWireCapturer,WaylandWindowDecorations,VaapiVideoEncoder,VaapiVideoDecoder,CanvasOopRasterization');
+    app.commandLine.appendSwitch(
+      'enable-features',
+      'WebRTCPipeWireCapturer,WaylandWindowDecorations,VaapiVideoEncoder,VaapiVideoDecoder,CanvasOopRasterization'
+    );
   }
 
   // Unlock zero-copy DMA-BUF memory passing
@@ -168,7 +170,7 @@ app.on('second-instance', (_event, argv) => {
   // with the joinSecret passed as a discord-<clientId>:// URI in argv.
   // We parse that URI here and navigate the window to the session.
   if (!win || !state.runtime.serverPort) return;
-  const joinArg = argv.find(a => a.startsWith('discord-'));
+  const joinArg = argv.find((a) => a.startsWith('discord-'));
   if (!joinArg) return;
 
   try {

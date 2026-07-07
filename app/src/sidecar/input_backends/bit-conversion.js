@@ -24,27 +24,27 @@
 //   bit 13 = SELECT → C++ bit 8
 //   bit 14 = GUIDE (C++ reads uint16 so bit16 unreachable — skip)
 function _jsBtnsToCpp(jsBtns) {
-    let cpp = 0;
-    // A, B, X, Y — bits 0-3 pass through (C++ X/Y label swap is intentional, emits correctly)
-    cpp |= (jsBtns & 0x000F);
-    // LB: JS bit8 → C++ bit4
-    if (jsBtns & 0x0100) cpp |= 0x0010;
-    // RB: JS bit9 → C++ bit5
-    if (jsBtns & 0x0200) cpp |= 0x0020;
-    // L3: JS bit10 → C++ bit10 (unchanged)
-    if (jsBtns & 0x0400) cpp |= 0x0400;
-    // R3: JS bit11 → C++ bit11 (unchanged)
-    if (jsBtns & 0x0800) cpp |= 0x0800;
-    // START: JS bit12 → C++ bit9
-    if (jsBtns & 0x1000) cpp |= 0x0200;
-    // SELECT/BACK: JS bit13 → C++ bit8
-    if (jsBtns & 0x2000) cpp |= 0x0100;
-    // GUIDE: JS bit14 → C++ bit16 — uint16 can't hold bit16, skip
+  let cpp = 0;
+  // A, B, X, Y — bits 0-3 pass through (C++ X/Y label swap is intentional, emits correctly)
+  cpp |= jsBtns & 0x000f;
+  // LB: JS bit8 → C++ bit4
+  if (jsBtns & 0x0100) cpp |= 0x0010;
+  // RB: JS bit9 → C++ bit5
+  if (jsBtns & 0x0200) cpp |= 0x0020;
+  // L3: JS bit10 → C++ bit10 (unchanged)
+  if (jsBtns & 0x0400) cpp |= 0x0400;
+  // R3: JS bit11 → C++ bit11 (unchanged)
+  if (jsBtns & 0x0800) cpp |= 0x0800;
+  // START: JS bit12 → C++ bit9
+  if (jsBtns & 0x1000) cpp |= 0x0200;
+  // SELECT/BACK: JS bit13 → C++ bit8
+  if (jsBtns & 0x2000) cpp |= 0x0100;
+  // GUIDE: JS bit14 → C++ bit16 — uint16 can't hold bit16, skip
 
-    // Dpad bits 4-7 → ABS_HAT values written to [13][14] in the buffer
-    const hx = (jsBtns & 0x0040) ? -1 : (jsBtns & 0x0080) ? 1 : 0;  // LEFT / RIGHT
-    const hy = (jsBtns & 0x0010) ? -1 : (jsBtns & 0x0020) ? 1 : 0;  // UP / DOWN
-    return { cpp, hx, hy };
+  // Dpad bits 4-7 → ABS_HAT values written to [13][14] in the buffer
+  const hx = jsBtns & 0x0040 ? -1 : jsBtns & 0x0080 ? 1 : 0; // LEFT / RIGHT
+  const hy = jsBtns & 0x0010 ? -1 : jsBtns & 0x0020 ? 1 : 0; // UP / DOWN
+  return { cpp, hx, hy };
 }
 
 module.exports = { _jsBtnsToCpp };

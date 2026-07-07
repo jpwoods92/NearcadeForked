@@ -150,8 +150,8 @@ function injectBackOutOverlay() {
 // ── Gamepad watcher: Start + Select held for 1.5s = exit ─────────────────────
 function startGamepadWatcher() {
   let comboHoldStart = null;
-  let toastVisible   = false;
-  const HOLD_MS      = 1500; // how long to hold Start+Select
+  let toastVisible = false;
+  const HOLD_MS = 1500; // how long to hold Start+Select
 
   function pollGamepads() {
     const pads = navigator.getGamepads ? navigator.getGamepads() : [];
@@ -160,17 +160,20 @@ function startGamepadWatcher() {
     for (const gp of pads) {
       if (!gp) continue;
       // Standard mapping: button 8 = Select/Back/Share, button 9 = Start/Menu/Options
-      const start  = gp.buttons[9]?.pressed;
+      const start = gp.buttons[9]?.pressed;
       const select = gp.buttons[8]?.pressed;
-      if (start && select) { comboActive = true; break; }
+      if (start && select) {
+        comboActive = true;
+        break;
+      }
     }
 
     const toast = document.getElementById('ns-escape-toast');
-    const fill  = document.getElementById('ns-escape-fill');
+    const fill = document.getElementById('ns-escape-fill');
 
     if (comboActive) {
       if (!comboHoldStart) comboHoldStart = Date.now();
-      const elapsed  = Date.now() - comboHoldStart;
+      const elapsed = Date.now() - comboHoldStart;
       const progress = Math.min(100, (elapsed / HOLD_MS) * 100);
 
       if (!toastVisible && elapsed > 100) {

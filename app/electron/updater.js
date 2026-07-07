@@ -34,7 +34,9 @@ function init() {
         win.webContents.send('update-ready', info.version);
 
         // Inject "Update Required" button
-        win.webContents.executeJavaScript(`
+        win.webContents
+          .executeJavaScript(
+            `
           if (!document.getElementById('ns-update-btn') && window.electronAPI) {
             const btn = document.createElement('button');
             btn.id = 'ns-update-btn';
@@ -43,11 +45,13 @@ function init() {
             btn.onclick = () => window.electronAPI.installUpdate();
             document.body.appendChild(btn);
           }
-        `).catch(() => {});
+        `
+          )
+          .catch(() => {});
       }
     });
 
-    autoUpdater.checkForUpdatesAndNotify().catch(e => console.error('[electron] Auto-update check failed:', e));
+    autoUpdater.checkForUpdatesAndNotify().catch((e) => console.error('[electron] Auto-update check failed:', e));
   } catch (e) {
     console.error('[electron] autoUpdater error:', e);
   }

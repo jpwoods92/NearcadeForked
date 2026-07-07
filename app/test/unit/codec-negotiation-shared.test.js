@@ -39,8 +39,8 @@ describe('extractPreferredCodec()', () => {
       codec('video/VP9'),
     ];
     const removed = extractPreferredCodec(codecs, 'video/H264');
-    expect(removed.map(c => c.mimeType)).toEqual(['video/H264', 'video/rtx']);
-    expect(codecs.map(c => c.mimeType)).toEqual(['video/VP8', 'video/VP9']);
+    expect(removed.map((c) => c.mimeType)).toEqual(['video/H264', 'video/rtx']);
+    expect(codecs.map((c) => c.mimeType)).toEqual(['video/VP8', 'video/VP9']);
   });
 
   it('accepts an array of acceptable mimes and matches whichever appears first positionally', () => {
@@ -104,9 +104,15 @@ describe('viewer.js preferReceiverCodec', () => {
   it('swallows a rejected setCodecPreferences() call instead of throwing, and reports no codec used', () => {
     const viewer = loadViewer();
     global.RTCRtpReceiver = { getCapabilities: () => ({ codecs: [codec('video/VP8')] }) };
-    const t = { setCodecPreferences: () => { throw new Error('Invalid codec preferences'); } };
+    const t = {
+      setCodecPreferences: () => {
+        throw new Error('Invalid codec preferences');
+      },
+    };
     let used;
-    expect(() => { used = viewer.preferReceiverCodec(t, null); }).not.toThrow();
+    expect(() => {
+      used = viewer.preferReceiverCodec(t, null);
+    }).not.toThrow();
     expect(used).toBeNull();
   });
 });

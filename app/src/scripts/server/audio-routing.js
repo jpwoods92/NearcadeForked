@@ -26,17 +26,29 @@ function spawnAudioWorker() {
   // (same directory, no packaging concern) — no path needs threading through
   // workerData for that anymore. See REFACTOR_PLAN.md Phase 8.
   _audioWorker = new Worker(path.join(__dirname, '..', '..', 'sidecar', 'audio_worker.js'), {
-    workerData: { isPackaged }
+    workerData: { isPackaged },
   });
 
   _audioWorker.on('message', (msg) => {
     switch (msg.type) {
-      case 'log': console.log(msg.message); break;
-      case 'error': console.error(msg.message); break;
-      case 'module-ids': Object.assign(_vAudioModules, msg.ids); break;
-      case 'ready': console.log('[VirtualAudio] Worker ready.'); break;
-      case 'destroyed': console.log('[VirtualAudio] Worker teardown complete.'); break;
-      case 'backend-selected': console.log(`[VirtualAudio] Using ${msg.backend} backend.`); break;
+      case 'log':
+        console.log(msg.message);
+        break;
+      case 'error':
+        console.error(msg.message);
+        break;
+      case 'module-ids':
+        Object.assign(_vAudioModules, msg.ids);
+        break;
+      case 'ready':
+        console.log('[VirtualAudio] Worker ready.');
+        break;
+      case 'destroyed':
+        console.log('[VirtualAudio] Worker teardown complete.');
+        break;
+      case 'backend-selected':
+        console.log(`[VirtualAudio] Using ${msg.backend} backend.`);
+        break;
     }
   });
 
@@ -119,16 +131,19 @@ function purgeStaleModules() {
   const { execSync } = require('child_process');
   try {
     const moduleList = execSync('pactl list short modules 2>/dev/null', {
-      encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'],
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
     });
     const staleIds = parseStaleModuleIds(moduleList);
     if (staleIds.length > 0) {
       console.log(`[VirtualAudio] Purging ${staleIds.length} stale PA module(s)`);
       for (const id of staleIds) {
-        try { execSync(`pactl unload-module ${id}`, { stdio: 'ignore' }); } catch (_) { }
+        try {
+          execSync(`pactl unload-module ${id}`, { stdio: 'ignore' });
+        } catch (_) {}
       }
     }
-  } catch (_) { }
+  } catch (_) {}
 }
 
 /**
@@ -141,8 +156,12 @@ function destroyVirtualAudio() {
     try {
       _audioWorker.postMessage({ type: 'destroy' });
       // Give it 800ms to run pactl teardown asynchronously, then force-terminate
-      setTimeout(() => { try { _audioWorker && _audioWorker.terminate(); } catch (_) { } }, 800);
-    } catch (_) { }
+      setTimeout(() => {
+        try {
+          _audioWorker && _audioWorker.terminate();
+        } catch (_) {}
+      }, 800);
+    } catch (_) {}
   }
 
   if (process.platform === 'linux') {
@@ -153,7 +172,9 @@ function destroyVirtualAudio() {
     for (const key of unloadOrder) {
       const id = _vAudioModules[key];
       if (id) {
-        try { execSync(`pactl unload-module ${id}`, { stdio: 'ignore' }); } catch (_) { }
+        try {
+          execSync(`pactl unload-module ${id}`, { stdio: 'ignore' });
+        } catch (_) {}
         console.log(`[VirtualAudio] Cleaned up ${key} module ${id}`);
       }
     }
@@ -163,10 +184,15 @@ function destroyVirtualAudio() {
 
     // PipeWire node cleanup — destroy any pw-loopback nodes created by the worker
     try {
-      execSync("pw-cli list-objects | grep -A2 'Nearsec' | grep 'id ' | awk '{print $2}' | tr -d ',' | xargs -r -I{} pw-cli destroy {}", { stdio: 'ignore', timeout: 2000 });
-    } catch (_) { }
+      execSync(
+        "pw-cli list-objects | grep -A2 'Nearsec' | grep 'id ' | awk '{print $2}' | tr -d ',' | xargs -r -I{} pw-cli destroy {}",
+        { stdio: 'ignore', timeout: 2000 }
+      );
+    } catch (_) {}
     // Belt-and-braces: kill any dangling pw-loopback processes we spawned
-    try { execSync("pkill -f 'pw-loopback.*Nearsec'", { stdio: 'ignore' }); } catch (_) { }
+    try {
+      execSync("pkill -f 'pw-loopback.*Nearsec'", { stdio: 'ignore' });
+    } catch (_) {}
   }
 }
 

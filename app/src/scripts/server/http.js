@@ -10,8 +10,13 @@ const { projectRoot, loadConfig, saveConfig, readEnv } = require('./env.js');
 const { shouldRequirePin } = require('./network-info.js');
 const { initVirtualAudio, routeGameAudio } = require('./audio-routing.js');
 const {
-  startTunnelCloudflared, startTunnelVps, startTunnelPlayit,
-  startTunnelLocalhostRun, startTunnelServeo, startTunnelZrok, startTunnel,
+  startTunnelCloudflared,
+  startTunnelVps,
+  startTunnelPlayit,
+  startTunnelLocalhostRun,
+  startTunnelServeo,
+  startTunnelZrok,
+  startTunnel,
 } = require('./tunnel.js');
 const { arcadeSessions } = require('./arcade-signaling.js');
 const inputDriver = require('../../sidecar/input_backends/InputOrchestrator.js');
@@ -35,10 +40,10 @@ function registerHttpRoutes(app, deps) {
   const { makePin } = deps;
 
   app.use((req, res, next) => {
-    res.setHeader("Permissions-Policy", "gamepad=*, display-capture=(self)");
-    res.setHeader("X-Content-Type-Options", "nosniff");
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "GET, POST, HEAD, OPTIONS");
+    res.setHeader('Permissions-Policy', 'gamepad=*, display-capture=(self)');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, HEAD, OPTIONS');
     if (req.method === 'OPTIONS') return res.sendStatus(204);
     next();
   });
@@ -51,79 +56,117 @@ function registerHttpRoutes(app, deps) {
     res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');
-    res.send(`window.NEARSEC_VERSION = "${state.serverInfo.appVersion}";\nwindow.NEARSEC_COMMIT = "${state.serverInfo.commitHash}";\nconsole.log("[Nearsec] Version loaded:", window.NEARSEC_VERSION, window.NEARSEC_COMMIT ? "("+window.NEARSEC_COMMIT+")" : "");`);
+    res.send(
+      `window.NEARSEC_VERSION = "${state.serverInfo.appVersion}";\nwindow.NEARSEC_COMMIT = "${state.serverInfo.commitHash}";\nconsole.log("[Nearsec] Version loaded:", window.NEARSEC_VERSION, window.NEARSEC_COMMIT ? "("+window.NEARSEC_COMMIT+")" : "");`
+    );
   });
 
-  app.use("/js", express.static(path.join(__dirname, '..'), { setHeaders: (res) => { res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate'); res.setHeader('Pragma', 'no-cache'); res.setHeader('Expires', '0'); } }));
-  app.use("/assets", express.static(path.join(__dirname, '..', '..', '..', '..', 'assets')));
+  app.use(
+    '/js',
+    express.static(path.join(__dirname, '..'), {
+      setHeaders: (res) => {
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+      },
+    })
+  );
+  app.use('/assets', express.static(path.join(__dirname, '..', '..', '..', '..', 'assets')));
 
   // FIX: Serve the favicon explicitly so the browser finds it
-  app.get("/favicon.ico", (req, res) => res.sendFile(path.join(projectRoot, "favicon.ico")));
+  app.get('/favicon.ico', (req, res) => res.sendFile(path.join(projectRoot, 'favicon.ico')));
 
-  app.get("/", (req, res) => {
-    const indexPath = path.join(pagesDir, "index.html");
+  app.get('/', (req, res) => {
+    const indexPath = path.join(pagesDir, 'index.html');
     let html;
-    try { html = fs.readFileSync(indexPath, "utf8"); } catch (_) { return res.sendFile(indexPath); }
+    try {
+      html = fs.readFileSync(indexPath, 'utf8');
+    } catch (_) {
+      return res.sendFile(indexPath);
+    }
     const sess = arcadeSessions.size > 0 ? [...arcadeSessions.values()][0] : null;
 
     // Grab the host name from the URL query, fallback to "A player"
-    const hostName = req.query.host || "A player";
+    const hostName = req.query.host || 'A player';
 
     // Inject the host name dynamically into the Discord tags
     const ogTitle = sess ? sess.game : `${hostName} is looking to play!`;
-    const ogDesc = sess ? `Join the live ${sess.game} session on Nearsec.` : `${hostName} is hosting a peer-to-peer gaming session on Nearsec.`;
-    const ogImage = (sess && sess.thumbnail) ? sess.thumbnail : "https://nearsec.cutefame.net/assets/NearsecTogetherLogo.png";
+    const ogDesc = sess
+      ? `Join the live ${sess.game} session on Nearsec.`
+      : `${hostName} is hosting a peer-to-peer gaming session on Nearsec.`;
+    const ogImage =
+      sess && sess.thumbnail ? sess.thumbnail : 'https://nearsec.cutefame.net/assets/NearsecTogetherLogo.png';
 
     html = html
       .replace(/(<meta property="og:title"\s+content=")[^"]*"/, `$1${ogTitle}"`)
       .replace(/(<meta property="og:description"\s+content=")[^"]*"/, `$1${ogDesc}"`)
       .replace(/(<meta property="og:image"\s+content=")[^"]*"/, `$1${ogImage}"`);
-    res.type("html").send(html);
+    res.type('html').send(html);
   });
-  app.get("/dashboard", (req, res) => { res.setHeader('Content-Type', 'text/html'); res.sendFile(path.join(pagesDir, "dashboard.html")); });
-  app.get("/host", (req, res) => { res.setHeader('Content-Type', 'text/html'); res.sendFile(path.join(pagesDir, "host.html")); });
+  app.get('/dashboard', (req, res) => {
+    res.setHeader('Content-Type', 'text/html');
+    res.sendFile(path.join(pagesDir, 'dashboard.html'));
+  });
+  app.get('/host', (req, res) => {
+    res.setHeader('Content-Type', 'text/html');
+    res.sendFile(path.join(pagesDir, 'host.html'));
+  });
 
-  app.get("/host-minimal", (req, res) => {
+  app.get('/host-minimal', (req, res) => {
     res.setHeader('Content-Type', 'text/html');
-    res.sendFile(path.join(pagesDir, "host-minimal.html"));
+    res.sendFile(path.join(pagesDir, 'host-minimal.html'));
   });
-  app.get("/host-playground", (req, res) => {
+  app.get('/host-playground', (req, res) => {
     res.setHeader('Content-Type', 'text/html');
-    res.sendFile(path.join(pagesDir, "host-playground.html"));
+    res.sendFile(path.join(pagesDir, 'host-playground.html'));
   });
-  app.get("/host-custom", (req, res) => {
+  app.get('/host-custom', (req, res) => {
     res.setHeader('Content-Type', 'text/html');
-    res.sendFile(path.join(pagesDir, "host-custom.html"));
+    res.sendFile(path.join(pagesDir, 'host-custom.html'));
   });
-  app.get("/gamepad-popup.html", (req, res) => { res.setHeader('Content-Type', 'text/html'); res.sendFile(path.join(pagesDir, "gamepad-popup.html")); });
+  app.get('/gamepad-popup.html', (req, res) => {
+    res.setHeader('Content-Type', 'text/html');
+    res.sendFile(path.join(pagesDir, 'gamepad-popup.html'));
+  });
   app.use('/css', express.static(path.join(__dirname, '..', '..', 'css')));
   app.use('/pages', express.static(pagesDir));
 
-  app.post("/api/save-custom-host", express.json({ limit: '10mb' }), (req, res) => {
+  app.post('/api/save-custom-host', express.json({ limit: '10mb' }), (req, res) => {
     const htmlContent = req.body.html;
     if (typeof htmlContent !== 'string') return res.status(400).json({ error: 'Invalid content' });
     try {
-      fs.writeFileSync(path.join(pagesDir, "host-custom.html"), htmlContent);
+      fs.writeFileSync(path.join(pagesDir, 'host-custom.html'), htmlContent);
       res.json({ ok: true });
     } catch (e) {
       res.status(500).json({ error: e.message });
     }
   });
 
-  app.get("/api/info", (req, res) => res.json({ lanIP: state.serverInfo.lanIp, port: state.runtime.activePort, pin: state.session.pin, publicIP: state.serverInfo.publicIp || null, tunnelUrl: state.runtime.tunnelUrl || null, version: state.serverInfo.appVersion }));
-  app.post("/api/fe-log", express.json(), (req, res) => {
+  app.get('/api/info', (req, res) =>
+    res.json({
+      lanIP: state.serverInfo.lanIp,
+      port: state.runtime.activePort,
+      pin: state.session.pin,
+      publicIP: state.serverInfo.publicIp || null,
+      tunnelUrl: state.runtime.tunnelUrl || null,
+      version: state.serverInfo.appVersion,
+    })
+  );
+  app.post('/api/fe-log', express.json(), (req, res) => {
     const { msg, src, line } = req.body || {};
     console.error(`[renderer] ${msg} @ ${src}:${line}`);
     res.json({ ok: true });
   });
 
-  app.get("/api/pin-required", (req, res) => {
+  app.get('/api/pin-required', (req, res) => {
     const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
     const hasTunnelHeader = !!req.headers['x-forwarded-for'] || !!req.headers['cf-connecting-ip'];
     res.json({ required: state.session.pinEnabled && shouldRequirePin(clientIp, hasTunnelHeader) });
   });
-  app.get("/api/config", (req, res) => res.json(loadConfig()));
-  app.post("/api/config", express.json(), (req, res) => { res.json(saveConfig(req.body || {})); });
+  app.get('/api/config', (req, res) => res.json(loadConfig()));
+  app.post('/api/config', express.json(), (req, res) => {
+    res.json(saveConfig(req.body || {}));
+  });
 
   app.post('/api/set-session-password', express.json(), (req, res) => {
     const newPass = (req.body?.password || '').trim();
@@ -131,7 +174,8 @@ function registerHttpRoutes(app, deps) {
     state.session.sessionPassword = newPass;
     state.session.pin = state.session.sessionPassword ? state.session.sessionPassword : makePin();
     console.log(`[host] Session password ${state.session.sessionPassword ? 'set' : 'cleared'}`);
-    if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1) state.runtime.hostWS.send(JSON.stringify({ type: "regen-pin", pin: state.session.pin }));
+    if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1)
+      state.runtime.hostWS.send(JSON.stringify({ type: 'regen-pin', pin: state.session.pin }));
     res.json({ ok: true, hasPassword: !!state.session.sessionPassword });
   });
 
@@ -139,27 +183,24 @@ function registerHttpRoutes(app, deps) {
     res.json({ hasPassword: !!state.session.sessionPassword, password: state.session.sessionPassword });
   });
 
-  app.get("/api/sysinfo", async (req, res) => {
+  app.get('/api/sysinfo', async (req, res) => {
     try {
-      const [cpu, mem, net] = await Promise.all([
-        si.currentLoad(),
-        si.mem(),
-        si.networkStats()
-      ]);
-      const activeNet = net.find(n => n.tx_sec > 0 || n.rx_sec > 0) || net[0];
+      const [cpu, mem, net] = await Promise.all([si.currentLoad(), si.mem(), si.networkStats()]);
+      const activeNet = net.find((n) => n.tx_sec > 0 || n.rx_sec > 0) || net[0];
       res.json({
         cpu: cpu.currentLoad.toFixed(1) + '%',
-        ram: (mem.active / 1024 / 1024 / 1024).toFixed(1) + 'GB / ' + (mem.total / 1024 / 1024 / 1024).toFixed(1) + 'GB',
+        ram:
+          (mem.active / 1024 / 1024 / 1024).toFixed(1) + 'GB / ' + (mem.total / 1024 / 1024 / 1024).toFixed(1) + 'GB',
         netTx: activeNet ? (activeNet.tx_sec / 1024).toFixed(1) + ' KB/s' : '0 KB/s',
         netRx: activeNet ? (activeNet.rx_sec / 1024).toFixed(1) + ' KB/s' : '0 KB/s',
-        latency: 'Local'
+        latency: 'Local',
       });
     } catch (e) {
       res.json({ error: true });
     }
   });
 
-  app.get("/api/turn", (req, res) => {
+  app.get('/api/turn', (req, res) => {
     const iceServers = [];
 
     // ── Custom STUN server (optional) ───────────────────────────────────────
@@ -180,12 +221,9 @@ function registerHttpRoutes(app, deps) {
     // ── Legacy Metered.ca env vars (backward compat) ────────────────────────
     if (!process.env.TURN_URL && process.env.METERED_TURN_URL) {
       iceServers.push({
-        urls: [
-          process.env.METERED_TURN_URL,
-          process.env.METERED_TURN_URL_SECURE || ''
-        ].filter(Boolean),
+        urls: [process.env.METERED_TURN_URL, process.env.METERED_TURN_URL_SECURE || ''].filter(Boolean),
         username: process.env.METERED_TURN_USERNAME || 'openrelayproject',
-        credential: process.env.METERED_TURN_CREDENTIAL || 'openrelayproject'
+        credential: process.env.METERED_TURN_CREDENTIAL || 'openrelayproject',
       });
     }
 
@@ -194,7 +232,7 @@ function registerHttpRoutes(app, deps) {
     res.json(iceServers.length === 1 ? iceServers[0] : iceServers);
   });
 
-  app.get("/api/status", (req, res) => {
+  app.get('/api/status', (req, res) => {
     res.json({
       online: !!state.runtime.hostWS,
       streaming: state.session.hostStreaming,
@@ -202,11 +240,11 @@ function registerHttpRoutes(app, deps) {
       controllers: state.viewerHasController.size,
       tunnel: state.runtime.tunnelUrl,
       version: state.serverInfo.appVersion,
-      uptime: process.uptime()
+      uptime: process.uptime(),
     });
   });
 
-  app.post("/api/create-virtual-audio", (req, res) => {
+  app.post('/api/create-virtual-audio', (req, res) => {
     initVirtualAudio((success, error) => {
       res.json({ success, error: error || null });
     });
@@ -248,31 +286,42 @@ function registerHttpRoutes(app, deps) {
     res.json({ ok: true, viewerId, revoked: !!revoked });
   });
 
-  app.get("/api/arcade/sessions", (req, res) => {
+  app.get('/api/arcade/sessions', (req, res) => {
     res.json([...arcadeSessions.values()]);
   });
-  app.post("/api/open-terminal", express.json(), (req, res) => {
-    if (process.platform !== "linux") return res.status(400).json({ ok: false, reason: "Linux only" });
+  app.post('/api/open-terminal', express.json(), (req, res) => {
+    if (process.platform !== 'linux') return res.status(400).json({ ok: false, reason: 'Linux only' });
     const { cmd, name } = req.body || {};
     if (!cmd) return res.status(400).json({ ok: false });
-    const title = (name || "Auto-Host").replace(/"/g, "'");
-    const terms = [`gnome-terminal --title="${title}" -- bash -c "${cmd}; exec bash"`, `xterm -title "${title}" -e bash -c "${cmd}; exec bash"`, `konsole --title "${title}" -e bash -c "${cmd}; exec bash"`];
-    const { exec: _exec } = require("child_process");
-    let i = 0; (function t() { if (i >= terms.length) return res.json({ ok: false, reason: "no terminal found" }); _exec(terms[i++], err => { if (err) t(); else res.json({ ok: true }); }); })();
+    const title = (name || 'Auto-Host').replace(/"/g, "'");
+    const terms = [
+      `gnome-terminal --title="${title}" -- bash -c "${cmd}; exec bash"`,
+      `xterm -title "${title}" -e bash -c "${cmd}; exec bash"`,
+      `konsole --title "${title}" -e bash -c "${cmd}; exec bash"`,
+    ];
+    const { exec: _exec } = require('child_process');
+    let i = 0;
+    (function t() {
+      if (i >= terms.length) return res.json({ ok: false, reason: 'no terminal found' });
+      _exec(terms[i++], (err) => {
+        if (err) t();
+        else res.json({ ok: true });
+      });
+    })();
   });
 
   let activeGameProc = null;
 
-  app.post("/api/force-route", express.json(), (req, res) => {
+  app.post('/api/force-route', express.json(), (req, res) => {
     // NOTE: `pb` was already an undefined global reference before this file
     // was extracted from server.js — pre-existing bug (this handler has
     // presumably always thrown ReferenceError when hit), left exactly as-is
     // rather than "fixed" as part of a structural move.
     if (!pb) {
-      console.warn("[Audio] PatchBay not ready.");
+      console.warn('[Audio] PatchBay not ready.');
       return res.json({ success: false });
     }
-    const targetProcess = req.body.processName || "ALL_DESKTOP";
+    const targetProcess = req.body.processName || 'ALL_DESKTOP';
     console.log(`[Audio] Engaging auto-router: ${targetProcess}`);
     routeGameAudio(targetProcess);
     res.json({ success: true });
@@ -305,26 +354,30 @@ function registerHttpRoutes(app, deps) {
     }
   });
 
-  app.post("/api/restart-game", express.json(), (req, res) => {
+  app.post('/api/restart-game', express.json(), (req, res) => {
     if (activeGameProc) {
-      try { process.kill(-activeGameProc.pid); } catch (e) { }
-      try { activeGameProc.kill(); } catch (e) { }
+      try {
+        process.kill(-activeGameProc.pid);
+      } catch (e) {}
+      try {
+        activeGameProc.kill();
+      } catch (e) {}
       activeGameProc = null;
     }
 
     if (req.body && req.body.command && req.body.command !== 'KILL_ONLY') {
       const parts = req.body.command.split(' ');
       const cmd = parts.shift();
-      console.log("  \x1b[35m~\x1b[0m Launching game process:", req.body.command);
+      console.log('  \x1b[35m~\x1b[0m Launching game process:', req.body.command);
 
       // ── CRITICAL AUDIO ROUTING: Force game audio into the virtual sink ──
       const spawnEnv = Object.assign({}, process.env);
-      spawnEnv.PULSE_SINK = "NearsecAppAudio";
+      spawnEnv.PULSE_SINK = 'NearsecAppAudio';
 
       // ── LIFECYCLE MONITORING: Do NOT detach. Monitor the game and crash if it dies. ──
       activeGameProc = spawn(cmd, parts, {
         stdio: 'ignore',
-        env: spawnEnv
+        env: spawnEnv,
       });
 
       // Extract the binary name to look for in PipeWire
@@ -341,7 +394,7 @@ function registerHttpRoutes(app, deps) {
         console.log(`[server] Game process exited with code ${code}.`);
         activeGameProc = null;
         if (process.argv.includes('--arcade-worker')) {
-          console.log("[server] Arcade Worker: Game terminated externally. Executing suicide protocol...");
+          console.log('[server] Arcade Worker: Game terminated externally. Executing suicide protocol...');
           process.exit(0);
         }
       });
@@ -349,16 +402,17 @@ function registerHttpRoutes(app, deps) {
     res.json({ success: true });
   });
 
-  app.post("/api/start-tunnel", express.json(), async (req, res) => {
-
+  app.post('/api/start-tunnel', express.json(), async (req, res) => {
     if (state.runtime.activeTunnelProc) {
-      console.log("  \x1b[33m~\x1b[0m Stopping existing tunnel process before switching...");
-      try { state.runtime.activeTunnelProc.kill(); } catch (e) { }
+      console.log('  \x1b[33m~\x1b[0m Stopping existing tunnel process before switching...');
+      try {
+        state.runtime.activeTunnelProc.kill();
+      } catch (e) {}
       state.runtime.activeTunnelProc = null;
     }
     state.runtime.tunnelUrl = null;
 
-    const provider = (req.body && req.body.provider) || "cloudflared";
+    const provider = (req.body && req.body.provider) || 'cloudflared';
     if (req.body && req.body.remember) saveConfig({ tunnelProvider: provider, neverAsk: true });
 
     res.json({ ok: true, starting: true });
@@ -368,19 +422,18 @@ function registerHttpRoutes(app, deps) {
     }
 
     // CRITICAL FIX: Use readEnv to catch the host if the GUI fails to pass it!
-    const resolvedVpsHost = (req.body && req.body.vpsHost)
-      ? req.body.vpsHost.trim()
-      : (readEnv('VPS_HOST') || '').trim();
+    const resolvedVpsHost = req.body && req.body.vpsHost ? req.body.vpsHost.trim() : (readEnv('VPS_HOST') || '').trim();
 
-    const fn = {
-      zrok: startTunnelZrok,
-      cloudflared: startTunnelCloudflared,
-      playit: startTunnelPlayit,
-      localhostrun: startTunnelLocalhostRun,
-      serveo: startTunnelServeo,
-      vps: (p) => startTunnelVps(p, resolvedVpsHost),
-      portforward: async () => null
-    }[provider] || startTunnel;
+    const fn =
+      {
+        zrok: startTunnelZrok,
+        cloudflared: startTunnelCloudflared,
+        playit: startTunnelPlayit,
+        localhostrun: startTunnelLocalhostRun,
+        serveo: startTunnelServeo,
+        vps: (p) => startTunnelVps(p, resolvedVpsHost),
+        portforward: async () => null,
+      }[provider] || startTunnel;
 
     if (provider === 'vps' && resolvedVpsHost) {
       saveConfig({ vpsHost: resolvedVpsHost });
@@ -391,18 +444,21 @@ function registerHttpRoutes(app, deps) {
       if (tun && tun.url) {
         state.runtime.tunnelUrl = tun.url;
         state.runtime.activeTunnelProc = tun.proc;
-        const msg = JSON.stringify({ type: "tunnel-url", url: state.runtime.tunnelUrl });
+        const msg = JSON.stringify({ type: 'tunnel-url', url: state.runtime.tunnelUrl });
         if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1) state.runtime.hostWS.send(msg);
       } else if (tun && tun.error === 'NOT_FOUND') {
         console.log(`  \x1b[31m~\x1b[0m Tunnel provider '${provider}' binary not found.`);
-        if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1) state.runtime.hostWS.send(JSON.stringify({ type: "tunnel-not-found", provider: provider }));
+        if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1)
+          state.runtime.hostWS.send(JSON.stringify({ type: 'tunnel-not-found', provider: provider }));
       } else {
         console.log(`  \x1b[31m~\x1b[0m Tunnel provider '${provider}' failed.`);
-        if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1) state.runtime.hostWS.send(JSON.stringify({ type: "tunnel-error", provider: provider }));
+        if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1)
+          state.runtime.hostWS.send(JSON.stringify({ type: 'tunnel-error', provider: provider }));
       }
     } catch (e) {
       console.log(`  \x1b[31m~\x1b[0m Tunnel error:`, e.message);
-      if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1) state.runtime.hostWS.send(JSON.stringify({ type: "tunnel-error", provider: provider }));
+      if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1)
+        state.runtime.hostWS.send(JSON.stringify({ type: 'tunnel-error', provider: provider }));
     }
   });
 }

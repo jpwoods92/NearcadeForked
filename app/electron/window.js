@@ -1,7 +1,5 @@
 'use strict';
-const {
-  BrowserWindow, Tray, Menu, nativeImage, shell, desktopCapturer, app,
-} = require('electron');
+const { BrowserWindow, Tray, Menu, nativeImage, shell, desktopCapturer, app } = require('electron');
 const os = require('os');
 const path = require('path');
 const state = require('./state.js');
@@ -12,7 +10,8 @@ const { saveSettings } = require('./settings.js');
 // This module lives at app/electron/window.js — one level below the app/
 // directory that electron-main.js used to sit in directly, and two levels
 // below the repo root.
-const isGamescopeEnv = (process.env.XDG_CURRENT_DESKTOP || '').toLowerCase().includes('gamescope') ||
+const isGamescopeEnv =
+  (process.env.XDG_CURRENT_DESKTOP || '').toLowerCase().includes('gamescope') ||
   (process.env.DESKTOP_SESSION || '').toLowerCase().includes('gamescope') ||
   process.env.SteamDeck === '1' ||
   process.env.SteamGamepadUI === '1';
@@ -73,7 +72,9 @@ async function createWindow() {
   state.runtime.win = win;
 
   if (!isGamescopeEnv) {
-    win.once('ready-to-show', () => { if (!flags.isArcadeWorker) win.show(); });
+    win.once('ready-to-show', () => {
+      if (!flags.isArcadeWorker) win.show();
+    });
   }
 
   if (flags.isArcadeWorker) {
@@ -83,7 +84,9 @@ async function createWindow() {
     }
     const gameName = getCliArg('--game-name') || 'Arcade Game';
     const tunnelProv = getCliArg('--game-tunnel') || 'cloudflared';
-    win.loadURL(`http://localhost:${port}/host?auto=1&title=${encodeURIComponent(gameName)}&tunnel=${encodeURIComponent(tunnelProv)}`);
+    win.loadURL(
+      `http://localhost:${port}/host?auto=1&title=${encodeURIComponent(gameName)}&tunnel=${encodeURIComponent(tunnelProv)}`
+    );
   } else {
     win.loadURL(`http://localhost:${port}/dashboard?port=${port}`);
   }
@@ -129,64 +132,101 @@ async function createWindow() {
 
   // ── UNIFIED CAPTURE HANDLER (Fixes PipeWire Deadlocks & UI Freezes) ──
   win.webContents.session.setDisplayMediaRequestHandler((request, callback) => {
-    desktopCapturer.getSources({ types: ['screen', 'window'] }).then(sources => {
-      if (sources && sources.length > 0) {
-        // WINDOWS AUDIO FIX: 'loopback' enables capturing desktop audio
-        if (process.platform === 'win32') callback({ video: sources[0], audio: 'loopback' });
-        else callback({ video: sources[0] });
-      } else {
-        console.log('[electron] Capture blocked or no sources found. Cancelling.');
-        callback(); // Empty callback safely aborts without crashing PipeWire
+    desktopCapturer
+      .getSources({ types: ['screen', 'window'] })
+      .then((sources) => {
+        if (sources && sources.length > 0) {
+          // WINDOWS AUDIO FIX: 'loopback' enables capturing desktop audio
+          if (process.platform === 'win32') callback({ video: sources[0], audio: 'loopback' });
+          else callback({ video: sources[0] });
+        } else {
+          console.log('[electron] Capture blocked or no sources found. Cancelling.');
+          callback(); // Empty callback safely aborts without crashing PipeWire
 
-        // ANTI-FREEZE INJECTION: Forcefully unlock the frontend UI buttons
-        if (win && !win.isDestroyed()) {
-          win.webContents.executeJavaScript(`
+          // ANTI-FREEZE INJECTION: Forcefully unlock the frontend UI buttons
+          if (win && !win.isDestroyed()) {
+            win.webContents
+              .executeJavaScript(
+                `
           if (typeof _elDisabled === 'function') {
             _elDisabled('btnStart', false);
             _elDisabled('btnSwitch', false);
             _elDisabled('btnStop', true);
             if (typeof setCapDot === 'function') setCapDot('');
           }
-          `).catch(() => { });
+          `
+              )
+              .catch(() => {});
+          }
         }
-      }
-    }).catch(err => {
-      console.error('[electron] Capturer error:', err);
-      callback(); // Empty callback safely aborts without crashing PipeWire
+      })
+      .catch((err) => {
+        console.error('[electron] Capturer error:', err);
+        callback(); // Empty callback safely aborts without crashing PipeWire
 
-      // ANTI-FREEZE INJECTION: Forcefully unlock the frontend UI buttons
-      if (win && !win.isDestroyed()) {
-        win.webContents.executeJavaScript(`
+        // ANTI-FREEZE INJECTION: Forcefully unlock the frontend UI buttons
+        if (win && !win.isDestroyed()) {
+          win.webContents
+            .executeJavaScript(
+              `
         if (typeof _elDisabled === 'function') {
           _elDisabled('btnStart', false);
           _elDisabled('btnSwitch', false);
           _elDisabled('btnStop', true);
           if (typeof setCapDot === 'function') setCapDot('');
         }
-        `).catch(() => { });
-      }
-    });
+        `
+            )
+            .catch(() => {});
+        }
+      });
   });
 
   win.on('resize', () => {
     const [w, h] = win.getSize();
-    settings.w = w; settings.h = h;
+    settings.w = w;
+    settings.h = h;
     saveSettings(settings);
   });
-  win.on('closed', () => { state.runtime.win = null; });
+  win.on('closed', () => {
+    state.runtime.win = null;
+  });
 
   // ── Tray ──
   let tray = null;
-  if (!isGamescopeEnv) {    // We only specify height so Electron maintains the natural aspect ratio of the logo
-    const trayIcon = nativeImage.createFromPath(path.join(__dirname, '..', '..', 'assets/NearsecTogetherLogo.png')).resize({ height: 22 });
+  if (!isGamescopeEnv) {
+    // We only specify height so Electron maintains the natural aspect ratio of the logo
+    const trayIcon = nativeImage
+      .createFromPath(path.join(__dirname, '..', '..', 'assets/NearsecTogetherLogo.png'))
+      .resize({ height: 22 });
     tray = new Tray(trayIcon);
     tray.setToolTip('NearsecTogether');
-    tray.setContextMenu(Menu.buildFromTemplate([
-      { label: 'Show Dashboard', click: () => { if (state.runtime.win) { state.runtime.win.show(); state.runtime.win.focus(); } else createWindow(); } },
-      { type: 'separator' },
-      { label: 'Quit', click: () => { app.isQuiting = true; app.quit(); } },
-    ]));
-    tray.on('click', () => { if (state.runtime.win) { state.runtime.win.isVisible() ? state.runtime.win.hide() : state.runtime.win.show(); } });
+    tray.setContextMenu(
+      Menu.buildFromTemplate([
+        {
+          label: 'Show Dashboard',
+          click: () => {
+            if (state.runtime.win) {
+              state.runtime.win.show();
+              state.runtime.win.focus();
+            } else createWindow();
+          },
+        },
+        { type: 'separator' },
+        {
+          label: 'Quit',
+          click: () => {
+            app.isQuiting = true;
+            app.quit();
+          },
+        },
+      ])
+    );
+    tray.on('click', () => {
+      if (state.runtime.win) {
+        state.runtime.win.isVisible() ? state.runtime.win.hide() : state.runtime.win.show();
+      }
+    });
   }
   state.runtime.tray = tray;
 
@@ -198,14 +238,20 @@ async function createWindow() {
       } else {
         e.preventDefault();
         win.hide();
-        if (tray && tray.displayBalloon) tray.displayBalloon({ title: 'NearsecTogether', content: 'Running in background.' });
+        if (tray && tray.displayBalloon)
+          tray.displayBalloon({ title: 'NearsecTogether', content: 'Running in background.' });
       }
     }
   });
 
-  try { os.setPriority(process.pid, os.constants.priority.PRIORITY_HIGH); } catch (_) { }
+  try {
+    os.setPriority(process.pid, os.constants.priority.PRIORITY_HIGH);
+  } catch (_) {}
 
-  win.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' }; });
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    shell.openExternal(url);
+    return { action: 'deny' };
+  });
 
   win.webContents.on('before-input-event', (event, input) => {
     if ((input.control && input.shift && input.key.toLowerCase() === 'i') || input.key === 'F12') {
@@ -214,7 +260,10 @@ async function createWindow() {
     }
   });
 
-  win.webContents.on('media-started-playing', () => { win.focus(); win.webContents.focus(); });
+  win.webContents.on('media-started-playing', () => {
+    win.focus();
+    win.webContents.focus();
+  });
 
   win.webContents.on('render-process-gone', (_event, details) => {
     console.warn('[electron] Renderer process gone:', details.reason);

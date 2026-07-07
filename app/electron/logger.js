@@ -7,7 +7,9 @@ const { CONFIG_DIR } = require('./settings.js');
 const LOG_FILE = path.join(CONFIG_DIR, 'latest.log');
 
 function appendLog(msg) {
-  try { fs.appendFileSync(LOG_FILE, msg + '\n'); } catch (e) { }
+  try {
+    fs.appendFileSync(LOG_FILE, msg + '\n');
+  } catch (e) {}
 }
 
 /**
@@ -21,26 +23,38 @@ function installSessionLogger() {
   try {
     if (!fs.existsSync(CONFIG_DIR)) fs.mkdirSync(CONFIG_DIR, { recursive: true });
     fs.writeFileSync(LOG_FILE, `--- Nearsec Session Log (${new Date().toISOString()}) ---\n`);
-  } catch (e) { }
+  } catch (e) {}
 
   const _nativeLog = console.log.bind(console);
   const _nativeErr = console.error.bind(console);
 
   console.log = function (...args) {
     _nativeLog(...args);
-    const s = args.map(a => {
-      if (typeof a === 'string') return a;
-      try { return JSON.stringify(a); } catch (_) { return String(a); }
-    }).join(' ');
+    const s = args
+      .map((a) => {
+        if (typeof a === 'string') return a;
+        try {
+          return JSON.stringify(a);
+        } catch (_) {
+          return String(a);
+        }
+      })
+      .join(' ');
     appendLog(`[LOG] ${s}`);
   };
 
   console.error = function (...args) {
     _nativeErr(...args);
-    const s = args.map(a => {
-      if (typeof a === 'string') return a;
-      try { return JSON.stringify(a); } catch (_) { return String(a); }
-    }).join(' ');
+    const s = args
+      .map((a) => {
+        if (typeof a === 'string') return a;
+        try {
+          return JSON.stringify(a);
+        } catch (_) {
+          return String(a);
+        }
+      })
+      .join(' ');
     appendLog(`[ERR] ${s}`);
   };
 }

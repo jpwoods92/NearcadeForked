@@ -9,9 +9,16 @@ function register() {
   ipcMain.handle('get-app-version', () => {
     const pkgPath = path.join(__dirname, '..', '..', '..', 'package.json');
     let version = '1.0.0';
-    try { version = JSON.parse(fs.readFileSync(pkgPath, 'utf8')).version; } catch (_) { }
+    try {
+      version = JSON.parse(fs.readFileSync(pkgPath, 'utf8')).version;
+    } catch (_) {}
     let commit = '';
-    try { commit = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'commit.txt'), 'utf8').trim().substring(0, 7); } catch (_) { }
+    try {
+      commit = fs
+        .readFileSync(path.join(__dirname, '..', '..', '..', 'commit.txt'), 'utf8')
+        .trim()
+        .substring(0, 7);
+    } catch (_) {}
     return { version, commit };
   });
 
@@ -22,8 +29,15 @@ function register() {
         thumbnailSize: { width: 320, height: 180 },
         fetchWindowIcons: false,
       });
-      return sources.map(s => ({ id: s.id, name: s.name, thumbnail: s.thumbnail.toDataURL(), isScreen: s.id.startsWith('screen:') }));
-    } catch (_) { return []; }
+      return sources.map((s) => ({
+        id: s.id,
+        name: s.name,
+        thumbnail: s.thumbnail.toDataURL(),
+        isScreen: s.id.startsWith('screen:'),
+      }));
+    } catch (_) {
+      return [];
+    }
   });
 
   ipcMain.handle('read-doc', async (event, filename) => {

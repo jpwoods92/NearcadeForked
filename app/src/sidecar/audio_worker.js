@@ -8,19 +8,27 @@
 'use strict';
 
 const { parentPort } = require('worker_threads');
-const { exec }  = require('child_process');
+const { exec } = require('child_process');
 const { parseStaleModuleIds } = require('./audio-module-utils.js');
-const { startDaemon: startBlacklistDaemon, stopDaemon: stopBlacklistDaemon, DEFAULT_BLACKLIST } = require('./audio_blacklist_daemon.js');
+const {
+  startDaemon: startBlacklistDaemon,
+  stopDaemon: stopBlacklistDaemon,
+  DEFAULT_BLACKLIST,
+} = require('./audio_blacklist_daemon.js');
 
 // ── Module-ID tracking ────────────────────────────────────────────────────────
 const _vAudioModules = { sink: null, remap: null, loopback: null, daemonHandle: null };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-function log(msg)  { parentPort.postMessage({ type: 'log',   message: `[audio_worker] ${msg}` }); }
-function err(msg)  { parentPort.postMessage({ type: 'error', message: `[audio_worker] ${msg}` }); }
+function log(msg) {
+  parentPort.postMessage({ type: 'log', message: `[audio_worker] ${msg}` });
+}
+function err(msg) {
+  parentPort.postMessage({ type: 'error', message: `[audio_worker] ${msg}` });
+}
 
 function _pactlExec(cmd) {
-  return new Promise(resolve => {
+  return new Promise((resolve) => {
     exec(cmd, (error, stdout) => {
       resolve(error ? '' : (stdout || '').trim());
     });
@@ -74,7 +82,7 @@ async function initVirtualAudio() {
   let hwSink = (await _pactlExec('pactl get-default-sink')).trim();
   if (!hwSink || hwSink.includes('Nearsec')) {
     const sinksRaw = await _pactlExec('pactl list short sinks');
-    const fallback = (sinksRaw || '').split('\n').find(l => !l.includes('Nearsec') && l.trim() !== '');
+    const fallback = (sinksRaw || '').split('\n').find((l) => !l.includes('Nearsec') && l.trim() !== '');
     if (fallback) hwSink = fallback.trim().split(/\s+/)[1];
   }
 
@@ -95,11 +103,14 @@ async function initVirtualAudio() {
   _vAudioModules.daemonHandle = startBlacklistDaemon(DEFAULT_BLACKLIST, hwSink || null);
 
   log(`Ready. Stream virtual cable active.`);
-  parentPort.postMessage({ type: 'module-ids', ids: {
-    sink: _vAudioModules.sink,
-    remap: _vAudioModules.remap,
-    loopback: _vAudioModules.loopback
-  }});
+  parentPort.postMessage({
+    type: 'module-ids',
+    ids: {
+      sink: _vAudioModules.sink,
+      remap: _vAudioModules.remap,
+      loopback: _vAudioModules.loopback,
+    },
+  });
   parentPort.postMessage({ type: 'ready', hwSink: hwSink || null });
 }
 
@@ -115,7 +126,9 @@ async function destroyVirtualAudio() {
   // Move the apps back to the hardware sink before destroying the virtual cable
   const defaultSink = (await _pactlExec('pactl get-default-sink')).trim();
   const sinks = await _pactlExec('pactl list short sinks');
-  const nearsecLine = (sinks || '').split('\n').find(l => l.includes('NearsecVirtual') && !l.includes('NearsecVirtualCapture'));
+  const nearsecLine = (sinks || '')
+    .split('\n')
+    .find((l) => l.includes('NearsecVirtual') && !l.includes('NearsecVirtualCapture'));
   if (nearsecLine && defaultSink && defaultSink !== 'NearsecVirtual') {
     const nearsecId = nearsecLine.trim().split(/\s+/)[0];
     const inputs = await _pactlExec('pactl list short sink-inputs');
@@ -129,7 +142,7 @@ async function destroyVirtualAudio() {
 
   // ── THE SCREECH FIX ──
   await _pactlExec('pactl set-sink-mute NearsecVirtual 1');
-  await new Promise(r => setTimeout(r, 60));
+  await new Promise((r) => setTimeout(r, 60));
 
   for (const key of ['loopback', 'remap', 'sink']) {
     if (_vAudioModules[key]) {
@@ -155,11 +168,13 @@ function startLoopbackWatcher() {
 
       // Device changed! Move loopback silently.
       await _pactlExec('pactl set-sink-mute NearsecVirtual 1');
-      await new Promise(r => setTimeout(r, 40));
+      await new Promise((r) => setTimeout(r, 40));
       if (_vAudioModules.loopback) {
         await _pactlExec(`pactl unload-module ${_vAudioModules.loopback}`);
       }
-      _vAudioModules.loopback = await _pactlExec(`pactl load-module module-loopback source=NearsecVirtual.monitor sink=${current} latency_msec=30`);
+      _vAudioModules.loopback = await _pactlExec(
+        `pactl load-module module-loopback source=NearsecVirtual.monitor sink=${current} latency_msec=30`
+      );
       await _pactlExec('pactl set-sink-mute NearsecVirtual 0');
       _lastLoopbackSink = current;
       log(`Loopback automatically moved to new default device: ${current}`);
@@ -182,7 +197,7 @@ let _targetProcess = null;
 let _routingInterval = null;
 
 function routeGameAudio(gameProcessName) {
-  _targetProcess = (gameProcessName && gameProcessName !== 'ALL_DESKTOP') ? gameProcessName.toLowerCase() : null;
+  _targetProcess = gameProcessName && gameProcessName !== 'ALL_DESKTOP' ? gameProcessName.toLowerCase() : null;
 
   if (_routingInterval) clearInterval(_routingInterval);
 
@@ -204,7 +219,7 @@ function stopRoutingDaemon() {
 function _routeViaPatctl() {
   if (process.platform !== 'linux') return;
   exec('pactl list short sinks', (e0, sinksOut) => {
-    const nearsecLine = (sinksOut || '').split('\n').find(l => l.includes('NearsecVirtual'));
+    const nearsecLine = (sinksOut || '').split('\n').find((l) => l.includes('NearsecVirtual'));
     if (!nearsecLine) return;
     const nearsecSinkId = nearsecLine.trim().split(/\s+/)[0];
 
@@ -216,19 +231,23 @@ function _routeViaPatctl() {
         const currentSink = (block.match(/^\s*Sink:\s*(\d+)/m) || [])[1];
         if (currentSink === nearsecSinkId) continue;
 
-        const identifier = ((block.match(/application\.process\.binary\s*=\s*"([^"]+)"/) || [])[1] || (block.match(/application\.name\s*=\s*"([^"]+)"/) || [])[1] || '').toLowerCase();
+        const identifier = (
+          (block.match(/application\.process\.binary\s*=\s*"([^"]+)"/) || [])[1] ||
+          (block.match(/application\.name\s*=\s*"([^"]+)"/) || [])[1] ||
+          ''
+        ).toLowerCase();
 
         // Skip hidden/system streams
         if (!identifier || identifier.includes('nearsec')) continue;
 
         // Apply blacklist
-        if (AUDIO_BLACKLIST.some(b => identifier.includes(b.toLowerCase()))) continue;
+        if (AUDIO_BLACKLIST.some((b) => identifier.includes(b.toLowerCase()))) continue;
 
         // Apply target filter if specific game requested
         if (_targetProcess && !identifier.includes(_targetProcess)) continue;
 
         // The move command
-        exec(`pactl move-sink-input ${inputId} ${nearsecSinkId}`, e2 => {
+        exec(`pactl move-sink-input ${inputId} ${nearsecSinkId}`, (e2) => {
           if (!e2) log(`Moved audio [${identifier}] → NearsecVirtual`);
         });
       }
@@ -240,16 +259,26 @@ function _routeViaPatctl() {
 parentPort.on('message', async (msg) => {
   try {
     switch (msg.type) {
-      case 'init': await initVirtualAudio(); break;
-      case 'destroy': await destroyVirtualAudio(); break;
-      case 'route': routeGameAudio(msg.processName || null); break;
+      case 'init':
+        await initVirtualAudio();
+        break;
+      case 'destroy':
+        await destroyVirtualAudio();
+        break;
+      case 'route':
+        routeGameAudio(msg.processName || null);
+        break;
       case 'route-stop':
         stopRoutingDaemon();
         log('Routing session stopped.');
         break;
-      case 'cleanup-stale': await cleanupStaleSinks(); break;
+      case 'cleanup-stale':
+        await cleanupStaleSinks();
+        break;
     }
-  } catch (e) { err(`Unhandled error: ${e.message}`); }
+  } catch (e) {
+    err(`Unhandled error: ${e.message}`);
+  }
 });
 
 log('Worker thread started (Legacy Pactl Mode).');

@@ -1,6 +1,6 @@
-const express = require("express");
-const http = require("http");
-const WebSocket = require("ws");
+const express = require('express');
+const http = require('http');
+const WebSocket = require('ws');
 const crypto = require('crypto');
 require('dotenv').config();
 
@@ -16,8 +16,13 @@ const serverNetwork = require('./server/network-info.js');
 // isn't needed here anymore -- ws.js requires input-bridge.js directly.
 const { toUinput } = require('./server/input-bridge.js');
 const {
-  startTunnelCloudflared, startTunnelVps, startTunnelPlayit,
-  startTunnelLocalhostRun, startTunnelServeo, startTunnelZrok, startTunnel,
+  startTunnelCloudflared,
+  startTunnelVps,
+  startTunnelPlayit,
+  startTunnelLocalhostRun,
+  startTunnelServeo,
+  startTunnelZrok,
+  startTunnel,
 } = require('./server/tunnel.js');
 // Only stopArcadeHeartbeatWorker is needed here (cleanup()) -- the rest of
 // this module's exports moved into ws.js/http.js along with the routes and
@@ -27,20 +32,29 @@ const { stopArcadeHeartbeatWorker } = require('./server/arcade-signaling.js');
 // --- STREAMER PRIVACY SCRUBBER ---
 const _origLog = console.log;
 console.log = function (...args) {
-  let msg = args.map(a => {
-    if (typeof a === 'string') return a;
-    try { return JSON.stringify(a, null, 2); } catch (_) { return String(a); }
-  }).join(' ');
-  
+  let msg = args
+    .map((a) => {
+      if (typeof a === 'string') return a;
+      try {
+        return JSON.stringify(a, null, 2);
+      } catch (_) {
+        return String(a);
+      }
+    })
+    .join(' ');
+
   // Blur IPv4 addresses (except localhost)
   msg = msg.replace(/\b(?!127\.0\.0\.1)(?:\d{1,3}\.){3}\d{1,3}\b/g, '***.***.***.***');
-  
+
   // Blur Cloudflare tunnel URLs
   msg = msg.replace(/https:\/\/[a-zA-Z0-9-]+\.trycloudflare\.com/g, 'https://********.trycloudflare.com');
-  
+
   // Blur Zrok / Playit / localhost.run / serveo URLs
-  msg = msg.replace(/https:\/\/[a-zA-Z0-9-]+\.(share\.zrok\.io|playit\.gg|lhr\.life|serveo\.net)/g, 'https://********.$1');
-  
+  msg = msg.replace(
+    /https:\/\/[a-zA-Z0-9-]+\.(share\.zrok\.io|playit\.gg|lhr\.life|serveo\.net)/g,
+    'https://********.$1'
+  );
+
   // Blur VPS SSH strings
   msg = msg.replace(/([a-zA-Z0-9_-]+@\*\*\*\.\*\*\*\.\*\*\*\.\*\*\*)/g, '********@***.***.***.***');
 
@@ -64,7 +78,7 @@ console.log = function (...args) {
   _origLog.call(console, msg);
 };
 
-const killPort = require("kill-port");
+const killPort = require('kill-port');
 // activePort/hostWS/tunnelUrl/activeTunnelProc/audioProc/vidCount and the
 // viewers/viewerNames/inputPerms/pinAttempts registries all live in
 // ./server/state.js now (shared mutable state so ws.js/http.js can both
@@ -111,10 +125,11 @@ const { getLanIP, findFreePort, openBrowser, getPublicIP } = serverNetwork;
 // Binary-path resolution and all tunnel provider functions live in
 // ./server/tunnel.js now.
 function sanitize(str) {
-  return String(str).replace(/[<>&"']/g, c =>
-    ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&#39;' }[c])).slice(0, 300);
+  return String(str)
+    .replace(/[<>&"']/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&#39;' })[c])
+    .slice(0, 300);
 }
-function makePin() { 
+function makePin() {
   return String(crypto.randomInt(1000, 10000));
 }
 
@@ -125,30 +140,30 @@ function makePin() {
 
 async function main() {
   // ── Platform Detection & Warnings ──────────────────────────────────────────
-  console.log("");
+  console.log('');
   if (process.platform === 'win32') {
-    console.log("============================================================");
-    console.log("  WINDOWS - EXPERIMENTAL MODE");
-    console.log("============================================================");
-    console.log("  GAMEPAD:  Requires ViGEmBus driver");
-    console.log("            https://github.com/nefarius/ViGEmBus/releases");
-    console.log("  INPUT:    KBM (keyboard/mouse) working");
-    console.log("  AUDIO:    No loopback capture available natively");
-    console.log("  NOTES:    Process priority may be limited without admin");
-    console.log("============================================================");
+    console.log('============================================================');
+    console.log('  WINDOWS - EXPERIMENTAL MODE');
+    console.log('============================================================');
+    console.log('  GAMEPAD:  Requires ViGEmBus driver');
+    console.log('            https://github.com/nefarius/ViGEmBus/releases');
+    console.log('  INPUT:    KBM (keyboard/mouse) working');
+    console.log('  AUDIO:    No loopback capture available natively');
+    console.log('  NOTES:    Process priority may be limited without admin');
+    console.log('============================================================');
   } else if (process.platform === 'darwin') {
-    console.log("============================================================");
-    console.log("  macOS - EXPERIMENTAL MODE");
-    console.log("============================================================");
-    console.log("  GAMEPAD:  NOT SUPPORTED (no injection API on macOS)");
-    console.log("  INPUT:    KBM only (keyboard/mouse via pyautogui)");
-    console.log("  AUDIO:    Using afplay (native)");
-    console.log("  SETUP:    pip3 install pyautogui");
-    console.log("============================================================");
+    console.log('============================================================');
+    console.log('  macOS - EXPERIMENTAL MODE');
+    console.log('============================================================');
+    console.log('  GAMEPAD:  NOT SUPPORTED (no injection API on macOS)');
+    console.log('  INPUT:    KBM only (keyboard/mouse via pyautogui)');
+    console.log('  AUDIO:    Using afplay (native)');
+    console.log('  SETUP:    pip3 install pyautogui');
+    console.log('============================================================');
   } else if (process.platform === 'linux') {
-    console.log("✓ Linux - Fully supported (stable)");
+    console.log('✓ Linux - Fully supported (stable)');
   }
-  console.log("");
+  console.log('');
 
   state.runtime.activePort = await findFreePort(3000);
   state.serverInfo.lanIp = getLanIP();
@@ -158,11 +173,12 @@ async function main() {
   state.session.pin = state.session.sessionPassword ? state.session.sessionPassword : makePin();
   state.session.pinEnabled = true;
 
-  console.log("\n  \x1b[1mNearsecTogether\x1b[0m");
-  console.log("  Host page : http://localhost:" + state.runtime.activePort + "/host");
-  console.log("  LAN URL   : http://***.***.***.***:" + state.runtime.activePort + "/");
-  if (state.serverInfo.publicIp) console.log("  Public IP : http://***.***.***.***:" + state.runtime.activePort + "/ (needs port forward)");
-  console.log("  PIN       : \x1b[1;32m****\x1b[0m\n");
+  console.log('\n  \x1b[1mNearsecTogether\x1b[0m');
+  console.log('  Host page : http://localhost:' + state.runtime.activePort + '/host');
+  console.log('  LAN URL   : http://***.***.***.***:' + state.runtime.activePort + '/');
+  if (state.serverInfo.publicIp)
+    console.log('  Public IP : http://***.***.***.***:' + state.runtime.activePort + '/ (needs port forward)');
+  console.log('  PIN       : \x1b[1;32m****\x1b[0m\n');
 
   const app = express();
   const server = http.createServer(app);
@@ -183,61 +199,65 @@ async function main() {
   attachWebSocketServer(wss, { sanitize, makePin });
 
   server.listen(state.runtime.activePort, async () => {
-    console.log("Listening on port " + state.runtime.activePort);
-    if (!process.env.ELECTRON_MODE) openBrowser("http://localhost:" + state.runtime.activePort + "/host");
+    console.log('Listening on port ' + state.runtime.activePort);
+    if (!process.env.ELECTRON_MODE) openBrowser('http://localhost:' + state.runtime.activePort + '/host');
 
     const cfg = loadConfig();
 
     if (process.env.USE_VPS === 'true' && process.env.VPS_HOST) {
-      console.log("  ~ Tunnel: VPS (from .env)");
+      console.log('  ~ Tunnel: VPS (from .env)');
       const tun = await startTunnelVps(state.runtime.activePort, process.env.VPS_HOST.trim());
       if (tun) {
         state.runtime.tunnelUrl = tun.url;
         state.runtime.activeTunnelProc = tun.proc;
-        if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1) state.runtime.hostWS.send(JSON.stringify({ type: "tunnel-url", url: state.runtime.tunnelUrl }));
+        if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1)
+          state.runtime.hostWS.send(JSON.stringify({ type: 'tunnel-url', url: state.runtime.tunnelUrl }));
       } else {
         console.log(`  \x1b[31m~\x1b[0m VPS Tunnel failed to start on boot.`);
-        if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1) state.runtime.hostWS.send(JSON.stringify({ type: "tunnel-error", provider: 'vps' }));
+        if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1)
+          state.runtime.hostWS.send(JSON.stringify({ type: 'tunnel-error', provider: 'vps' }));
       }
     } else if (cfg.tunnelProvider === 'vps-sfu') {
       // VPS SFU mode — the host app manages its own WebSocket to the Rust router.
       // The local server must NOT start any tunnel process. The domain is defined
       // by the user's saved VPS URL, not by any local tunnel provider.
-      console.log("  \x1b[36m~\x1b[0m Tunnel: VPS SFU mode (managed by host app — no local tunnel started)");
+      console.log('  \x1b[36m~\x1b[0m Tunnel: VPS SFU mode (managed by host app — no local tunnel started)');
       // Do NOT modify tunnelProvider or neverAsk here.
     } else if (cfg.tunnelProvider === 'p2p') {
-      console.log("  \x1b[36m~\x1b[0m Tunnel: P2P mode (managed by host app — no local tunnel started)");
+      console.log('  \x1b[36m~\x1b[0m Tunnel: P2P mode (managed by host app — no local tunnel started)');
     } else if (cfg.neverAsk && cfg.tunnelProvider === 'portforward') {
-      console.log("  ~ Tunnel: port forward mode (saved).");
+      console.log('  ~ Tunnel: port forward mode (saved).');
     } else if (cfg.neverAsk && cfg.tunnelProvider) {
       console.log("  ~ Tunnel: using saved provider '" + cfg.tunnelProvider + "'");
 
-      const fn = {
-        zrok: startTunnelZrok,
-        cloudflared: startTunnelCloudflared,
-        playit: startTunnelPlayit,
-        localhostrun: startTunnelLocalhostRun,
-        serveo: startTunnelServeo,
-        vps: (p) => startTunnelVps(p, cfg.vpsHost || process.env.VPS_HOST || '')
-      }[cfg.tunnelProvider] || startTunnel;
+      const fn =
+        {
+          zrok: startTunnelZrok,
+          cloudflared: startTunnelCloudflared,
+          playit: startTunnelPlayit,
+          localhostrun: startTunnelLocalhostRun,
+          serveo: startTunnelServeo,
+          vps: (p) => startTunnelVps(p, cfg.vpsHost || process.env.VPS_HOST || ''),
+        }[cfg.tunnelProvider] || startTunnel;
 
       const tun = await fn(state.runtime.activePort);
       if (tun) {
         state.runtime.tunnelUrl = tun.url;
         state.runtime.activeTunnelProc = tun.proc;
-        if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1) state.runtime.hostWS.send(JSON.stringify({ type: "tunnel-url", url: state.runtime.tunnelUrl }));
+        if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1)
+          state.runtime.hostWS.send(JSON.stringify({ type: 'tunnel-url', url: state.runtime.tunnelUrl }));
       } else {
         console.log(`  \x1b[31m~\x1b[0m Tunnel provider '${cfg.tunnelProvider}' failed to start on boot.`);
-        if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1) state.runtime.hostWS.send(JSON.stringify({ type: "tunnel-error", provider: cfg.tunnelProvider }));
+        if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1)
+          state.runtime.hostWS.send(JSON.stringify({ type: 'tunnel-error', provider: cfg.tunnelProvider }));
       }
     } else {
-      console.log("  ~ Tunnel: waiting for host to choose provider...");
+      console.log('  ~ Tunnel: waiting for host to choose provider...');
     }
   });
 }
 
 main();
-
 
 function cleanup(isElectron = false) {
   if (_cleanupDone) return;
@@ -255,23 +275,37 @@ function cleanup(isElectron = false) {
   // Arcade heartbeat worker: clean shutdown
   stopArcadeHeartbeatWorker();
 
-  if (state.runtime.activeTunnelProc) { try { state.runtime.activeTunnelProc.kill(); } catch (_) { } }
-  if (state.runtime.activeTunnelProc) { try { state.runtime.activeTunnelProc.kill(); } catch (_) { } }
+  if (state.runtime.activeTunnelProc) {
+    try {
+      state.runtime.activeTunnelProc.kill();
+    } catch (_) {}
+  }
+  if (state.runtime.activeTunnelProc) {
+    try {
+      state.runtime.activeTunnelProc.kill();
+    } catch (_) {}
+  }
 
   // Cleanly destroy the input driver (whether it's using C++ or Python)
   try {
     inputDriver.destroy();
     experimentalDriver.destroy();
   } catch (e) {
-    console.error("[Server] Input driver cleanup error:", e);
+    console.error('[Server] Input driver cleanup error:', e);
   }
 
-  if (state.runtime.audioProc) { try { state.runtime.audioProc.kill(); } catch (_) { } }
+  if (state.runtime.audioProc) {
+    try {
+      state.runtime.audioProc.kill();
+    } catch (_) {}
+  }
 
   if (!isElectron) {
-    killPort(state.runtime.activePort).catch(() => { }).finally(() => process.exit(0));
+    killPort(state.runtime.activePort)
+      .catch(() => {})
+      .finally(() => process.exit(0));
   } else {
-    killPort(state.runtime.activePort).catch(() => { });
+    killPort(state.runtime.activePort).catch(() => {});
   }
 }
 

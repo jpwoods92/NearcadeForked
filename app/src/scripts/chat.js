@@ -21,35 +21,35 @@
  * the DOM-manipulation code twice.
  */
 function chatAppendMessage(name, text, isMe, dedupState) {
-    if (isMe && dedupState) {
-        const now = Date.now();
-        if (text === dedupState.msg && now - dedupState.time < dedupState.windowMs) return;
-        dedupState.msg = text;
-        dedupState.time = now;
-    }
-    const el = document.getElementById('chatLog');
-    const d = document.createElement('div');
-    d.className = 'cmsg';
-    d.innerHTML = '<span class="cname' + (isMe ? ' me' : '') + '">' + name + '</span>' + text;
-    el.appendChild(d);
-    el.scrollTop = el.scrollHeight;
+  if (isMe && dedupState) {
+    const now = Date.now();
+    if (text === dedupState.msg && now - dedupState.time < dedupState.windowMs) return;
+    dedupState.msg = text;
+    dedupState.time = now;
+  }
+  const el = document.getElementById('chatLog');
+  const d = document.createElement('div');
+  d.className = 'cmsg';
+  d.innerHTML = '<span class="cname' + (isMe ? ' me' : '') + '">' + name + '</span>' + text;
+  el.appendChild(d);
+  el.scrollTop = el.scrollHeight;
 }
 
 /** Reads #chatMsg, sends it as `fromName` over `ws`, and echoes it locally. */
 function chatSendMessage(ws, fromName, dedupState) {
-    const inp = document.getElementById('chatMsg');
-    const msg = inp.value.trim();
-    if (!msg || !ws || ws.readyState !== 1) return;
-    ws.send(JSON.stringify({ type: 'chat', from: fromName, msg }));
-    chatAppendMessage(fromName, msg, true, dedupState);
-    inp.value = '';
+  const inp = document.getElementById('chatMsg');
+  const msg = inp.value.trim();
+  if (!msg || !ws || ws.readyState !== 1) return;
+  ws.send(JSON.stringify({ type: 'chat', from: fromName, msg }));
+  chatAppendMessage(fromName, msg, true, dedupState);
+  inp.value = '';
 }
 
 /** Sends a system/announcement chat line (not tied to the #chatMsg input). */
 function chatSendSystemMessage(ws, fromName, text) {
-    if (!ws || ws.readyState !== 1) return;
-    ws.send(JSON.stringify({ type: 'chat', from: fromName, msg: text }));
-    chatAppendMessage(fromName, text, false, null);
+  if (!ws || ws.readyState !== 1) return;
+  ws.send(JSON.stringify({ type: 'chat', from: fromName, msg: text }));
+  chatAppendMessage(fromName, text, false, null);
 }
 
 // ── Test-only export shim ──────────────────────────────────────────────────
@@ -57,5 +57,5 @@ function chatSendSystemMessage(ws, fromName, text) {
 // changes no runtime behavior. See REFACTOR_PLAN.md Phase 0 / Phase 5 and
 // test/unit/chat.test.js.
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { chatAppendMessage, chatSendMessage, chatSendSystemMessage };
+  module.exports = { chatAppendMessage, chatSendMessage, chatSendSystemMessage };
 }

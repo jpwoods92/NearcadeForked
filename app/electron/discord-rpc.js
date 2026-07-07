@@ -19,11 +19,15 @@ const state = require('./state.js');
 function registerDiscordProtocol() {
   try {
     const _earlySettings = (() => {
-      try { return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8')); } catch { return {}; }
+      try {
+        return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
+      } catch {
+        return {};
+      }
     })();
     const _discordClientId = _earlySettings.discordClientId || '1241907722765324391';
     if (!flags.isArcadeWorker) require('discord-rpc').register(_discordClientId);
-  } catch (_) { }
+  } catch (_) {}
 }
 
 // ── Discord RPC client (activity updates) ──
@@ -67,9 +71,10 @@ function register() {
         }
 
         if (latestActivity) {
-          rpc.setActivity(latestActivity)
+          rpc
+            .setActivity(latestActivity)
             .then(() => appendLog('[Discord RPC] Activity successfully set!'))
-            .catch(err => appendLog(`[Discord RPC] setActivity failed: ${err.message}`));
+            .catch((err) => appendLog(`[Discord RPC] setActivity failed: ${err.message}`));
         }
       });
 
@@ -79,15 +84,16 @@ function register() {
         rpc = null;
       });
 
-      rpc.login({ clientId: settings.discordClientId }).catch(err => {
+      rpc.login({ clientId: settings.discordClientId }).catch((err) => {
         appendLog(`[Discord RPC] login failed: ${err.message}`);
         rpc = null;
         rpcReady = false;
       });
     } else if (rpcReady) {
-      rpc.setActivity(latestActivity)
+      rpc
+        .setActivity(latestActivity)
         .then(() => appendLog('[Discord RPC] Activity successfully updated!'))
-        .catch(err => appendLog(`[Discord RPC] updateActivity failed: ${err.message}`));
+        .catch((err) => appendLog(`[Discord RPC] updateActivity failed: ${err.message}`));
     } else {
       appendLog('[Discord RPC] Client exists but not ready yet. Caching activity.');
     }

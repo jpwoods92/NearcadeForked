@@ -7,8 +7,7 @@ function getConfigDir() {
   const home = require('os').homedir();
   if (process.platform === 'win32')
     return path.join(process.env.APPDATA || path.join(home, 'AppData', 'Roaming'), 'NearsecTogether');
-  if (process.platform === 'darwin')
-    return path.join(home, 'Library', 'Application Support', 'NearsecTogether');
+  if (process.platform === 'darwin') return path.join(home, 'Library', 'Application Support', 'NearsecTogether');
   return path.join(home, '.config', 'NearsecTogether');
 }
 const CONFIG_DIR = getConfigDir();
@@ -21,39 +20,68 @@ const USER_CONTROLLERS = path.join(CONFIG_DIR, 'controllers.json');
 
 const DEFAULT_CONTROLLERS = {
   'Xbox 360 Controller (XInput STANDARD GAMEPAD)': {
-    lt: { type: 'btn', idx: 6 }, rt: { type: 'btn', idx: 7 }, rsx: 2, rsy: 3
+    lt: { type: 'btn', idx: 6 },
+    rt: { type: 'btn', idx: 7 },
+    rsx: 2,
+    rsy: 3,
   },
   'Xbox Wireless Controller (STANDARD GAMEPAD)': {
-    lt: { type: 'btn', idx: 6 }, rt: { type: 'btn', idx: 7 }, rsx: 2, rsy: 3
+    lt: { type: 'btn', idx: 6 },
+    rt: { type: 'btn', idx: 7 },
+    rsx: 2,
+    rsy: 3,
   },
   'DualSense Wireless Controller (STANDARD GAMEPAD)': {
-    lt: { type: 'btn', idx: 6 }, rt: { type: 'btn', idx: 7 }, rsx: 2, rsy: 3
+    lt: { type: 'btn', idx: 6 },
+    rt: { type: 'btn', idx: 7 },
+    rsx: 2,
+    rsy: 3,
   },
   'Wireless Controller (STANDARD GAMEPAD)': {
-    lt: { type: 'btn', idx: 6 }, rt: { type: 'btn', idx: 7 }, rsx: 2, rsy: 3
+    lt: { type: 'btn', idx: 6 },
+    rt: { type: 'btn', idx: 7 },
+    rsx: 2,
+    rsy: 3,
   },
 };
 
 const DEFAULTS = {
   // Window
-  encoder: 'gpu', codec: 'h264', preset: 'fast',
-  alwaysOnTop: false, w: 1280, h: 800,
+  encoder: 'gpu',
+  codec: 'h264',
+  preset: 'fast',
+  alwaysOnTop: false,
+  w: 1280,
+  h: 800,
   // App behaviour
-  tray: true, rumble: true, discordRPC: true,
-  hwDecode: true, fpsUnlock: false, vsyncOff: false, zeroCopy: false,
+  tray: true,
+  rumble: true,
+  discordRPC: true,
+  hwDecode: true,
+  fpsUnlock: false,
+  vsyncOff: false,
+  zeroCopy: false,
   // Streaming
-  hidePreviewOnStart: false, captureMic: false,
+  hidePreviewOnStart: false,
+  captureMic: false,
   // Experimental
   ffmpegExperimental: false,
   // Identity
   hostName: '',
   // Controller
-  forceXboxOne: false, enableDualShock: false, enableMotion: false,
-  defaultInputMode: 'gamepad', hybridInput: false,
+  forceXboxOne: false,
+  enableDualShock: false,
+  enableMotion: false,
+  defaultInputMode: 'gamepad',
+  hybridInput: false,
   // Tunnels
-  tunnelProvider: null, neverAsk: false, vpsHost: '',
+  tunnelProvider: null,
+  neverAsk: false,
+  vpsHost: '',
   // VPS SFU routing
-  vpsEnabled: false, vpsUrl: '', vpsMasterKey: '',
+  vpsEnabled: false,
+  vpsUrl: '',
+  vpsMasterKey: '',
   // Auto-hosts
   autoHosts: [],
   // Discord RPC
@@ -71,9 +99,11 @@ function loadSettings() {
     // Config missing (first run or deleted) — write defaults to disk immediately
     // so the file always exists after launch and settings persist correctly.
     const seed = Object.assign({}, DEFAULTS);
-    try { fs.writeFileSync(CONFIG_FILE, JSON.stringify(seed, null, 2)); } catch (_) { }
+    try {
+      fs.writeFileSync(CONFIG_FILE, JSON.stringify(seed, null, 2));
+    } catch (_) {}
     return seed;
-  } catch (_) { }
+  } catch (_) {}
   return Object.assign({}, DEFAULTS);
 }
 
@@ -84,7 +114,7 @@ function loadControllers() {
     if (fs.existsSync(BUNDLED_CONTROLLERS)) {
       bundled = JSON.parse(fs.readFileSync(BUNDLED_CONTROLLERS, 'utf8'));
     }
-  } catch (_) { }
+  } catch (_) {}
   try {
     if (!fs.existsSync(USER_CONTROLLERS)) {
       if (!fs.existsSync(CONFIG_DIR)) fs.mkdirSync(CONFIG_DIR, { recursive: true });
@@ -103,7 +133,9 @@ function saveSettings(s) {
   try {
     if (!fs.existsSync(CONFIG_DIR)) fs.mkdirSync(CONFIG_DIR, { recursive: true });
     fs.writeFileSync(CONFIG_FILE, JSON.stringify(s, null, 2));
-  } catch (e) { console.error('saveSettings:', e.message); }
+  } catch (e) {
+    console.error('saveSettings:', e.message);
+  }
 }
 
 module.exports = {

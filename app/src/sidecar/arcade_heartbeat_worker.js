@@ -29,21 +29,25 @@
 const { parentPort, workerData } = require('worker_threads');
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-function log(msg) { parentPort.postMessage({ type: 'log',   message: `[arcade_heartbeat] ${msg}` }); }
-function err(msg) { parentPort.postMessage({ type: 'error', message: `[arcade_heartbeat] ${msg}` }); }
+function log(msg) {
+  parentPort.postMessage({ type: 'log', message: `[arcade_heartbeat] ${msg}` });
+}
+function err(msg) {
+  parentPort.postMessage({ type: 'error', message: `[arcade_heartbeat] ${msg}` });
+}
 
 function pusherTrigger(event, data) {
   parentPort.postMessage({ type: 'pusher-trigger', event, data });
 }
 
 // ── State ─────────────────────────────────────────────────────────────────────
-const arcadeSessions = new Map();   // sessionId → session object
+const arcadeSessions = new Map(); // sessionId → session object
 
 // ── Configuration ─────────────────────────────────────────────────────────────
 // How often (ms) to re-broadcast the session list to Pusher for late-joiners.
-const SYNC_INTERVAL_MS  = (workerData && workerData.syncIntervalMs)  || 30_000;
+const SYNC_INTERVAL_MS = (workerData && workerData.syncIntervalMs) || 30_000;
 // How often (ms) to send a lightweight keepalive ping on the Pusher channel.
-const PING_INTERVAL_MS  = (workerData && workerData.pingIntervalMs)  || 25_000;
+const PING_INTERVAL_MS = (workerData && workerData.pingIntervalMs) || 25_000;
 
 // ── Intervals ─────────────────────────────────────────────────────────────────
 let syncTimer = null;
@@ -70,8 +74,14 @@ function startIntervals() {
 }
 
 function stopIntervals() {
-  if (pingTimer) { clearInterval(pingTimer); pingTimer = null; }
-  if (syncTimer) { clearInterval(syncTimer); syncTimer = null; }
+  if (pingTimer) {
+    clearInterval(pingTimer);
+    pingTimer = null;
+  }
+  if (syncTimer) {
+    clearInterval(syncTimer);
+    syncTimer = null;
+  }
   log('Intervals cleared.');
 }
 
@@ -79,10 +89,12 @@ function stopIntervals() {
 parentPort.on('message', (msg) => {
   try {
     switch (msg.type) {
-
       case 'session-active': {
         const { session } = msg;
-        if (!session || !session.id) { err('session-active: missing session.id'); break; }
+        if (!session || !session.id) {
+          err('session-active: missing session.id');
+          break;
+        }
         arcadeSessions.set(session.id, session);
         pusherTrigger('client-session-active', { session });
         log(`Session registered: ${session.game} (id=${session.id})`);
@@ -108,7 +120,7 @@ parentPort.on('message', (msg) => {
         // Full authoritative replacement (e.g. after server restart)
         arcadeSessions.clear();
         if (Array.isArray(msg.sessions)) {
-          msg.sessions.forEach(s => arcadeSessions.set(s.id, s));
+          msg.sessions.forEach((s) => arcadeSessions.set(s.id, s));
           log(`Full sync: ${arcadeSessions.size} session(s) loaded`);
         }
         // Restart intervals to match new state

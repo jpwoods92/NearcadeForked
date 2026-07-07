@@ -24,7 +24,7 @@ function register() {
     return {
       vpsEnabled: !!settings.vpsEnabled,
       vpsUrl: String(settings.vpsUrl || ''),
-      vpsMasterKey: String(settings.vpsMasterKey || '')
+      vpsMasterKey: String(settings.vpsMasterKey || ''),
     };
   });
 }

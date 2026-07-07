@@ -12,9 +12,11 @@ if (typeof PusherRaw === 'function') {
 } else if (PusherRaw && typeof PusherRaw.default === 'function') {
   Pusher = PusherRaw.default;
 } else {
-  console.error("PUSHER DIAGNOSTIC:", PusherRaw);
+  console.error('PUSHER DIAGNOSTIC:', PusherRaw);
   Pusher = class DummyPusher {
-    subscribe() { return { trigger: () => { } }; }
+    subscribe() {
+      return { trigger: () => {} };
+    }
   };
 }
 
@@ -25,7 +27,7 @@ if (typeof PusherRaw === 'function') {
 // in sync by hand if either changes. See REFACTOR_PLAN.md Phase 5.7.
 const pusher = new Pusher('a93f5405058cd9fc7967', {
   cluster: 'us2',
-  authEndpoint: 'https://nearsec.cutefame.net/api/pusher-auth'
+  authEndpoint: 'https://nearsec.cutefame.net/api/pusher-auth',
 });
 
 const globalArcadeChannel = pusher.subscribe('private-arcade-global');
@@ -37,13 +39,17 @@ let _arcadeWorker = null;
 
 function spawnArcadeHeartbeatWorker() {
   _arcadeWorker = new Worker(path.join(__dirname, '..', '..', 'sidecar', 'arcade_heartbeat_worker.js'), {
-    workerData: { syncIntervalMs: 30_000, pingIntervalMs: 25_000 }
+    workerData: { syncIntervalMs: 30_000, pingIntervalMs: 25_000 },
   });
 
   _arcadeWorker.on('message', (msg) => {
     switch (msg.type) {
-      case 'log': console.log(msg.message); break;
-      case 'error': console.error(msg.message); break;
+      case 'log':
+        console.log(msg.message);
+        break;
+      case 'error':
+        console.error(msg.message);
+        break;
 
       // Worker asks main thread to fire the Pusher trigger
       // (pusher-js channels must live on the thread that owns the WebSocket)
@@ -75,8 +81,14 @@ function _arcadePost(msg) {
 // the worker reference directly (it's private to this module now).
 function stopArcadeHeartbeatWorker() {
   if (_arcadeWorker) {
-    try { _arcadeWorker.postMessage({ type: 'stop' }); } catch (_) { }
-    setTimeout(() => { try { _arcadeWorker && _arcadeWorker.terminate(); } catch (_) { } }, 500);
+    try {
+      _arcadeWorker.postMessage({ type: 'stop' });
+    } catch (_) {}
+    setTimeout(() => {
+      try {
+        _arcadeWorker && _arcadeWorker.terminate();
+      } catch (_) {}
+    }, 500);
   }
 }
 
@@ -91,24 +103,21 @@ function nextArcadeHostId() {
   return ++arcadeHostId;
 }
 
-const ARCADE_ALLOWED_DOMAINS = [
-  'trycloudflare.com',
-  'zrok.io',
-  'localhost.run',
-  'serveo.net',
-];
+const ARCADE_ALLOWED_DOMAINS = ['trycloudflare.com', 'zrok.io', 'localhost.run', 'serveo.net'];
 function isAllowedArcadeUrl(rawUrl) {
   try {
     const u = new URL(rawUrl);
     if (u.protocol !== 'https:') return false;
-    return ARCADE_ALLOWED_DOMAINS.some(d =>
-      u.hostname === d || u.hostname.endsWith('.' + d)
-    );
-  } catch { return false; }
+    return ARCADE_ALLOWED_DOMAINS.some((d) => u.hostname === d || u.hostname.endsWith('.' + d));
+  } catch {
+    return false;
+  }
 }
 function broadcastToArcade(msg) {
   const data = JSON.stringify(msg);
-  arcadeClients.forEach(c => { if (c.readyState === 1) c.send(data); });
+  arcadeClients.forEach((c) => {
+    if (c.readyState === 1) c.send(data);
+  });
 }
 
 module.exports = {

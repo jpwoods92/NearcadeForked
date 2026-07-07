@@ -9,15 +9,15 @@
 // asymmetric, not duplicated. See REFACTOR_PLAN.md Phase 5.2.
 
 const RTC_STUN_POOL = [
-    'stun:stun.l.google.com:19302',
-    'stun:stun1.l.google.com:19302',
-    'stun:stun2.l.google.com:19302',
-    'stun:stun3.l.google.com:19302',
-    'stun:stun4.l.google.com:19302',
-    'stun:stun.cloudflare.com:3478',
-    'stun:stun.twilio.com:3478',
-    'stun:global.stun.twilio.com:3478',
-    'stun:stun.miwifi.com:3478',
+  'stun:stun.l.google.com:19302',
+  'stun:stun1.l.google.com:19302',
+  'stun:stun2.l.google.com:19302',
+  'stun:stun3.l.google.com:19302',
+  'stun:stun4.l.google.com:19302',
+  'stun:stun.cloudflare.com:3478',
+  'stun:stun.twilio.com:3478',
+  'stun:global.stun.twilio.com:3478',
+  'stun:stun.miwifi.com:3478',
 ];
 
 /**
@@ -29,25 +29,25 @@ const RTC_STUN_POOL = [
  * files always did.
  */
 function buildRtcConfig(turnCredentials) {
-    const shuffledStun = RTC_STUN_POOL.slice()
-        .sort(() => 0.5 - Math.random())
-        .slice(0, 2)
-        .map(url => ({ urls: url }));
+  const shuffledStun = RTC_STUN_POOL.slice()
+    .sort(() => 0.5 - Math.random())
+    .slice(0, 2)
+    .map((url) => ({ urls: url }));
 
-    const iceServers = [...shuffledStun];
-    if (turnCredentials) iceServers.push(turnCredentials);
+  const iceServers = [...shuffledStun];
+  if (turnCredentials) iceServers.push(turnCredentials);
 
-    return {
-        iceServers,
-        bundlePolicy: 'max-bundle',
-        rtcpMuxPolicy: 'require',
-        sdpSemantics: 'unified-plan',
-    };
+  return {
+    iceServers,
+    bundlePolicy: 'max-bundle',
+    rtcpMuxPolicy: 'require',
+    sdpSemantics: 'unified-plan',
+  };
 }
 
 // ── Test-only export shim ──────────────────────────────────────────────────
 // `module` does not exist in the browser, so this block is inert there and
 // changes no runtime behavior. See REFACTOR_PLAN.md Phase 0 / Phase 5.
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { RTC_STUN_POOL, buildRtcConfig };
+  module.exports = { RTC_STUN_POOL, buildRtcConfig };
 }

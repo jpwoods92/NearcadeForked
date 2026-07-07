@@ -1,110 +1,162 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
+  <head>
+    <meta charset="UTF-8" />
     <title>Nearsec Controller DB Builder</title>
     <style>
-        body { font-family: monospace; background: #0b0d0f; color: #f0f3f5; padding: 40px; }
-        .box { background: #121518; border: 1px solid #22282d; padding: 20px; border-radius: 8px; max-width: 600px; margin: 0 auto; }
-        h2 { color: #ff5d3d; margin-top: 0; }
-        #prompt { font-size: 1.2em; color: #4ade80; margin: 20px 0; font-weight: bold; }
-        pre { background: #000; padding: 15px; color: #3b82f6; overflow-x: auto; border-radius: 4px; }
+      body {
+        font-family: monospace;
+        background: #0b0d0f;
+        color: #f0f3f5;
+        padding: 40px;
+      }
+      .box {
+        background: #121518;
+        border: 1px solid #22282d;
+        padding: 20px;
+        border-radius: 8px;
+        max-width: 600px;
+        margin: 0 auto;
+      }
+      h2 {
+        color: #ff5d3d;
+        margin-top: 0;
+      }
+      #prompt {
+        font-size: 1.2em;
+        color: #4ade80;
+        margin: 20px 0;
+        font-weight: bold;
+      }
+      pre {
+        background: #000;
+        padding: 15px;
+        color: #3b82f6;
+        overflow-x: auto;
+        border-radius: 4px;
+      }
     </style>
-</head>
-<body>
+  </head>
+  <body>
+    <div class="box">
+      <h2>Nearsec Controller DB Builder</h2>
+      <p>Plug in a controller and press any button to begin.</p>
 
-<div class="box">
-    <h2>Nearsec Controller DB Builder</h2>
-    <p>Plug in a controller and press any button to begin.</p>
+      <div id="status">Waiting for controller...</div>
+      <div id="prompt"></div>
 
-    <div id="status">Waiting for controller...</div>
-    <div id="prompt"></div>
-
-    <div id="actions" style="display: none; margin-bottom: 20px;">
-        <div style="margin-bottom: 15px; padding: 15px; background: #1a1e23; border-radius: 4px; border: 1px dashed #374151;">
-            <strong style="display:block; margin-bottom: 10px;">Option 1: Merge into existing file</strong>
-            <button id="btn-modify" style="padding: 10px; background: #3b82f6; color: white; border: none; border-radius: 4px; cursor: pointer; margin-right: 10px;">Modify Directly (Chrome/Edge)</button>
-            <span style="color: #9ca3af; margin: 0 10px;">OR</span>
-            <label style="padding: 10px; background: #6366f1; color: white; border-radius: 4px; cursor: pointer;">
-                Select File (Firefox) <input type="file" id="file-input" accept=".json" style="display: none;">
-            </label>
+      <div id="actions" style="display: none; margin-bottom: 20px">
+        <div
+          style="
+            margin-bottom: 15px;
+            padding: 15px;
+            background: #1a1e23;
+            border-radius: 4px;
+            border: 1px dashed #374151;
+          "
+        >
+          <strong style="display: block; margin-bottom: 10px">Option 1: Merge into existing file</strong>
+          <button
+            id="btn-modify"
+            style="
+              padding: 10px;
+              background: #3b82f6;
+              color: white;
+              border: none;
+              border-radius: 4px;
+              cursor: pointer;
+              margin-right: 10px;
+            "
+          >
+            Modify Directly (Chrome/Edge)
+          </button>
+          <span style="color: #9ca3af; margin: 0 10px">OR</span>
+          <label style="padding: 10px; background: #6366f1; color: white; border-radius: 4px; cursor: pointer">
+            Select File (Firefox) <input type="file" id="file-input" accept=".json" style="display: none" />
+          </label>
         </div>
-        
-        <div style="padding: 15px; background: #1a1e23; border-radius: 4px; border: 1px dashed #374151;">
-            <strong style="display:block; margin-bottom: 10px;">Option 2: Download standalone</strong>
-            <button id="btn-download" style="padding: 10px; background: #10b981; color: white; border: none; border-radius: 4px; cursor: pointer;">Download New JSON File</button>
+
+        <div style="padding: 15px; background: #1a1e23; border-radius: 4px; border: 1px dashed #374151">
+          <strong style="display: block; margin-bottom: 10px">Option 2: Download standalone</strong>
+          <button
+            id="btn-download"
+            style="padding: 10px; background: #10b981; color: white; border: none; border-radius: 4px; cursor: pointer"
+          >
+            Download New JSON File
+          </button>
         </div>
+      </div>
+
+      <h3>Generated Database Entry:</h3>
+      <pre id="output">// JSON will appear here...</pre>
     </div>
 
-    <h3>Generated Database Entry:</h3>
-    <pre id="output">// JSON will appear here...</pre>
-</div>
+    <script>
+      const steps = [
+        { name: 'A / Cross', key: 'b0', type: 'button' },
+        { name: 'B / Circle', key: 'b1', type: 'button' },
+        { name: 'X / Square', key: 'b2', type: 'button' },
+        { name: 'Y / Triangle', key: 'b3', type: 'button' },
+        { name: 'Right Stick X (Push Right)', key: 'rsx', type: 'axis' },
+        { name: 'Right Stick Y (Push Down)', key: 'rsy', type: 'axis' },
+      ];
 
-<script>
-    const steps = [
-        { name: "A / Cross", key: "b0", type: "button" },
-        { name: "B / Circle", key: "b1", type: "button" },
-        { name: "X / Square", key: "b2", type: "button" },
-        { name: "Y / Triangle", key: "b3", type: "button" },
-        { name: "Right Stick X (Push Right)", key: "rsx", type: "axis" },
-        { name: "Right Stick Y (Push Down)", key: "rsy", type: "axis" }
-    ];
+      let currentStep = 0;
+      let mapping = {};
+      let gamepadId = '';
+      let activePadIndex = null;
 
-    let currentStep = 0;
-    let mapping = {};
-    let gamepadId = "";
-    let activePadIndex = null;
-
-    window.addEventListener("gamepadconnected", (e) => {
+      window.addEventListener('gamepadconnected', (e) => {
         if (activePadIndex !== null) return;
         activePadIndex = e.gamepad.index;
         gamepadId = e.gamepad.id;
-        document.getElementById("status").innerHTML = `Connected: <strong>${gamepadId}</strong><br>Mapping type: ${e.gamepad.mapping || "unknown"}`;
+        document.getElementById('status').innerHTML =
+          `Connected: <strong>${gamepadId}</strong><br>Mapping type: ${e.gamepad.mapping || 'unknown'}`;
         startCalibration();
-    });
+      });
 
-    function startCalibration() {
+      function startCalibration() {
         currentStep = 0;
         mapping = {};
-        document.getElementById("prompt").innerText = "Please release all buttons...";
+        document.getElementById('prompt').innerText = 'Please release all buttons...';
         requestAnimationFrame(waitToRelease);
-    }
+      }
 
-    function waitToRelease() {
+      function waitToRelease() {
         const pad = navigator.getGamepads()[activePadIndex];
         if (!pad) return;
 
         let anyPressed = false;
         for (let i = 0; i < pad.buttons.length; i++) {
-            if (pad.buttons[i].pressed) anyPressed = true;
+          if (pad.buttons[i].pressed) anyPressed = true;
         }
         for (let i = 0; i < pad.axes.length; i++) {
-            if (Math.abs(pad.axes[i]) > 0.8) anyPressed = true;
+          if (Math.abs(pad.axes[i]) > 0.8) anyPressed = true;
         }
 
         if (anyPressed) {
-            requestAnimationFrame(waitToRelease);
+          requestAnimationFrame(waitToRelease);
         } else {
-            lastButtons = pad.buttons.map(b => b.pressed);
-            lastAxes = [...pad.axes];
-            updatePrompt();
-            requestAnimationFrame(poll);
+          lastButtons = pad.buttons.map((b) => b.pressed);
+          lastAxes = [...pad.axes];
+          updatePrompt();
+          requestAnimationFrame(poll);
         }
-    }
+      }
 
-    function updatePrompt() {
+      function updatePrompt() {
         if (currentStep < steps.length) {
-            document.getElementById("prompt").innerText = `Press and release: ${steps[currentStep].name}`;
+          document.getElementById('prompt').innerText = `Press and release: ${steps[currentStep].name}`;
         } else {
-            document.getElementById("prompt").innerText = "Calibration Complete!";
-            generateJSON();
+          document.getElementById('prompt').innerText = 'Calibration Complete!';
+          generateJSON();
         }
-    }
+      }
 
-    let lastButtons = [];
-    let lastAxes = [];
+      let lastButtons = [];
+      let lastAxes = [];
 
-    function poll() {
+      function poll() {
         if (currentStep >= steps.length) return;
 
         const pad = navigator.getGamepads()[activePadIndex];
@@ -112,110 +164,115 @@
 
         const target = steps[currentStep];
 
-        if (target.type === "button") {
-            for (let i = 0; i < pad.buttons.length; i++) {
-                if (pad.buttons[i].pressed && !lastButtons[i]) {
-                    mapping[target.key] = i;
-                    currentStep++;
-                    updatePrompt();
-                    break;
-                }
+        if (target.type === 'button') {
+          for (let i = 0; i < pad.buttons.length; i++) {
+            if (pad.buttons[i].pressed && !lastButtons[i]) {
+              mapping[target.key] = i;
+              currentStep++;
+              updatePrompt();
+              break;
             }
-        } else if (target.type === "axis") {
-            for (let i = 0; i < pad.axes.length; i++) {
-                if (Math.abs(pad.axes[i]) > 0.8 && (!lastAxes[i] || Math.abs(lastAxes[i]) <= 0.8)) {
-                    mapping[target.key] = i;
-                    currentStep++;
-                    updatePrompt();
-                    break;
-                }
+          }
+        } else if (target.type === 'axis') {
+          for (let i = 0; i < pad.axes.length; i++) {
+            if (Math.abs(pad.axes[i]) > 0.8 && (!lastAxes[i] || Math.abs(lastAxes[i]) <= 0.8)) {
+              mapping[target.key] = i;
+              currentStep++;
+              updatePrompt();
+              break;
             }
+          }
         }
 
-        lastButtons = pad.buttons.map(b => b.pressed);
+        lastButtons = pad.buttons.map((b) => b.pressed);
         lastAxes = [...pad.axes];
 
         requestAnimationFrame(poll);
-    }
+      }
 
-    let fullJSON = null;
+      let fullJSON = null;
 
-    function generateJSON() {
+      function generateJSON() {
         const jsonString = `"${gamepadId}": ${JSON.stringify(mapping, null, 2)}`;
-        fullJSON = "{\n  " + jsonString + "\n}";
-        document.getElementById("output").innerText = fullJSON;
-        
-        document.getElementById("actions").style.display = "block";
-        
-        document.getElementById("btn-download").onclick = () => {
-            const blob = new Blob([fullJSON], { type: "application/json" });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            a.href = url;
-            a.download = "controllers.json";
-            a.click();
-            URL.revokeObjectURL(url);
+        fullJSON = '{\n  ' + jsonString + '\n}';
+        document.getElementById('output').innerText = fullJSON;
+
+        document.getElementById('actions').style.display = 'block';
+
+        document.getElementById('btn-download').onclick = () => {
+          const blob = new Blob([fullJSON], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = 'controllers.json';
+          a.click();
+          URL.revokeObjectURL(url);
         };
-        
-        document.getElementById("file-input").onchange = (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = (ev) => {
-                try {
-                    const db = JSON.parse(ev.target.result);
-                    if (db[gamepadId] && !confirm("Profile for this controller already exists in this file! Overwrite?")) {
-                        e.target.value = '';
-                        return;
-                    }
-                    db[gamepadId] = mapping;
-                    fullJSON = JSON.stringify(db, null, 2);
-                    document.getElementById("output").innerText = "Successfully merged! Click 'Download' to save the complete file.\n\n" + fullJSON;
-                    alert("Merged successfully! Click 'Download New JSON File' to download your fully updated controllers.json.");
-                } catch (err) {
-                    alert("The selected file is not valid JSON.");
-                }
-                e.target.value = '';
-            };
-            reader.readAsText(file);
-        };
-        
-        document.getElementById("btn-modify").onclick = async () => {
-            if (!window.showOpenFilePicker) {
-                alert("Your browser does not support modifying files directly (try Chrome or Edge). Please use Download or copy-paste.");
-                return;
-            }
+
+        document.getElementById('file-input').onchange = (e) => {
+          const file = e.target.files[0];
+          if (!file) return;
+          const reader = new FileReader();
+          reader.onload = (ev) => {
             try {
-                const [fileHandle] = await window.showOpenFilePicker({
-                    types: [{ description: 'JSON Files', accept: { 'application/json': ['.json'] } }],
-                    multiple: false
-                });
-                
-                const file = await fileHandle.getFile();
-                const contents = await file.text();
-                let db = {};
-                try {
-                    db = JSON.parse(contents);
-                } catch(e) {
-                    alert("The selected file is not valid JSON. Starting fresh.");
-                }
-                
-                if (db[gamepadId] && !confirm("Profile for this controller already exists! Overwrite?")) {
-                    return;
-                }
-                
-                db[gamepadId] = mapping;
-                
-                const writable = await fileHandle.createWritable();
-                await writable.write(JSON.stringify(db, null, 2));
-                await writable.close();
-                
-                alert("Successfully saved to the selected file!");
-            } catch (e) {
-                if (e.name !== 'AbortError') alert("Error modifying file: " + e.message);
+              const db = JSON.parse(ev.target.result);
+              if (db[gamepadId] && !confirm('Profile for this controller already exists in this file! Overwrite?')) {
+                e.target.value = '';
+                return;
+              }
+              db[gamepadId] = mapping;
+              fullJSON = JSON.stringify(db, null, 2);
+              document.getElementById('output').innerText =
+                "Successfully merged! Click 'Download' to save the complete file.\n\n" + fullJSON;
+              alert(
+                "Merged successfully! Click 'Download New JSON File' to download your fully updated controllers.json."
+              );
+            } catch (err) {
+              alert('The selected file is not valid JSON.');
             }
+            e.target.value = '';
+          };
+          reader.readAsText(file);
         };
-    }
-</script>
-</body>
+
+        document.getElementById('btn-modify').onclick = async () => {
+          if (!window.showOpenFilePicker) {
+            alert(
+              'Your browser does not support modifying files directly (try Chrome or Edge). Please use Download or copy-paste.'
+            );
+            return;
+          }
+          try {
+            const [fileHandle] = await window.showOpenFilePicker({
+              types: [{ description: 'JSON Files', accept: { 'application/json': ['.json'] } }],
+              multiple: false,
+            });
+
+            const file = await fileHandle.getFile();
+            const contents = await file.text();
+            let db = {};
+            try {
+              db = JSON.parse(contents);
+            } catch (e) {
+              alert('The selected file is not valid JSON. Starting fresh.');
+            }
+
+            if (db[gamepadId] && !confirm('Profile for this controller already exists! Overwrite?')) {
+              return;
+            }
+
+            db[gamepadId] = mapping;
+
+            const writable = await fileHandle.createWritable();
+            await writable.write(JSON.stringify(db, null, 2));
+            await writable.close();
+
+            alert('Successfully saved to the selected file!');
+          } catch (e) {
+            if (e.name !== 'AbortError') alert('Error modifying file: ' + e.message);
+          }
+        };
+      }
+    </script>
+  </body>
 </html>

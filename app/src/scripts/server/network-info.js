@@ -7,9 +7,8 @@ const open = (...args) => import('open').then(({ default: open }) => open(...arg
 
 function getLanIP() {
   for (const iface of Object.values(os.networkInterfaces()))
-    for (const n of iface)
-      if (n.family === "IPv4" && !n.internal) return n.address;
-  return "127.0.0.1";
+    for (const n of iface) if (n.family === 'IPv4' && !n.internal) return n.address;
+  return '127.0.0.1';
 }
 
 function shouldRequirePin(ip, hasTunnelHeader = false) {
@@ -28,28 +27,34 @@ function shouldRequirePin(ip, hasTunnelHeader = false) {
 
 function getTailscaleIP() {
   for (const iface of Object.values(os.networkInterfaces()))
-    for (const n of iface)
-      if (n.family === "IPv4" && n.address.startsWith("100.")) return n.address;
+    for (const n of iface) if (n.family === 'IPv4' && n.address.startsWith('100.')) return n.address;
   return null;
 }
 
 function findFreePort(start) {
-  return new Promise(resolve => {
+  return new Promise((resolve) => {
     const s = net.createServer();
-    s.listen(start, () => { const p = s.address().port; s.close(() => resolve(p)); });
-    s.on("error", () => findFreePort(start + 1).then(resolve));
+    s.listen(start, () => {
+      const p = s.address().port;
+      s.close(() => resolve(p));
+    });
+    s.on('error', () => findFreePort(start + 1).then(resolve));
   });
 }
 
 function openBrowser(url) {
-  open(url).catch(() => { });
+  open(url).catch(() => {});
 }
 
 function getPublicIP() {
-  return new Promise(resolve => {
-    https.get("https://api.ipify.org", res => {
-      let d = ""; res.on("data", c => d += c); res.on("end", () => resolve(d.trim()));
-    }).on("error", () => resolve(null));
+  return new Promise((resolve) => {
+    https
+      .get('https://api.ipify.org', (res) => {
+        let d = '';
+        res.on('data', (c) => (d += c));
+        res.on('end', () => resolve(d.trim()));
+      })
+      .on('error', () => resolve(null));
   });
 }
 

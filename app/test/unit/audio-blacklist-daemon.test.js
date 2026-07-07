@@ -2,7 +2,12 @@ import { describe, it, expect } from 'vitest';
 import { createRequire } from 'module';
 
 const require = createRequire(import.meta.url);
-const { parseSinkInputs, parseSinks, isBlacklisted, DEFAULT_BLACKLIST } = require('../../src/sidecar/audio_blacklist_daemon.js');
+const {
+  parseSinkInputs,
+  parseSinks,
+  isBlacklisted,
+  DEFAULT_BLACKLIST,
+} = require('../../src/sidecar/audio_blacklist_daemon.js');
 
 // Characterization tests (REFACTOR_PLAN.md Phase 0 / Phase 8) for the pactl
 // output parsers in audio_blacklist_daemon.js. This is one of four places in

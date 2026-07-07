@@ -13,7 +13,8 @@ const projectRoot = path.join(__dirname, '..', '..', '..', '..');
 function getSafeDataDir() {
   const home = os.homedir();
   let p;
-  if (process.platform === 'win32') p = path.join(process.env.APPDATA || path.join(home, 'AppData', 'Roaming'), 'NearsecTogether');
+  if (process.platform === 'win32')
+    p = path.join(process.env.APPDATA || path.join(home, 'AppData', 'Roaming'), 'NearsecTogether');
   else if (process.platform === 'darwin') p = path.join(home, 'Library', 'Application Support', 'NearsecTogether');
   else p = path.join(home, '.config', 'NearsecTogether');
 
@@ -45,7 +46,9 @@ const envFile = path.join(dataDir, '.env');
       } else {
         return; // Already correct
       }
-    } catch (_) { /* doesn't exist yet — fall through to create */ }
+    } catch (_) {
+      /* doesn't exist yet — fall through to create */
+    }
     fs.symlinkSync(realTarget, symlinkPath);
     console.log('[config] Symlink: config/nearsectogether.config.json → ' + realTarget);
   } catch (e) {
@@ -57,17 +60,21 @@ const envFile = path.join(dataDir, '.env');
 if (!fs.existsSync(envFile)) {
   try {
     fs.writeFileSync(envFile, `CF_TOKEN=\nCUSTOM_URL=\nZROK_RESERVED_NAME=\nUSE_VPS=false\nVPS_HOST=\nIS_VPS=false\n`);
-  } catch (e) { console.warn("[env] Could not create .env file:", e.message); }
+  } catch (e) {
+    console.warn('[env] Could not create .env file:', e.message);
+  }
 }
 
 try {
   if (fs.existsSync(envFile)) {
-    fs.readFileSync(envFile, 'utf8').split('\n').forEach(line => {
-      const match = line.match(/^\s*([\w.-]+)\s*=\s*(.*)?\s*$/);
-      if (match) process.env[match[1]] = (match[2] || '').trim().replace(/^['"]|['"]$/g, '');
-    });
+    fs.readFileSync(envFile, 'utf8')
+      .split('\n')
+      .forEach((line) => {
+        const match = line.match(/^\s*([\w.-]+)\s*=\s*(.*)?\s*$/);
+        if (match) process.env[match[1]] = (match[2] || '').trim().replace(/^['"]|['"]$/g, '');
+      });
   }
-} catch (e) { }
+} catch (e) {}
 
 // Native fallback reader since dotenv is not in package dependencies.
 // NOTE: this reads the repo-root .env (used by local source-code dev via
@@ -85,7 +92,7 @@ function readEnv(key) {
         }
       }
     }
-  } catch (e) { }
+  } catch (e) {}
   return null;
 }
 
@@ -93,9 +100,11 @@ function readEnv(key) {
 const CONFIG_FILE = path.join(dataDir, 'nearsectogether.config.json');
 function loadConfig() {
   try {
-    const data = JSON.parse(fs.readFileSync(CONFIG_FILE, "utf8"));
+    const data = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
     return data && typeof data === 'object' ? data : {};
-  } catch (e) { return {}; }
+  } catch (e) {
+    return {};
+  }
 }
 function saveConfig(updates) {
   try {
@@ -103,10 +112,10 @@ function saveConfig(updates) {
     const configDir = path.dirname(CONFIG_FILE);
     if (!fs.existsSync(configDir)) fs.mkdirSync(configDir, { recursive: true });
     fs.writeFileSync(CONFIG_FILE, JSON.stringify(cfg, null, 2), { encoding: 'utf8', flag: 'w' });
-    console.log("[config] Saved tunnel preference:", cfg);
+    console.log('[config] Saved tunnel preference:', cfg);
     return cfg;
   } catch (e) {
-    console.error("[config] Error saving config:", e.message);
+    console.error('[config] Error saving config:', e.message);
     return {};
   }
 }
@@ -116,11 +125,15 @@ function getAppVersionInfo() {
   try {
     const pkg = JSON.parse(fs.readFileSync(path.join(projectRoot, 'package.json'), 'utf8'));
     version = pkg.version || '1.0.0';
-  } catch (e) { /* keep default */ }
+  } catch (e) {
+    /* keep default */
+  }
   let commit = '';
   try {
     commit = fs.readFileSync(path.join(projectRoot, 'commit.txt'), 'utf8').trim().substring(0, 7);
-  } catch (e) { /* keep default */ }
+  } catch (e) {
+    /* keep default */
+  }
   return { version, commit };
 }
 

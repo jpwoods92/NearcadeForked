@@ -8,7 +8,7 @@ import { RTC_STUN_POOL, buildRtcConfig } from '../../src/scripts/webrtc/peer-con
 describe('buildRtcConfig()', () => {
   it('picks exactly 2 STUN servers from the pool', () => {
     const cfg = buildRtcConfig(null);
-    const stunEntries = cfg.iceServers.filter(s => s.urls.startsWith('stun:'));
+    const stunEntries = cfg.iceServers.filter((s) => s.urls.startsWith('stun:'));
     expect(stunEntries).toHaveLength(2);
     for (const entry of stunEntries) {
       expect(RTC_STUN_POOL).toContain(entry.urls);

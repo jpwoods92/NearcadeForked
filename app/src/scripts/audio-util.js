@@ -57,7 +57,7 @@ function fallbackPlay(filePath, callback) {
   }
 
   console.log(`[audio] Using fallback: ${cmd.method}`);
-  
+
   if (cmd.method === 'powershell') {
     // Windows PowerShell fallback
     exec(cmd.command, { windowsHide: true }, (err) => {

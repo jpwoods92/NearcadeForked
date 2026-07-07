@@ -11,7 +11,7 @@ const STALE_MODULE_MARKERS = ['NearsecVirtual', 'NearsecVirtualCapture', 'Nearse
 function parseStaleModuleIds(pactlListOutput) {
   const ids = [];
   for (const line of (pactlListOutput || '').split('\n')) {
-    if (STALE_MODULE_MARKERS.some(marker => line.includes(marker))) {
+    if (STALE_MODULE_MARKERS.some((marker) => line.includes(marker))) {
       const id = line.trim().split(/\s+/)[0];
       if (id && /^\d+$/.test(id)) ids.push(id);
     }

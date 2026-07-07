@@ -21,7 +21,11 @@ function applyConfigOverrides(configFile) {
     if (fs.existsSync(configFile)) {
       const parsedConfig = JSON.parse(fs.readFileSync(configFile, 'utf8'));
 
-      if (!process.argv.includes('--webcodecs') && !process.argv.includes('--ffmpeg') && !process.argv.includes('--webrtc')) {
+      if (
+        !process.argv.includes('--webcodecs') &&
+        !process.argv.includes('--ffmpeg') &&
+        !process.argv.includes('--webrtc')
+      ) {
         if (parsedConfig.captureMethod === 'webcodecs') flags.isWebCodecs = true;
         if (parsedConfig.captureMethod === 'ffmpeg') flags.isFFmpegCapture = true;
         console.log(`[Main] Loaded capture method from config: ${parsedConfig.captureMethod || 'native'}`);

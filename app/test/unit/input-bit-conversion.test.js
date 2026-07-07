@@ -12,8 +12,8 @@ const { _jsBtnsToCpp } = require('../../src/sidecar/input_backends/bit-conversio
 
 describe('_jsBtnsToCpp', () => {
   it('passes A/B/X/Y (bits 0-3) straight through', () => {
-    const { cpp } = _jsBtnsToCpp(0x000F);
-    expect(cpp & 0x000F).toBe(0x000F);
+    const { cpp } = _jsBtnsToCpp(0x000f);
+    expect(cpp & 0x000f).toBe(0x000f);
   });
 
   it('remaps LB (JS bit8) to C++ bit4 and RB (JS bit9) to C++ bit5', () => {
@@ -33,9 +33,9 @@ describe('_jsBtnsToCpp', () => {
 
   it('extracts dpad LEFT/RIGHT as hx and UP/DOWN as hy instead of button bits', () => {
     expect(_jsBtnsToCpp(0x0040)).toMatchObject({ hx: -1, hy: 0 }); // LEFT
-    expect(_jsBtnsToCpp(0x0080)).toMatchObject({ hx: 1, hy: 0 });  // RIGHT
+    expect(_jsBtnsToCpp(0x0080)).toMatchObject({ hx: 1, hy: 0 }); // RIGHT
     expect(_jsBtnsToCpp(0x0010)).toMatchObject({ hx: 0, hy: -1 }); // UP
-    expect(_jsBtnsToCpp(0x0020)).toMatchObject({ hx: 0, hy: 1 });  // DOWN
+    expect(_jsBtnsToCpp(0x0020)).toMatchObject({ hx: 0, hy: 1 }); // DOWN
   });
 
   it('returns hx/hy of 0 when no dpad bits are set', () => {

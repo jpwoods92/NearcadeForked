@@ -1,384 +1,549 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
+  <head>
+    <link rel="icon" type="image/x-icon" href="../favicon.ico" />
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"
+    />
+    <meta name="description" content="NearsecTogether" />
+    <title>NearsecTogether</title>
 
-<head>
-  <link rel="icon" type="image/x-icon" href="../favicon.ico">
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-  <meta name="description" content="NearsecTogether">
-  <title>NearsecTogether</title>
+    <meta property="og:site_name" content="Nearsec Arcade" />
+    <meta property="og:title" content="Join the Session!" />
+    <meta property="og:description" content="Connect instantly to this remote play session via Nearsec Arcade." />
+    <meta property="og:image" content="https://nearsec.cutefame.net/assets/NearsecTogetherLogo.png" />
+    <meta name="theme-color" content="#8b5cf6" />
+    <meta name="twitter:card" content="summary" />
 
-  <meta property="og:site_name" content="Nearsec Arcade" />
-  <meta property="og:title" content="Join the Session!" />
-  <meta property="og:description" content="Connect instantly to this remote play session via Nearsec Arcade." />
-  <meta property="og:image" content="https://nearsec.cutefame.net/assets/NearsecTogetherLogo.png" />
-  <meta name="theme-color" content="#8b5cf6" />
-  <meta name="twitter:card" content="summary" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=IBM+Plex+Mono:wght@400;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/lipis/flag-icons@7.2.3/css/flag-icons.min.css" />
+    <link rel="stylesheet" href="/css/index.css" />
 
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link
-    href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=IBM+Plex+Mono:wght@400;600&display=swap"
-    rel="stylesheet">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/lipis/flag-icons@7.2.3/css/flag-icons.min.css">
-  <link rel="stylesheet" href="/css/index.css">
-
-  <script src="/js/client-only-mode.js"></script>
+    <script src="/js/client-only-mode.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-</head>
+  </head>
 
-<body>
-
-  <!-- Error / Warning Popup Overlay -->
-  <div id="ns-error-popup" style="display:none; position:fixed; top:20px; left:50%; transform:translateX(-50%); z-index:9999999; background:#d32f2f; color:#fff; padding:12px 24px; border-radius:8px; font-family:monospace; box-shadow:0 8px 16px rgba(0,0,0,0.5); font-weight:bold; align-items:center; gap:12px;">
-    <span id="ns-error-text">Critical Error occurred.</span>
-    <button onclick="this.parentElement.style.display='none'" style="background:rgba(255,255,255,0.2); border:none; color:white; padding:4px 8px; border-radius:4px; cursor:pointer; font-weight:bold; display:inline-block; margin-left:12px;">✕</button>
-  </div>
-  
-  <script src="/js/ui/error-popup.js"></script>
-
-
-  <!-- ════ PIN / JOIN SCREEN ════ -->
-  <div id="pinScreen">
-    <div class="brand-wrap">
-      <img src="/assets/NearsecTogetherLogo.png" alt="NearsecTogether" class="brand-img">
-      <div class="brand-name">NearsecTogether</div>
-      <div class="brand-sub">peer-to-peer remote play</div>
+  <body>
+    <!-- Error / Warning Popup Overlay -->
+    <div
+      id="ns-error-popup"
+      style="
+        display: none;
+        position: fixed;
+        top: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 9999999;
+        background: #d32f2f;
+        color: #fff;
+        padding: 12px 24px;
+        border-radius: 8px;
+        font-family: monospace;
+        box-shadow: 0 8px 16px rgba(0, 0, 0, 0.5);
+        font-weight: bold;
+        align-items: center;
+        gap: 12px;
+      "
+    >
+      <span id="ns-error-text">Critical Error occurred.</span>
+      <button
+        onclick="this.parentElement.style.display = 'none'"
+        style="
+          background: rgba(255, 255, 255, 0.2);
+          border: none;
+          color: white;
+          padding: 4px 8px;
+          border-radius: 4px;
+          cursor: pointer;
+          font-weight: bold;
+          display: inline-block;
+          margin-left: 12px;
+        "
+      >
+        ✕
+      </button>
     </div>
 
-    <!-- Language select -->
-    <select id="langSelect" onchange="I18N.changeLanguage(this.value)"
-      style="background:rgba(0,0,0,0.4);color:var(--muted);border:1px solid var(--border);border-radius:8px;font-size:10px;padding:4px 8px;outline:none;cursor:pointer;font-family:var(--mono);">
-    </select>
+    <script src="/js/ui/error-popup.js"></script>
 
-    <div class="pin-card">
-      <div class="pin-field-label">Display Name</div>
-      <input id="nameInput" type="text" placeholder="Guest" maxlength="20" class="pin-input"
-        onkeydown="if(event.key==='Enter')submitPin()">
-
-      <div id="pinWrap">
-        <div class="pin-field-label" style="margin-top:4px;">PIN Code</div>
-        <input id="pinInput" type="text" autocomplete="off" placeholder="0000" maxlength="32" class="pin-input"
-          onkeydown="if(event.key==='Enter')submitPin()">
+    <!-- ════ PIN / JOIN SCREEN ════ -->
+    <div id="pinScreen">
+      <div class="brand-wrap">
+        <img src="/assets/NearsecTogetherLogo.png" alt="NearsecTogether" class="brand-img" />
+        <div class="brand-name">NearsecTogether</div>
+        <div class="brand-sub">peer-to-peer remote play</div>
       </div>
 
-      <!-- Session password — hidden until server sends session-password-required -->
-      <div id="sessionPasswordWrap" style="display:none;">
-        <div class="pin-field-label" style="margin-top:4px;">Session Password</div>
-        <input id="sessionPasswordInput" type="password" placeholder="Enter session password" class="pin-input"
-          onkeydown="if(event.key==='Enter')submitSessionPassword()">
-      </div>
+      <!-- Language select -->
+      <select
+        id="langSelect"
+        onchange="I18N.changeLanguage(this.value)"
+        style="
+          background: rgba(0, 0, 0, 0.4);
+          color: var(--muted);
+          border: 1px solid var(--border);
+          border-radius: 8px;
+          font-size: 10px;
+          padding: 4px 8px;
+          outline: none;
+          cursor: pointer;
+          font-family: var(--mono);
+        "
+      ></select>
 
-      <button class="pin-submit-btn" onclick="submitPin()">Join Stream →</button>
-      <button class="pin-submit-btn client-only-btn" style="display:none;background:var(--surface);color:var(--text);border:1px solid var(--border);margin-top:8px;" onclick="window.electronAPI ? window.electronAPI.backToDashboard() : window.location.href='/'">← Cancel & Go Back</button>
-      <div id="pinErr"></div>
-    </div>
-  </div>
+      <div class="pin-card">
+        <div class="pin-field-label">Display Name</div>
+        <input
+          id="nameInput"
+          type="text"
+          placeholder="Guest"
+          maxlength="20"
+          class="pin-input"
+          onkeydown="if (event.key === 'Enter') submitPin();"
+        />
 
-  <!-- ════ VIDEO ════ -->
-  <div id="video-container">
-    <video id="video" autoplay playsinline muted disableRemotePlayback disablePictureInPicture></video>
-    <canvas id="frameCanvas"></canvas>
-    <canvas id="webcodecs-canvas"></canvas>
-  </div>
+        <div id="pinWrap">
+          <div class="pin-field-label" style="margin-top: 4px">PIN Code</div>
+          <input
+            id="pinInput"
+            type="text"
+            autocomplete="off"
+            placeholder="0000"
+            maxlength="32"
+            class="pin-input"
+            onkeydown="if (event.key === 'Enter') submitPin();"
+          />
+        </div>
 
-  <!-- ════ CONNECTING OVERLAY ════ -->
-  <div id="overlay">
-    <div class="brand-wrap">
-      <img src="/assets/NearsecTogetherLogo.png" alt="" class="brand-img" style="height:52px;">
-      <div class="brand-name" style="font-size:11px;">NearsecTogether</div>
-    </div>
-    <div id="sessionHostName"
-      style="font-size:10px;letter-spacing:0.15em;text-transform:uppercase;color:var(--muted2);font-family:var(--mono);display:none;">
-    </div>
-    <div class="spin" id="spinner"></div>
-    <div id="overlayStatus">Connecting...</div>
-    <div id="gpPrompt" onclick="activateGamepad()">
-      Tap to activate gamepad<br>
-      <span style="font-size:9px;color:var(--muted2);">(Required once by browser)</span>
-    </div>
-  </div>
+        <!-- Session password — hidden until server sends session-password-required -->
+        <div id="sessionPasswordWrap" style="display: none">
+          <div class="pin-field-label" style="margin-top: 4px">Session Password</div>
+          <input
+            id="sessionPasswordInput"
+            type="password"
+            placeholder="Enter session password"
+            class="pin-input"
+            onkeydown="if (event.key === 'Enter') submitSessionPassword();"
+          />
+        </div>
 
-  <!-- ════ IMMERSIVE / FULLSCREEN PROMPT ════ -->
-  <button id="immersiveBtn" onclick="toggleFS(); this.classList.add('gone');">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;">
-      <path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3" />
-    </svg>
-    Enter Immersive Mode
-  </button>
-
-  <!-- ════ TOP HUD ════ -->
-  <div id="topbar">
-    <!-- Single pill: shows "Connecting…" until live, then switches to LIVE dot -->
-    <div class="hud-pill" id="statusPill">
-      <span id="liveDot"></span>
-      <span id="topStatus">Connecting...</span>
-    </div>
-    <div class="hud-pill" id="hostNamePill" style="display:none;font-size:9px;letter-spacing:0.1em;opacity:0.7;">
-      HOST: <span id="topHostName"></span>
-    </div>
-    <span id="kbmHint" class="hud-pill" style="display:none;font-size:9px;">
-      Click video — lock mouse · ESC to release
-    </span>
-    <div id="statsHud" class="hud-pill" style="display:none;"></div>
-  </div>
-
-  <!-- ════ FULLSCREEN FLOATING BTN ════ -->
-  <button class="fs-btn-overlay" id="fsOverlayBtn" onclick="toggleFS()" title="Toggle Fullscreen">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-      <path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3" />
-    </svg>
-  </button>
-
-  <!-- ════ WHO'S TALKING OVERLAY ════ -->
-  <div id="talkingOverlay">
-    <div class="talking-header">Talking</div>
-    <!-- My entry — always present, toggled active by VAD -->
-    <div class="talking-entry" id="talkingMe">
-      <span class="talking-dot"></span>
-      <span class="talking-name">You</span>
-    </div>
-    <!-- Remote entries injected here by updateTalkingOverlay() -->
-  </div>
-
-  <!-- ════ SLIDE-OUT CONTROL BAR ════ -->
-  <div id="nsBar">
-    <div id="nsBarInner">
-
-      <div class="ns-bar-section">Audio</div>
-
-      <button class="ns-bar-btn ns-btn-active" id="audBtn" onclick="toggleAudio()">
-        Stream Audio
-      </button>
-      <button class="ns-bar-btn" id="micBtn" onclick="toggleMic()">
-        Microphone: OFF
-      </button>
-      <button class="ns-bar-btn" onclick="toggleAudioPanel()">
-        Audio Levels...
-      </button>
-
-      <div class="ns-bar-divider"></div>
-      <div class="ns-bar-section">View</div>
-
-      <button class="ns-bar-btn" id="fsBtn" onclick="toggleFS()">
-        Full Screen
-      </button>
-
-      <div class="ns-bar-divider"></div>
-      <div class="ns-bar-section">Controls</div>
-
-      <button class="ns-bar-btn" id="touchToggleBtn" onclick="toggleTouch()">
-        Touch UI: OFF
-      </button>
-      <button class="ns-bar-btn" id="rumbleBtn" onclick="toggleClientRumble()">
-        Rumble: ON
-      </button>
-      <button class="ns-bar-btn" id="hidBtn" onclick="requestHID()" style="display:none;">
-        Gyro HID: OFF
-      </button>
-
-      <div class="ns-bar-divider"></div>
-      <div class="ns-bar-section">Device API</div>
-      <select id="inputModeSelect" class="ns-bar-btn" style="background:var(--bg);border-color:var(--border2);appearance:none;padding:7px 10px;" onchange="window.updateInputMode && window.updateInputMode(this.value)">
-        <option value="gamepad">Standard Gamepad</option>
-      </select>
-
-      <div class="ns-bar-divider"></div>
-      <div class="ns-bar-section">Stream Quality</div>
-      <div style="display:flex;gap:4px;padding:0 2px;">
-        <button class="ns-bar-btn ns-btn-active" data-bw="auto" onclick="setBandwidthProfile('auto')"
-          style="flex:1;justify-content:center;font-size:10px;padding:7px 4px;">Auto</button>
-        <button class="ns-bar-btn" data-bw="low" onclick="setBandwidthProfile('low')"
-          style="flex:1;justify-content:center;font-size:10px;padding:7px 4px;">Low</button>
-        <button class="ns-bar-btn" data-bw="high" onclick="setBandwidthProfile('high')"
-          style="flex:1;justify-content:center;font-size:10px;padding:7px 4px;">High</button>
-      </div>
-      <button class="ns-bar-btn" onclick="toggleNetStats()" style="margin-top: 4px; justify-content: center; font-size: 10px;">
-        Toggle Net Stats
-      </button>
-      <button class="ns-bar-btn" onclick="if(window.ws) ws.send(JSON.stringify({ type: 'request-offer' }))" style="margin-top: 4px; justify-content: center; font-size: 10px;">
-        Force Reload Stream
-      </button>
-
-      <div class="ns-bar-section">Session</div>
-
-      <button class="ns-bar-btn" id="guideBtn" onclick="openControllerGuide()">
-        Controller Guide
-      </button>
-      <div style="position:relative;display:inline-block;width:100%;">
-        <button class="ns-bar-btn" id="chatToggleBtn" onclick="toggleChat()">
-          Chat
+        <button class="pin-submit-btn" onclick="submitPin()">Join Stream →</button>
+        <button
+          class="pin-submit-btn client-only-btn"
+          style="
+            display: none;
+            background: var(--surface);
+            color: var(--text);
+            border: 1px solid var(--border);
+            margin-top: 8px;
+          "
+          onclick="window.electronAPI ? window.electronAPI.backToDashboard() : (window.location.href = '/')"
+        >
+          ← Cancel & Go Back
         </button>
-        <span id="chatBadge"></span>
-      </div>
-      <button class="ns-bar-btn" style="color:var(--danger);font-weight:bold;margin-top:8px;" onclick="window.electronAPI ? window.electronAPI.backToDashboard() : window.location.href='/'">
-        Disconnect
-      </button>
-
-    </div>
-  </div>
-
-
-  <div id="chatToast" class="chat-toast">
-    <span id="chatToastName">Name</span>: <span id="chatToastMsg">Message</span>
-  </div>
-  <!-- ════ CHAT BACKDROP (click outside to close) ════ -->
-  <div id="chatBackdrop" onclick="closeChatPanel()"></div>
-
-  <!-- ════ MIC ERROR TOAST ════ -->
-  <div id="micToast">
-    <span class="toast-icon">!</span>
-    <span class="toast-msg">Microphone permission denied.</span>
-  </div>
-
-  <!-- ════ CHAT ════ -->
-  <div id="chatPanel">
-    <div id="chatHeader">
-      <span id="chatHeaderTitle">Chat</span>
-      <button id="chatCloseBtn" onclick="closeChatPanel()" title="Close chat">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-          <line x1="18" y1="6" x2="6" y2="18" />
-          <line x1="6" y1="6" x2="18" y2="18" />
-        </svg>
-      </button>
-    </div>
-    <div id="chatLog"></div>
-    <div id="chatInput">
-      <input id="chatMsg" placeholder="Message..." maxlength="300"
-        onkeydown="if(event.key==='Enter'){event.preventDefault();sendChat()}">
-      <button id="chatSend" onclick="sendChat()">Send</button>
-    </div>
-  </div>
-
-  <div id="audioPanel">
-    <div class="ap-header">
-      <span>Audio Controls</span>
-    </div>
-
-    <!-- Stream Volume -->
-    <div class="ap-row">
-      <div class="ap-row-header">
-        <span class="ap-label">Stream</span>
-        <span class="ap-val" id="streamVolVal">100</span>
-      </div>
-      <span class="ap-sublabel">Game / stream volume</span>
-      <input type="range" class="ap-slider" id="streamVolSlider" min="0" max="100" value="100"
-        oninput="setStreamVolume(this.value)">
-    </div>
-
-    <!-- Mic Gain -->
-    <div class="ap-row">
-      <div class="ap-row-header">
-        <span class="ap-label">Microphone</span>
-        <span class="ap-val" id="micGainVal">100</span>
-      </div>
-      <span class="ap-sublabel">Your outgoing mic level</span>
-      <input type="range" class="ap-slider" id="micGainSlider" min="0" max="200" value="100"
-        oninput="setMicGain(this.value)">
-    </div>
-
-    <!-- Self Monitor -->
-    <div class="ap-row">
-      <div class="ap-row-header">
-        <span class="ap-label">Self Hear</span>
-        <span class="ap-val" id="selfMonitorVal">0</span>
-      </div>
-      <span class="ap-sublabel">Hear your own mic</span>
-      <input type="range" class="ap-slider" id="selfMonitorSlider" min="0" max="100" value="0"
-        oninput="setSelfMonitor(this.value)">
-    </div>
-
-    <!-- Others (incoming voice — stub) -->
-    <div class="ap-row" id="othersRow">
-      <div class="ap-row-header">
-        <span class="ap-label">Others</span>
-        <span class="ap-val" id="othersVolVal">100</span>
-      </div>
-      <span class="ap-sublabel">Incoming voice volume</span>
-      <input type="range" class="ap-slider" id="othersVolSlider" min="0" max="100" value="100"
-        oninput="setOthersVolume(this.value)">
-    </div>
-  </div>
-
-  <!-- ════ TOUCH UI ════ -->
-  <div id="touchUI" class="gone">
-    <div class="top-buttons">
-      <div class="trigger-group">
-        <div class="trigger" data-btn="4">L1</div>
-        <div class="trigger" data-btn="6">L2</div>
-      </div>
-      <div class="trigger-group">
-        <div class="trigger" data-btn="5">R1</div>
-        <div class="trigger" data-btn="7">R2</div>
+        <div id="pinErr"></div>
       </div>
     </div>
-    <div class="center-ui" onclick="toggleGyro()" id="gyroToggleBtn">Aim Gyro: OFF</div>
-    <div class="controls-left">
-      <div class="joystick-base" id="jBase">
-        <div class="joystick-stick" id="jStick"></div>
+
+    <!-- ════ VIDEO ════ -->
+    <div id="video-container">
+      <video id="video" autoplay playsinline muted disableRemotePlayback disablePictureInPicture></video>
+      <canvas id="frameCanvas"></canvas>
+      <canvas id="webcodecs-canvas"></canvas>
+    </div>
+
+    <!-- ════ CONNECTING OVERLAY ════ -->
+    <div id="overlay">
+      <div class="brand-wrap">
+        <img src="/assets/NearsecTogetherLogo.png" alt="" class="brand-img" style="height: 52px" />
+        <div class="brand-name" style="font-size: 11px">NearsecTogether</div>
       </div>
-      <div class="dpad" id="dpad" style="display:none;">
-        <button class="dpad-btn up" data-btn="12"></button>
-        <button class="dpad-btn down" data-btn="13"></button>
-        <button class="dpad-btn left" data-btn="14"></button>
-        <button class="dpad-btn right" data-btn="15"></button>
+      <div
+        id="sessionHostName"
+        style="
+          font-size: 10px;
+          letter-spacing: 0.15em;
+          text-transform: uppercase;
+          color: var(--muted2);
+          font-family: var(--mono);
+          display: none;
+        "
+      ></div>
+      <div class="spin" id="spinner"></div>
+      <div id="overlayStatus">Connecting...</div>
+      <div id="gpPrompt" onclick="activateGamepad()">
+        Tap to activate gamepad<br />
+        <span style="font-size: 9px; color: var(--muted2)">(Required once by browser)</span>
       </div>
     </div>
-    <div class="controls-right">
-      <div class="buttons" id="actionBtns">
-        <button class="button y" data-btn="3">Y</button>
-        <button class="button x" data-btn="2">X</button>
-        <button class="button b" data-btn="1">B</button>
-        <button class="button a" data-btn="0">A</button>
+
+    <!-- ════ IMMERSIVE / FULLSCREEN PROMPT ════ -->
+    <button
+      id="immersiveBtn"
+      onclick="
+        toggleFS();
+        this.classList.add('gone');
+      "
+    >
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px">
+        <path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3" />
+      </svg>
+      Enter Immersive Mode
+    </button>
+
+    <!-- ════ TOP HUD ════ -->
+    <div id="topbar">
+      <!-- Single pill: shows "Connecting…" until live, then switches to LIVE dot -->
+      <div class="hud-pill" id="statusPill">
+        <span id="liveDot"></span>
+        <span id="topStatus">Connecting...</span>
       </div>
-      <div class="joystick-base" id="jBaseRight" style="display:none;">
-        <div class="joystick-stick" id="jStickRight"></div>
+      <div
+        class="hud-pill"
+        id="hostNamePill"
+        style="display: none; font-size: 9px; letter-spacing: 0.1em; opacity: 0.7"
+      >
+        HOST: <span id="topHostName"></span>
+      </div>
+      <span id="kbmHint" class="hud-pill" style="display: none; font-size: 9px">
+        Click video — lock mouse · ESC to release
+      </span>
+      <div id="statsHud" class="hud-pill" style="display: none"></div>
+    </div>
+
+    <!-- ════ FULLSCREEN FLOATING BTN ════ -->
+    <button class="fs-btn-overlay" id="fsOverlayBtn" onclick="toggleFS()" title="Toggle Fullscreen">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3" />
+      </svg>
+    </button>
+
+    <!-- ════ WHO'S TALKING OVERLAY ════ -->
+    <div id="talkingOverlay">
+      <div class="talking-header">Talking</div>
+      <!-- My entry — always present, toggled active by VAD -->
+      <div class="talking-entry" id="talkingMe">
+        <span class="talking-dot"></span>
+        <span class="talking-name">You</span>
+      </div>
+      <!-- Remote entries injected here by updateTalkingOverlay() -->
+    </div>
+
+    <!-- ════ SLIDE-OUT CONTROL BAR ════ -->
+    <div id="nsBar">
+      <div id="nsBarInner">
+        <div class="ns-bar-section">Audio</div>
+
+        <button class="ns-bar-btn ns-btn-active" id="audBtn" onclick="toggleAudio()">Stream Audio</button>
+        <button class="ns-bar-btn" id="micBtn" onclick="toggleMic()">Microphone: OFF</button>
+        <button class="ns-bar-btn" onclick="toggleAudioPanel()">Audio Levels...</button>
+
+        <div class="ns-bar-divider"></div>
+        <div class="ns-bar-section">View</div>
+
+        <button class="ns-bar-btn" id="fsBtn" onclick="toggleFS()">Full Screen</button>
+
+        <div class="ns-bar-divider"></div>
+        <div class="ns-bar-section">Controls</div>
+
+        <button class="ns-bar-btn" id="touchToggleBtn" onclick="toggleTouch()">Touch UI: OFF</button>
+        <button class="ns-bar-btn" id="rumbleBtn" onclick="toggleClientRumble()">Rumble: ON</button>
+        <button class="ns-bar-btn" id="hidBtn" onclick="requestHID()" style="display: none">Gyro HID: OFF</button>
+
+        <div class="ns-bar-divider"></div>
+        <div class="ns-bar-section">Device API</div>
+        <select
+          id="inputModeSelect"
+          class="ns-bar-btn"
+          style="background: var(--bg); border-color: var(--border2); appearance: none; padding: 7px 10px"
+          onchange="window.updateInputMode && window.updateInputMode(this.value)"
+        >
+          <option value="gamepad">Standard Gamepad</option>
+        </select>
+
+        <div class="ns-bar-divider"></div>
+        <div class="ns-bar-section">Stream Quality</div>
+        <div style="display: flex; gap: 4px; padding: 0 2px">
+          <button
+            class="ns-bar-btn ns-btn-active"
+            data-bw="auto"
+            onclick="setBandwidthProfile('auto')"
+            style="flex: 1; justify-content: center; font-size: 10px; padding: 7px 4px"
+          >
+            Auto
+          </button>
+          <button
+            class="ns-bar-btn"
+            data-bw="low"
+            onclick="setBandwidthProfile('low')"
+            style="flex: 1; justify-content: center; font-size: 10px; padding: 7px 4px"
+          >
+            Low
+          </button>
+          <button
+            class="ns-bar-btn"
+            data-bw="high"
+            onclick="setBandwidthProfile('high')"
+            style="flex: 1; justify-content: center; font-size: 10px; padding: 7px 4px"
+          >
+            High
+          </button>
+        </div>
+        <button
+          class="ns-bar-btn"
+          onclick="toggleNetStats()"
+          style="margin-top: 4px; justify-content: center; font-size: 10px"
+        >
+          Toggle Net Stats
+        </button>
+        <button
+          class="ns-bar-btn"
+          onclick="if (window.ws) ws.send(JSON.stringify({ type: 'request-offer' }));"
+          style="margin-top: 4px; justify-content: center; font-size: 10px"
+        >
+          Force Reload Stream
+        </button>
+
+        <div class="ns-bar-section">Session</div>
+
+        <button class="ns-bar-btn" id="guideBtn" onclick="openControllerGuide()">Controller Guide</button>
+        <div style="position: relative; display: inline-block; width: 100%">
+          <button class="ns-bar-btn" id="chatToggleBtn" onclick="toggleChat()">Chat</button>
+          <span id="chatBadge"></span>
+        </div>
+        <button
+          class="ns-bar-btn"
+          style="color: var(--danger); font-weight: bold; margin-top: 8px"
+          onclick="window.electronAPI ? window.electronAPI.backToDashboard() : (window.location.href = '/')"
+        >
+          Disconnect
+        </button>
       </div>
     </div>
-  </div>
 
-  <!-- ════ CONTROLLER GUIDE MODAL ════ -->
-  <div id="controllerGuideModal" class="hidden">
-    <div id="controllerGuideCard">
-      <div id="controllerGuideTop">
-        <div id="controllerGuideTitle">Controller Guide</div>
-        <button id="controllerGuideClose" onclick="closeControllerGuide()">Close</button>
-      </div>
-      <iframe id="controllerGuideFrame" src="/gamepad-popup.html"></iframe>
-      <button id="controllerGuideConfirm" onclick="acknowledgeControllerGuide()">Got it</button>
+    <div id="chatToast" class="chat-toast">
+      <span id="chatToastName">Name</span>: <span id="chatToastMsg">Message</span>
     </div>
-  </div>
+    <!-- ════ CHAT BACKDROP (click outside to close) ════ -->
+    <div id="chatBackdrop" onclick="closeChatPanel()"></div>
 
-  <!-- ════ NET STATS OVERLAY ════ -->
-  <div id="netStatsOverlay" class="gone">
-    <div style="font-weight:700; margin-bottom:4px; font-size:11px; color:var(--accent); font-family:var(--sans);">NET STATS</div>
-    <div style="display:flex; justify-content:space-between;"><span style="color:var(--muted);">Codec:</span> <span id="nsCodec">--</span></div>
-    <div style="display:flex; justify-content:space-between;"><span style="color:var(--muted);">Resolution:</span> <span id="nsRes">--</span></div>
-    <div style="display:flex; justify-content:space-between;"><span style="color:var(--muted);">FPS:</span> <span id="nsFps">--</span></div>
-    <div style="display:flex; justify-content:space-between;"><span style="color:var(--muted);">Ping:</span> <span id="nsPing">-- ms</span></div>
-    <div style="display:flex; justify-content:space-between;"><span style="color:var(--muted);">Bandwidth:</span> <span id="nsBitrate">-- kbps</span></div>
-    <div style="display:flex; justify-content:space-between;"><span style="color:var(--muted);">Decode Lat:</span> <span id="nsDecode">-- ms</span></div>
-    <div style="display:flex; justify-content:space-between;"><span style="color:var(--muted);">P.Loss:</span> <span id="nsLoss">-- %</span></div>
-    <div style="display:flex; justify-content:space-between;"><span style="color:var(--muted);">Jitter:</span> <span id="nsJitter">-- ms</span></div>
-  </div>
+    <!-- ════ MIC ERROR TOAST ════ -->
+    <div id="micToast">
+      <span class="toast-icon">!</span>
+      <span class="toast-msg">Microphone permission denied.</span>
+    </div>
 
-  <!-- ════ SCRIPTS ════ -->
-  <script src="/js/i18n.js"></script>
-  <script src="/js/version.js"></script>
-  <script type="module" src="/js/p2p-signaler.js"></script>
-  <script src="/js/chat.js"></script>
-  <script src="/js/webrtc/peer-connection.js"></script>
-  <script src="/js/webrtc/codec-negotiation.js"></script>
-  <script src="/js/audio-mixing.js"></script>
-  <script src="/js/stats-hud.js"></script>
-  <script src="/js/webcodecs-decoder.js"></script>
-  <script src="/js/input/gamepad.js"></script>
-  <script src="/js/p2p-viewer.js"></script>
-  <script src="/js/viewer.js?v=9"></script>
+    <!-- ════ CHAT ════ -->
+    <div id="chatPanel">
+      <div id="chatHeader">
+        <span id="chatHeaderTitle">Chat</span>
+        <button id="chatCloseBtn" onclick="closeChatPanel()" title="Close chat">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      </div>
+      <div id="chatLog"></div>
+      <div id="chatInput">
+        <input
+          id="chatMsg"
+          placeholder="Message..."
+          maxlength="300"
+          onkeydown="
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              sendChat();
+            }
+          "
+        />
+        <button id="chatSend" onclick="sendChat()">Send</button>
+      </div>
+    </div>
 
-  <!-- Post-load patches — run after viewer.js is fully parsed -->
-  <script src="/js/viewer-page-bootstrap.js"></script>
-</body>
+    <div id="audioPanel">
+      <div class="ap-header">
+        <span>Audio Controls</span>
+      </div>
 
+      <!-- Stream Volume -->
+      <div class="ap-row">
+        <div class="ap-row-header">
+          <span class="ap-label">Stream</span>
+          <span class="ap-val" id="streamVolVal">100</span>
+        </div>
+        <span class="ap-sublabel">Game / stream volume</span>
+        <input
+          type="range"
+          class="ap-slider"
+          id="streamVolSlider"
+          min="0"
+          max="100"
+          value="100"
+          oninput="setStreamVolume(this.value)"
+        />
+      </div>
+
+      <!-- Mic Gain -->
+      <div class="ap-row">
+        <div class="ap-row-header">
+          <span class="ap-label">Microphone</span>
+          <span class="ap-val" id="micGainVal">100</span>
+        </div>
+        <span class="ap-sublabel">Your outgoing mic level</span>
+        <input
+          type="range"
+          class="ap-slider"
+          id="micGainSlider"
+          min="0"
+          max="200"
+          value="100"
+          oninput="setMicGain(this.value)"
+        />
+      </div>
+
+      <!-- Self Monitor -->
+      <div class="ap-row">
+        <div class="ap-row-header">
+          <span class="ap-label">Self Hear</span>
+          <span class="ap-val" id="selfMonitorVal">0</span>
+        </div>
+        <span class="ap-sublabel">Hear your own mic</span>
+        <input
+          type="range"
+          class="ap-slider"
+          id="selfMonitorSlider"
+          min="0"
+          max="100"
+          value="0"
+          oninput="setSelfMonitor(this.value)"
+        />
+      </div>
+
+      <!-- Others (incoming voice — stub) -->
+      <div class="ap-row" id="othersRow">
+        <div class="ap-row-header">
+          <span class="ap-label">Others</span>
+          <span class="ap-val" id="othersVolVal">100</span>
+        </div>
+        <span class="ap-sublabel">Incoming voice volume</span>
+        <input
+          type="range"
+          class="ap-slider"
+          id="othersVolSlider"
+          min="0"
+          max="100"
+          value="100"
+          oninput="setOthersVolume(this.value)"
+        />
+      </div>
+    </div>
+
+    <!-- ════ TOUCH UI ════ -->
+    <div id="touchUI" class="gone">
+      <div class="top-buttons">
+        <div class="trigger-group">
+          <div class="trigger" data-btn="4">L1</div>
+          <div class="trigger" data-btn="6">L2</div>
+        </div>
+        <div class="trigger-group">
+          <div class="trigger" data-btn="5">R1</div>
+          <div class="trigger" data-btn="7">R2</div>
+        </div>
+      </div>
+      <div class="center-ui" onclick="toggleGyro()" id="gyroToggleBtn">Aim Gyro: OFF</div>
+      <div class="controls-left">
+        <div class="joystick-base" id="jBase">
+          <div class="joystick-stick" id="jStick"></div>
+        </div>
+        <div class="dpad" id="dpad" style="display: none">
+          <button class="dpad-btn up" data-btn="12"></button>
+          <button class="dpad-btn down" data-btn="13"></button>
+          <button class="dpad-btn left" data-btn="14"></button>
+          <button class="dpad-btn right" data-btn="15"></button>
+        </div>
+      </div>
+      <div class="controls-right">
+        <div class="buttons" id="actionBtns">
+          <button class="button y" data-btn="3">Y</button>
+          <button class="button x" data-btn="2">X</button>
+          <button class="button b" data-btn="1">B</button>
+          <button class="button a" data-btn="0">A</button>
+        </div>
+        <div class="joystick-base" id="jBaseRight" style="display: none">
+          <div class="joystick-stick" id="jStickRight"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ════ CONTROLLER GUIDE MODAL ════ -->
+    <div id="controllerGuideModal" class="hidden">
+      <div id="controllerGuideCard">
+        <div id="controllerGuideTop">
+          <div id="controllerGuideTitle">Controller Guide</div>
+          <button id="controllerGuideClose" onclick="closeControllerGuide()">Close</button>
+        </div>
+        <iframe id="controllerGuideFrame" src="/gamepad-popup.html"></iframe>
+        <button id="controllerGuideConfirm" onclick="acknowledgeControllerGuide()">Got it</button>
+      </div>
+    </div>
+
+    <!-- ════ NET STATS OVERLAY ════ -->
+    <div id="netStatsOverlay" class="gone">
+      <div
+        style="font-weight: 700; margin-bottom: 4px; font-size: 11px; color: var(--accent); font-family: var(--sans)"
+      >
+        NET STATS
+      </div>
+      <div style="display: flex; justify-content: space-between">
+        <span style="color: var(--muted)">Codec:</span> <span id="nsCodec">--</span>
+      </div>
+      <div style="display: flex; justify-content: space-between">
+        <span style="color: var(--muted)">Resolution:</span> <span id="nsRes">--</span>
+      </div>
+      <div style="display: flex; justify-content: space-between">
+        <span style="color: var(--muted)">FPS:</span> <span id="nsFps">--</span>
+      </div>
+      <div style="display: flex; justify-content: space-between">
+        <span style="color: var(--muted)">Ping:</span> <span id="nsPing">-- ms</span>
+      </div>
+      <div style="display: flex; justify-content: space-between">
+        <span style="color: var(--muted)">Bandwidth:</span> <span id="nsBitrate">-- kbps</span>
+      </div>
+      <div style="display: flex; justify-content: space-between">
+        <span style="color: var(--muted)">Decode Lat:</span> <span id="nsDecode">-- ms</span>
+      </div>
+      <div style="display: flex; justify-content: space-between">
+        <span style="color: var(--muted)">P.Loss:</span> <span id="nsLoss">-- %</span>
+      </div>
+      <div style="display: flex; justify-content: space-between">
+        <span style="color: var(--muted)">Jitter:</span> <span id="nsJitter">-- ms</span>
+      </div>
+    </div>
+
+    <!-- ════ SCRIPTS ════ -->
+    <script src="/js/i18n.js"></script>
+    <script src="/js/version.js"></script>
+    <script type="module" src="/js/p2p-signaler.js"></script>
+    <script src="/js/chat.js"></script>
+    <script src="/js/webrtc/peer-connection.js"></script>
+    <script src="/js/webrtc/codec-negotiation.js"></script>
+    <script src="/js/audio-mixing.js"></script>
+    <script src="/js/stats-hud.js"></script>
+    <script src="/js/webcodecs-decoder.js"></script>
+    <script src="/js/input/gamepad.js"></script>
+    <script src="/js/p2p-viewer.js"></script>
+    <script src="/js/viewer.js?v=9"></script>
+
+    <!-- Post-load patches — run after viewer.js is fully parsed -->
+    <script src="/js/viewer-page-bootstrap.js"></script>
+  </body>
 </html>

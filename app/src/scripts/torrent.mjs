@@ -1,6 +1,6 @@
-import deprecate_default from "./deprecate.mjs";
+import deprecate_default from './deprecate.mjs';
 //#region src/torrent.ts
-deprecate_default("torrent", "@trystero-p2p/torrent");
+deprecate_default('torrent', '@trystero-p2p/torrent');
 //#endregion
 export {};
 

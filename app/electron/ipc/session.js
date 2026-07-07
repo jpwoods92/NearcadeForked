@@ -40,14 +40,18 @@ function register() {
   ipcMain.on('back-to-dashboard-from-host', () => {
     const win = state.runtime.win;
     if (win && !win.isDestroyed()) {
-      win.loadURL(`http://localhost:${state.runtime.serverPort}/dashboard?port=${state.runtime.serverPort}&noAutoHost=1`);
+      win.loadURL(
+        `http://localhost:${state.runtime.serverPort}/dashboard?port=${state.runtime.serverPort}&noAutoHost=1`
+      );
     }
   });
 
   ipcMain.on('back-to-dashboard', () => {
     const win = state.runtime.win;
     if (win && !win.isDestroyed()) {
-      win.loadURL(`http://localhost:${state.runtime.serverPort}/dashboard?port=${state.runtime.serverPort}&noAutoHost=1`);
+      win.loadURL(
+        `http://localhost:${state.runtime.serverPort}/dashboard?port=${state.runtime.serverPort}&noAutoHost=1`
+      );
     }
   });
 }

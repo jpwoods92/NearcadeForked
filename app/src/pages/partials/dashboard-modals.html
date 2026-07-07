@@ -1,26 +1,54 @@
-  <!-- Update Modal -->
-  <div id="updateModal">
-    <div class="modal-content">
-      <h2>Update Available</h2>
-      <p>A new version of NearsecTogether (<span id="updateVersion"></span>) is available! You are currently on v<span id="currentVersionModal"></span>.</p>
-      <div class="modal-actions">
-        <button class="btn-secondary" onclick="document.getElementById('updateModal').style.display='none'">Dismiss</button>
-        <button class="btn-primary" onclick="if(window.electronAPI) window.electronAPI.openBrowser('https://github.com/TheRealFame/NearsecTogether/releases/latest'); document.getElementById('updateModal').style.display='none'">Download</button>
-      </div>
+<!-- Update Modal -->
+<div id="updateModal">
+  <div class="modal-content">
+    <h2>Update Available</h2>
+    <p>
+      A new version of NearsecTogether (<span id="updateVersion"></span>) is available! You are currently on v<span
+        id="currentVersionModal"
+      ></span
+      >.
+    </p>
+    <div class="modal-actions">
+      <button class="btn-secondary" onclick="document.getElementById('updateModal').style.display = 'none'">
+        Dismiss
+      </button>
+      <button
+        class="btn-primary"
+        onclick="
+          if (window.electronAPI)
+            window.electronAPI.openBrowser('https://github.com/TheRealFame/NearsecTogether/releases/latest');
+          document.getElementById('updateModal').style.display = 'none';
+        "
+      >
+        Download
+      </button>
     </div>
+  </div>
 
-  <div id="aboutModal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 1000; justify-content: center; align-items: center; backdrop-filter: blur(4px);">
+  <div
+    id="aboutModal"
+    style="
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.85);
+      z-index: 1000;
+      justify-content: center;
+      align-items: center;
+      backdrop-filter: blur(4px);
+    "
+  >
     <div class="ns-about-bg">
       <div class="ns-about-header">
         <button class="ns-about-close" onclick="closeAbout()">×</button>
-        <img src="../../assets/NearsecTogetherLogo.png" alt="Logo">
+        <img src="../../assets/NearsecTogetherLogo.png" alt="Logo" />
         <div class="ns-about-header-text">
           <h2>NEARSEC <span>Together</span></h2>
           <p>© 2026 TheRealFame.</p>
           <p>Powered by WebRTC & Electron.</p>
         </div>
       </div>
-      
+
       <div class="ns-about-tabs">
         <button class="ns-about-tab active" onclick="switchAboutTab('authors', this)">Authors</button>
         <button class="ns-about-tab" onclick="switchAboutTab('license', this)">License</button>
@@ -47,9 +75,11 @@
         <div id="about-tab-license" class="ns-about-section">
           <div class="ns-about-category">
             <h4>Software License</h4>
-            <div class="ns-about-box" style="white-space: pre-wrap;">Nearsec Together is provided "as-is", without any express or implied warranty. In no event will the authors be held liable for any damages arising from the use of this software.
-
-Permission is granted to anyone to use this software for any purpose, subject to the enclosed license agreements.</div>
+            <div class="ns-about-box" style="white-space: pre-wrap">
+              Nearsec Together is provided "as-is", without any express or implied warranty. In no event will the
+              authors be held liable for any damages arising from the use of this software. Permission is granted to
+              anyone to use this software for any purpose, subject to the enclosed license agreements.
+            </div>
           </div>
         </div>
       </div>
@@ -60,26 +90,207 @@ Permission is granted to anyone to use this software for any purpose, subject to
     </div>
   </div>
 
-  <div id="docsModal" onclick="if(event.target === this) closeDocs()" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 1000; justify-content: center; align-items: center;">
-    <div style="background: var(--surface); border: 1px solid var(--border); width: 80%; max-width: 800px; height: 80vh; border-radius: 12px; display: flex; flex-direction: column;">
-      <div style="padding: 16px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;">
-        <h3 style="margin: 0; color: var(--accent);">Nearsec Documentation</h3>
-        <button class="ns-about-close" onclick="closeDocs()" style="position: relative; top: auto; right: auto;">×</button>
+  <div
+    id="docsModal"
+    onclick="if (event.target === this) closeDocs();"
+    style="
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.8);
+      z-index: 1000;
+      justify-content: center;
+      align-items: center;
+    "
+  >
+    <div
+      style="
+        background: var(--surface);
+        border: 1px solid var(--border);
+        width: 80%;
+        max-width: 800px;
+        height: 80vh;
+        border-radius: 12px;
+        display: flex;
+        flex-direction: column;
+      "
+    >
+      <div
+        style="
+          padding: 16px;
+          border-bottom: 1px solid var(--border);
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+        "
+      >
+        <h3 style="margin: 0; color: var(--accent)">Nearsec Documentation</h3>
+        <button class="ns-about-close" onclick="closeDocs()" style="position: relative; top: auto; right: auto">
+          ×
+        </button>
       </div>
-      <div style="display: flex; flex: 1; overflow: hidden;">
-        <div style="width: 200px; border-right: 1px solid var(--border); padding: 16px; display: flex; flex-direction: column; gap: 8px;">
-          <button onclick="loadDoc('GETTING_STARTED.md')" style="text-align: left; background: none; border: none; color: var(--text); cursor: pointer; font-size: 14px; font-weight: 500; padding: 4px 0;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text)'">Getting Started</button>
-          <button onclick="loadDoc('HOST_USAGE.md')" style="text-align: left; background: none; border: none; color: var(--text); cursor: pointer; font-size: 14px; font-weight: 500; padding: 4px 0;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text)'">Host Usage</button>
-          <button onclick="loadDoc('API_AND_SETUP.md')" style="text-align: left; background: none; border: none; color: var(--text); cursor: pointer; font-size: 14px; font-weight: 500; padding: 4px 0;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text)'">API & Setup</button>
-          <button onclick="loadDoc('VPS_SETUP.md')" style="text-align: left; background: none; border: none; color: var(--text); cursor: pointer; font-size: 14px; font-weight: 500; padding: 4px 0;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text)'">VPS Setup</button>
-          <button onclick="loadDoc('NEARSEC_ARCADE.md')" style="text-align: left; background: none; border: none; color: var(--text); cursor: pointer; font-size: 14px; font-weight: 500; padding: 4px 0;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text)'">Nearsec Arcade</button>
-          <button onclick="loadDoc('ERROR_CODES.md')" style="text-align: left; background: none; border: none; color: var(--text); cursor: pointer; font-size: 14px; font-weight: 500; padding: 4px 0;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text)'">Error Codes</button>
-          <button onclick="loadDoc('ADVANCED_LOGIC.md')" style="text-align: left; background: none; border: none; color: var(--text); cursor: pointer; font-size: 14px; font-weight: 500; padding: 4px 0;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text)'">Advanced Logic</button>
-          <button onclick="loadDoc('AUTOMATED_SETUP_LEGALITY.md')" style="text-align: left; background: none; border: none; color: var(--text); cursor: pointer; font-size: 14px; font-weight: 500; padding: 4px 0;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text)'">Setup Legality</button>
+      <div style="display: flex; flex: 1; overflow: hidden">
+        <div
+          style="
+            width: 200px;
+            border-right: 1px solid var(--border);
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+          "
+        >
+          <button
+            onclick="loadDoc('GETTING_STARTED.md')"
+            style="
+              text-align: left;
+              background: none;
+              border: none;
+              color: var(--text);
+              cursor: pointer;
+              font-size: 14px;
+              font-weight: 500;
+              padding: 4px 0;
+            "
+            onmouseover="this.style.color = 'var(--accent)'"
+            onmouseout="this.style.color = 'var(--text)'"
+          >
+            Getting Started
+          </button>
+          <button
+            onclick="loadDoc('HOST_USAGE.md')"
+            style="
+              text-align: left;
+              background: none;
+              border: none;
+              color: var(--text);
+              cursor: pointer;
+              font-size: 14px;
+              font-weight: 500;
+              padding: 4px 0;
+            "
+            onmouseover="this.style.color = 'var(--accent)'"
+            onmouseout="this.style.color = 'var(--text)'"
+          >
+            Host Usage
+          </button>
+          <button
+            onclick="loadDoc('API_AND_SETUP.md')"
+            style="
+              text-align: left;
+              background: none;
+              border: none;
+              color: var(--text);
+              cursor: pointer;
+              font-size: 14px;
+              font-weight: 500;
+              padding: 4px 0;
+            "
+            onmouseover="this.style.color = 'var(--accent)'"
+            onmouseout="this.style.color = 'var(--text)'"
+          >
+            API & Setup
+          </button>
+          <button
+            onclick="loadDoc('VPS_SETUP.md')"
+            style="
+              text-align: left;
+              background: none;
+              border: none;
+              color: var(--text);
+              cursor: pointer;
+              font-size: 14px;
+              font-weight: 500;
+              padding: 4px 0;
+            "
+            onmouseover="this.style.color = 'var(--accent)'"
+            onmouseout="this.style.color = 'var(--text)'"
+          >
+            VPS Setup
+          </button>
+          <button
+            onclick="loadDoc('NEARSEC_ARCADE.md')"
+            style="
+              text-align: left;
+              background: none;
+              border: none;
+              color: var(--text);
+              cursor: pointer;
+              font-size: 14px;
+              font-weight: 500;
+              padding: 4px 0;
+            "
+            onmouseover="this.style.color = 'var(--accent)'"
+            onmouseout="this.style.color = 'var(--text)'"
+          >
+            Nearsec Arcade
+          </button>
+          <button
+            onclick="loadDoc('ERROR_CODES.md')"
+            style="
+              text-align: left;
+              background: none;
+              border: none;
+              color: var(--text);
+              cursor: pointer;
+              font-size: 14px;
+              font-weight: 500;
+              padding: 4px 0;
+            "
+            onmouseover="this.style.color = 'var(--accent)'"
+            onmouseout="this.style.color = 'var(--text)'"
+          >
+            Error Codes
+          </button>
+          <button
+            onclick="loadDoc('ADVANCED_LOGIC.md')"
+            style="
+              text-align: left;
+              background: none;
+              border: none;
+              color: var(--text);
+              cursor: pointer;
+              font-size: 14px;
+              font-weight: 500;
+              padding: 4px 0;
+            "
+            onmouseover="this.style.color = 'var(--accent)'"
+            onmouseout="this.style.color = 'var(--text)'"
+          >
+            Advanced Logic
+          </button>
+          <button
+            onclick="loadDoc('AUTOMATED_SETUP_LEGALITY.md')"
+            style="
+              text-align: left;
+              background: none;
+              border: none;
+              color: var(--text);
+              cursor: pointer;
+              font-size: 14px;
+              font-weight: 500;
+              padding: 4px 0;
+            "
+            onmouseover="this.style.color = 'var(--accent)'"
+            onmouseout="this.style.color = 'var(--text)'"
+          >
+            Setup Legality
+          </button>
         </div>
-        <div id="docContent" style="flex: 1; padding: 24px; overflow-y: auto; line-height: 1.6; white-space: pre-wrap; font-family: sans-serif;">
+        <div
+          id="docContent"
+          style="
+            flex: 1;
+            padding: 24px;
+            overflow-y: auto;
+            line-height: 1.6;
+            white-space: pre-wrap;
+            font-family: sans-serif;
+          "
+        >
           Select a document to read.
         </div>
       </div>
     </div>
   </div>
+</div>

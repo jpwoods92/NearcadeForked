@@ -46,19 +46,27 @@ const kbmStates = new Map();
 const slotLastUsed = new Map();
 
 module.exports = {
-    events,
-    gpBuf, alBuf, flBuf, frBuf,
-    viewerSlots, slotViewers, viewerCtrlType, viewerModes, kbmStates, slotLastUsed,
+  events,
+  gpBuf,
+  alBuf,
+  flBuf,
+  frBuf,
+  viewerSlots,
+  slotViewers,
+  viewerCtrlType,
+  viewerModes,
+  kbmStates,
+  slotLastUsed,
 
-    bridge: null,
-    pythonProc: null,
+  bridge: null,
+  pythonProc: null,
 
-    gameProfiles: {},
-    kbmBindings: { keys: {}, mouse: { sensitivity: 1.5, deadzone: 0.1 } },
+  gameProfiles: {},
+  kbmBindings: { keys: {}, mouse: { sensitivity: 1.5, deadzone: 0.1 } },
 
-    // Global default profile key — updated whenever the host broadcasts ctrl-settings.
-    // This ensures all newly allocated slots inherit the host's chosen controller type
-    // rather than always falling back to xbox360.
-    defaultProfileKey: 'xbox360',
-    hybridInputEnabled: false,
+  // Global default profile key — updated whenever the host broadcasts ctrl-settings.
+  // This ensures all newly allocated slots inherit the host's chosen controller type
+  // rather than always falling back to xbox360.
+  defaultProfileKey: 'xbox360',
+  hybridInputEnabled: false,
 };

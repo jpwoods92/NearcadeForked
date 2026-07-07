@@ -28,7 +28,9 @@ function normalizeGamepadMsg(msg) {
   // NOTE: We do NOT reject empty arrays — an all-zero/rest state is
   // still valid and MUST be processed so that _claimSlot runs for new viewers.
   if (axes.length > 20 || btns.length > 40) {
-    console.warn(`[input_validator] REJECTED: Gamepad API arrays exceed maximum size. Axes: ${axes.length}, Buttons: ${btns.length}`);
+    console.warn(
+      `[input_validator] REJECTED: Gamepad API arrays exceed maximum size. Axes: ${axes.length}, Buttons: ${btns.length}`
+    );
     return null;
   }
 
@@ -40,8 +42,8 @@ function normalizeGamepadMsg(msg) {
   const ry = Number(axes[3]) || 0;
 
   // Triggers: buttons[6]=LT, buttons[7]=RT (viewer encodes value 0-255)
-  const lt = (Number((btns[6] && btns[6].value) || 0)) / 255;
-  const rt = (Number((btns[7] && btns[7].value) || 0)) / 255;
+  const lt = Number((btns[6] && btns[6].value) || 0) / 255;
+  const rt = Number((btns[7] && btns[7].value) || 0) / 255;
 
   //  W3C Gamepad API index → JS viewer bitmask (correct per W3C spec)
   const W3C_TO_JS = [
@@ -51,8 +53,8 @@ function normalizeGamepadMsg(msg) {
     0x0008, // 3  Y (North)
     0x0100, // 4  LB
     0x0200, // 5  RB
-    0,      // 6  LT — handled as lt float above
-    0,      // 7  RT — handled as rt float above
+    0, // 6  LT — handled as lt float above
+    0, // 7  RT — handled as rt float above
     0x2000, // 8  Select / Back
     0x1000, // 9  Start
     0x0400, // 10 L3
@@ -71,8 +73,15 @@ function normalizeGamepadMsg(msg) {
 
   return {
     ...msg,
-    axes, btns, // Preserving varying length arrays for python sidecar
-    lx, ly, rx, ry, lt, rt, buttons,
+    axes,
+    btns, // Preserving varying length arrays for python sidecar
+    lx,
+    ly,
+    rx,
+    ry,
+    lt,
+    rt,
+    buttons,
   };
 }
 

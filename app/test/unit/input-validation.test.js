@@ -3,8 +3,12 @@ import { createRequire } from 'module';
 
 const require = createRequire(import.meta.url);
 const {
-  _clampAxis, _clampTrigger, _clampButtons, _clampDelta,
-  _validateGamepadMsg, _validateKbmMsg,
+  _clampAxis,
+  _clampTrigger,
+  _clampButtons,
+  _clampDelta,
+  _validateGamepadMsg,
+  _validateKbmMsg,
 } = require('../../src/sidecar/input_backends/validation.js');
 
 // Characterization tests (REFACTOR_PLAN.md Phase 8) for the payload
@@ -63,7 +67,9 @@ describe('_validateGamepadMsg', () => {
 describe('_validateKbmMsg', () => {
   it('accepts known event types', () => {
     expect(_validateKbmMsg({ pad_id: 'v1', event: 'keydown', key: 'KEY_W' })).toMatchObject({
-      pad_id: 'v1', event: 'keydown', key: 'KEY_W',
+      pad_id: 'v1',
+      event: 'keydown',
+      key: 'KEY_W',
     });
   });
 

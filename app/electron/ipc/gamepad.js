@@ -19,7 +19,7 @@ function register() {
     const pyExec = process.platform === 'win32' ? path.join(basePath, '..', 'bin', 'python', 'python.exe') : 'python3';
 
     // Fallback to system python on windows if bin/python doesn't exist
-    const actualExec = (process.platform === 'win32' && !fs.existsSync(pyExec)) ? 'python' : pyExec;
+    const actualExec = process.platform === 'win32' && !fs.existsSync(pyExec) ? 'python' : pyExec;
 
     gamepadProc = spawn(actualExec, [pyScript]);
     gamepadProc.stdout.on('data', (data) => {
@@ -29,11 +29,13 @@ function register() {
         try {
           const msg = JSON.parse(line.trim());
           event.reply('native-gamepad-event', msg);
-        } catch (_) { }
+        } catch (_) {}
       }
     });
-    gamepadProc.stderr.on('data', d => console.error('[native-gamepad]', d.toString().trim()));
-    gamepadProc.on('close', () => { gamepadProc = null; });
+    gamepadProc.stderr.on('data', (d) => console.error('[native-gamepad]', d.toString().trim()));
+    gamepadProc.on('close', () => {
+      gamepadProc = null;
+    });
   });
 
   ipcMain.on('native-gamepad-rumble', (event, data) => {

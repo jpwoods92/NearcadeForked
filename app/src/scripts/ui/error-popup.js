@@ -4,7 +4,7 @@
 // <script> blocks per REFACTOR_PLAN.md Phase 7 — dashboard.html had the same
 // showError() definition and onAppError listener, just split across two
 // separate <script> blocks elsewhere in the page.
-window.showError = function(msg, severity = 'red') {
+window.showError = function (msg, severity = 'red') {
   const popup = document.getElementById('ns-error-popup');
   const text = document.getElementById('ns-error-text');
   if (!popup || !text) return;
@@ -16,7 +16,9 @@ window.showError = function(msg, severity = 'red') {
 
   // Auto-hide warnings after 10s, keep reds until closed
   if (severity === 'yellow') {
-    setTimeout(() => { popup.style.display = 'none'; }, 10000);
+    setTimeout(() => {
+      popup.style.display = 'none';
+    }, 10000);
   }
 };
 
