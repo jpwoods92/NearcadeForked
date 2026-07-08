@@ -10,8 +10,54 @@ permissions:
   contents: write
 
 jobs:
+  # ── 0. CHANGELOG ──
+  # Creates (or updates) the GitHub release for this tag with a body listing
+  # every commit since the previous release tag, before any build job
+  # uploads assets to it.
+  changelog:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read package version
+        id: pkg
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Generate commit list since previous release
+        id: notes
+        run: |
+          CURRENT_TAG="v${{ steps.pkg.outputs.version }}"
+          PREV_TAG=$(git describe --tags --abbrev=0 --exclude "$CURRENT_TAG" HEAD 2>/dev/null || true)
+
+          {
+            echo "## Commits"
+            echo
+            if [ -n "$PREV_TAG" ]; then
+              git log --pretty=format:'- %s (%h)' "$PREV_TAG"..HEAD
+            else
+              git log --pretty=format:'- %s (%h)'
+            fi
+          } > release-notes.md
+
+          echo "tag=$CURRENT_TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Create or update GitHub release with changelog
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.notes.outputs.tag }}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --notes-file release-notes.md
+          else
+            gh release create "$TAG" --title "$TAG" --notes-file release-notes.md
+          fi
+
   # ── 1. DESKTOP BUILDS ──
   release-desktop:
+    needs: changelog
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -98,6 +144,7 @@ jobs:
 
   # ── 2. ANDROID APK BUILD ──
   release-android:
+    needs: changelog
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
