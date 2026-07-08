@@ -259,9 +259,22 @@ function attachWebSocketServer(wss, deps) {
 
       ws.on('message', (raw, isBinary) => {
         if (isBinary) {
-          // Tunnel WebCodecs binary frames from Host -> Node.js Server -> Viewers
+          // Tunnel WebCodecs binary frames from Host -> Node.js Server -> Viewers.
+          // Per-socket backpressure: `ws` buffers unboundedly, so a slow
+          // viewer would otherwise accumulate seconds of latency. Dropping a
+          // frame breaks that viewer's decode chain, so keep dropping deltas
+          // (_wcNeedsKey) until the next keyframe (byte 0 of the header)
+          // resyncs it — the host emits one at least every 2s.
+          const isKey = raw.length > 9 && raw[0] === 1;
           state.viewers.forEach((vws) => {
-            if (vws && vws.readyState === 1) vws.send(raw);
+            if (!vws || vws.readyState !== 1) return;
+            if (vws.bufferedAmount > 512 * 1024) {
+              vws._wcNeedsKey = true;
+              return;
+            }
+            if (vws._wcNeedsKey && !isKey) return;
+            vws.send(raw);
+            if (isKey) vws._wcNeedsKey = false;
           });
           return;
         }
@@ -453,7 +466,7 @@ function attachWebSocketServer(wss, deps) {
 
           if (msg.type === 'panic_toggle') {
             toUinput({ type: 'panic_toggle', enabled: !!msg.enabled });
-            console.log('[host] KBM Panic Mode: %s', !!msg.enabled ? 'ACTIVATED' : 'Released');
+            console.log('[host] KBM Panic Mode: %s', msg.enabled ? 'ACTIVATED' : 'Released');
             return;
           }
 

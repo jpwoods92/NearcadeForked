@@ -121,6 +121,10 @@ function startFrameProcessor(track) {
 function initWebCodecsViewer(config) {
   console.log('[WebCodecs] Received Host Configuration:', config);
 
+  // Cache for recoverWebCodecsDecoder() (viewer.js) so a fatal decoder error
+  // can rebuild immediately instead of stalling on a host config round trip.
+  window._wcLastConfigMsg = config;
+
   const videoEl = document.getElementById('video');
   if (videoEl) videoEl.style.display = 'none';
   const frameCanvas = document.getElementById('frameCanvas');
@@ -277,6 +281,9 @@ function initWebCodecsViewer(config) {
     delete decoderConfig.optimizeForLatency;
     wcDecoder.configure(decoderConfig);
   }
+  // The exact config that stuck — used by recoverWebCodecsDecoder()'s cheap
+  // reset-in-place path.
+  window._wcActiveDecoderConfig = decoderConfig;
   console.log('[WebCodecs] Hardware Decoder Ready!');
 }
 

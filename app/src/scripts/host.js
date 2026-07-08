@@ -729,7 +729,11 @@ async function sendOfferToViewer(viewerId) {
 
   if (forceWc) {
     // ── THE MISSING UDP TUNNEL ──
-    pc.wcChannel = pc.createDataChannel('webcodecs', { ordered: false, maxRetransmits: 0 });
+    // ordered + maxRetransmits:0 = SCTP partial reliability: frames that
+    // arrive are delivered in encode order (a reordered delta fed to the
+    // decoder corrupts until the next keyframe), lost ones are abandoned
+    // without head-of-line blocking retransmits.
+    pc.wcChannel = pc.createDataChannel('webcodecs', { ordered: true, maxRetransmits: 0 });
 
     // When the channel opens for this viewer, send the cached decoder config
     // immediately so they don't wait for the next keyframe (which may be seconds away).

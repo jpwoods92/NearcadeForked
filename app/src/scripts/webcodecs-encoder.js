@@ -182,7 +182,7 @@ async function startWebCodecsNetworkPipeline(videoTrack) {
       new DataView(payload.buffer).setFloat64(1, chunk.timestamp, true);
       chunk.copyTo(payload.subarray(9));
 
-      broadcastToViewers(payload.buffer);
+      broadcastToViewers(payload.buffer, chunk.type === 'key');
     },
     error: (e) => console.error('[WebCodecs] Encoder Error:', e),
   });
@@ -207,19 +207,34 @@ async function startWebCodecsNetworkPipeline(videoTrack) {
     H264: 'avc1.42002A',
     H265: 'hvc1.1.6.L93.B0',
   };
+  // Ceiling comes from the host's bitrate select (raw bps, 0 = Auto) so the
+  // WebCodecs path honors the same UI setting the WebRTC path does.
+  const _bitSel = parseInt(document.getElementById('bitrateSelect')?.value, 10);
+  const _wcMaxBitrate = _bitSel > 0 ? _bitSel : 8000000;
+
   const _wcCodecStr = _wcCodecMap[_wcCodecSel] || 'vp8';
   const wcConfig = {
     codec: _wcCodecStr,
     width: exactWidth,
     height: exactHeight,
-    bitrate: 8000000,
+    bitrate: _wcMaxBitrate,
     framerate: Math.round(settings.frameRate || 60),
-    hardwareAcceleration: 'no-preference',
+    hardwareAcceleration: 'prefer-hardware',
     latencyMode: 'realtime',
   };
+  // Software fallback: 'prefer-hardware' hard-fails where no HW encoder
+  // exists, so probe first and drop to 'no-preference' (the old behavior).
+  try {
+    const support = await VideoEncoder.isConfigSupported(wcConfig);
+    if (!support || !support.supported) wcConfig.hardwareAcceleration = 'no-preference';
+  } catch (_) {
+    wcConfig.hardwareAcceleration = 'no-preference';
+  }
   encoder.configure(wcConfig);
   encoder._lastConfig = wcConfig;
-  console.log(`[WebCodecs] Encoder configured with codec: ${_wcCodecStr} (from UI: ${_wcCodecSel})`);
+  console.log(
+    `[WebCodecs] Encoder configured with codec: ${_wcCodecStr} (from UI: ${_wcCodecSel}, hw: ${wcConfig.hardwareAcceleration})`
+  );
 
   const processor = new MediaStreamTrackProcessor({ track: videoTrack });
   const reader = processor.readable.getReader();
@@ -256,6 +271,10 @@ async function startWebCodecsNetworkPipeline(videoTrack) {
         }
 
         if (encoder.encodeQueueSize > 2) {
+          // Encoder can't keep up (CPU-bound). Dropping an unencoded frame is
+          // safe (no reference chain break), but count it so the bitrate
+          // controller backs off and lightens the encode load.
+          _wcDroppedThisTick++;
           frame.close();
         } else {
           const keyFrame = _wcForceKeyframe;
@@ -281,40 +300,112 @@ async function startWebCodecsNetworkPipeline(videoTrack) {
     }
     _wcForceKeyframe = true;
   }, 2000);
+
+  // ── ADAPTIVE BITRATE (AIMD) ───────────────────────────────────────────────
+  // The DataChannel/WS transports have no congestion control of their own
+  // (unlike WebRTC's RTP path), so react to frames dropped by the send gate
+  // or the encode queue: cut 30% on any congested second, probe back up 10%
+  // after 5 clean seconds, bounded to [1 Mbps, UI-selected max].
+  _wcDroppedThisTick = 0;
+  let _wcCleanTicks = 0;
+  const _abrInterval = setInterval(() => {
+    if (!_wcEncoder || _wcEncoder.state !== 'configured') {
+      clearInterval(_abrInterval);
+      return;
+    }
+    const drops = _wcDroppedThisTick;
+    _wcDroppedThisTick = 0;
+    let next = encoder._lastConfig.bitrate;
+    if (drops > 0) {
+      _wcCleanTicks = 0;
+      next = Math.max(1000000, Math.round(next * 0.7));
+    } else if (++_wcCleanTicks >= 5 && next < _wcMaxBitrate) {
+      _wcCleanTicks = 0;
+      next = Math.min(_wcMaxBitrate, Math.round(next * 1.1));
+    }
+    if (next !== encoder._lastConfig.bitrate) {
+      encoder._lastConfig.bitrate = next;
+      try {
+        encoder.configure(encoder._lastConfig);
+        console.log(`[WebCodecs] Adaptive bitrate → ${(next / 1e6).toFixed(1)} Mbps (${drops} drops last tick)`);
+      } catch (e) {
+        console.error('[WebCodecs] Bitrate reconfigure failed:', e);
+      }
+    }
+  }, 1000);
 }
 
-function broadcastToViewers(data) {
+// ── SEND GATE (backpressure) ────────────────────────────────────────────────
+// WebSockets and DataChannels buffer unboundedly; without checking
+// bufferedAmount a congested link accumulates seconds of latency and then
+// throws on send (silently losing whichever frame — often the keyframe).
+// 512 KB is ~0.5s of video at the 8 Mbps ceiling: deep enough to absorb a
+// burst keyframe, shallow enough to drop instead of building latency.
+//
+// Dropping a frame breaks the decode reference chain for that transport, so
+// after any drop, deltas keep being dropped (_wcNeedsKey) until the next
+// keyframe goes through — undecodable deltas would only waste bandwidth and
+// trigger decoder-recovery round trips on the viewer.
+const _WC_BUFFER_LIMIT = 512 * 1024;
+let _wcDroppedThisTick = 0;
+
+function _wcGatedSend(transport, data, isKey) {
+  // Config strings are tiny and mandatory for decoder bootstrap — never gate.
+  if (typeof data === 'string') {
+    try {
+      transport.send(data);
+    } catch (_) {}
+    return;
+  }
+  if (transport._wcNeedsKey && !isKey) {
+    _wcDroppedThisTick++;
+    return;
+  }
+  if (transport.bufferedAmount > _WC_BUFFER_LIMIT) {
+    if (!transport._wcNeedsKey) {
+      transport._wcNeedsKey = true;
+      _wcForceKeyframe = true; // resync this transport ASAP, not in up to 2s
+    }
+    _wcDroppedThisTick++;
+    return;
+  }
+  try {
+    transport.send(data);
+    if (isKey) transport._wcNeedsKey = false;
+  } catch (_) {
+    transport._wcNeedsKey = true;
+    _wcForceKeyframe = true;
+    _wcDroppedThisTick++;
+  }
+}
+
+function broadcastToViewers(data, isKey) {
   if (typeof peerConnections === 'undefined') return;
 
-  // If VPS mode is active and authenticated, send to VPS instead of individual DataChannels
+  // If VPS mode is active and authenticated, send to VPS instead of individual
+  // DataChannels. (No P2P fallback on failure: VPS-mode viewers ignore
+  // DataChannel video anyway, so resending there was dead weight — the viewer
+  // keyframe-request path handles recovery.)
   if (_vpsWs && _vpsAuthOk && _vpsWs.readyState === 1) {
-    try {
-      _vpsWs.send(data);
-    } catch (e) {
-      console.warn('[VPS] Send failed, falling back to P2P:', e.message);
-      _broadcastP2P(data);
-    }
+    _wcGatedSend(_vpsWs, data, isKey);
     return;
   }
 
   // Tunnel fallback: Send WebCodecs stream over standard signaling WS to the local Node.js server
   // This allows video to work perfectly over TCP-only tunnels like Zrok or Ngrok where WebRTC UDP fails.
+  // Viewers with a working DataChannel ignore this WS copy (see viewer.js).
   if (ws && ws.readyState === 1) {
-    try {
-      ws.send(data);
-    } catch (_) {}
+    _wcGatedSend(ws, data, isKey);
   }
 
-  _broadcastP2P(data);
+  _broadcastP2P(data, isKey);
 }
 
-function _broadcastP2P(data) {
+function _broadcastP2P(data, isKey) {
   Object.values(peerConnections).forEach((pc) => {
     const channel = pc.wcChannel;
     if (channel && channel.readyState === 'open') {
-      try {
-        channel.send(data);
-      } catch (_) {}
+      _wcGatedSend(channel, data, isKey);
     }
   });
 }
@@ -329,5 +420,6 @@ if (typeof module !== 'undefined' && module.exports) {
     startWebCodecsNetworkPipeline,
     broadcastToViewers,
     _broadcastP2P,
+    _wcGatedSend,
   };
 }

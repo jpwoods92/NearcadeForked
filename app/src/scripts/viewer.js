@@ -81,18 +81,47 @@ async function safeApiJson(url, fallback) {
     return fallback;
   }
 }
-function requestKeyframeFromHost() {
+// Cooldown: every request costs the host a full-size keyframe, so a burst of
+// decode errors must not turn into a keyframe storm that worsens congestion.
+let _lastKfRequestTs = 0;
+function requestKeyframeFromHost(force) {
+  const now = Date.now();
+  if (!force && now - _lastKfRequestTs < 250) return;
+  _lastKfRequestTs = now;
   if (ws?.readyState === 1)
     ws.send(JSON.stringify({ type: 'request-keyframe', viewerId: typeof myId !== 'undefined' ? myId : null }));
 }
 
+let _lastWcRebuildTs = 0;
 function recoverWebCodecsDecoder() {
   window.nsWaitKey = true;
   requestKeyframeFromHost();
+
+  // Cheap path: a decode() throw (e.g. delta before keyframe) leaves the
+  // decoder alive — reset it in place instead of destroying it and stalling
+  // until the host resends its config.
+  if (wcDecoder && wcDecoder.state !== 'closed' && window._wcActiveDecoderConfig) {
+    try {
+      wcDecoder.reset();
+      wcDecoder.configure(window._wcActiveDecoderConfig);
+      return;
+    } catch (_) {}
+  }
+
   try {
     if (wcDecoder?.state !== 'closed') wcDecoder.close();
   } catch (_) {}
   wcDecoder = null;
+
+  // Full path (fatal codec errors close the decoder): rebuild immediately
+  // from the cached host config — initWebCodecsViewer reuses the existing
+  // canvas/GL context. Rate-limited so a poisoned config can't rebuild-loop.
+  if (window._wcLastConfigMsg && Date.now() - _lastWcRebuildTs > 1000) {
+    _lastWcRebuildTs = Date.now();
+    try {
+      initWebCodecsViewer(window._wcLastConfigMsg);
+    } catch (_) {}
+  }
 }
 let sysAudioCtx = null;
 let nextAudioTime = 0;
@@ -292,8 +321,6 @@ async function createPC() {
     }
   };
   // ── EXPERIMENTAL WEBCODECS DATA CHANNEL RECEIVER ──
-  let waitingForKeyframe = true;
-
   pc.ondatachannel = (event) => {
     const channel = event.channel;
 
@@ -301,9 +328,16 @@ async function createPC() {
     if (channel.label === 'webcodecs') {
       console.log('[WebRTC] DataChannel opened for WebCodecs payload: webcodecs');
 
+      // Spec default is 'blob' (Firefox honors it) — without this, frames
+      // arrive as Blobs and the ArrayBuffer check below drops every one.
+      channel.binaryType = 'arraybuffer';
+
       const askForSync = () => {
         console.log('[WebCodecs] Channel ready. Requesting initial keyframe and config sync.');
-        requestKeyframeFromHost();
+        // Signals the WS handler to ignore its duplicate copy of the stream
+        // (the host also relays frames through the tunnel WS as a fallback).
+        window._wcDcOpen = true;
+        requestKeyframeFromHost(true);
       };
 
       if (channel.readyState === 'open') {
@@ -311,6 +345,9 @@ async function createPC() {
       } else {
         channel.onopen = askForSync;
       }
+      channel.onclose = () => {
+        window._wcDcOpen = false;
+      };
 
       channel.onmessage = async (e) => {
         // 1. Process String Configuration Messages
@@ -328,8 +365,10 @@ async function createPC() {
 
         // 2. Process Binary Video Frames
         if (e.data instanceof ArrayBuffer) {
-          // Prevent double-decoding if we are receiving frames from the VPS SFU
-          if (ws && ws.url.includes('/vps')) return;
+          // Prevent double-decoding if we are receiving frames from the VPS
+          // SFU. (P2P mode's WebSocket-shaped object has no .url — guard it,
+          // or every frame dies on a TypeError inside this async handler.)
+          if (ws && typeof ws.url === 'string' && ws.url.includes('/vps')) return;
 
           if (!wcDecoder || wcDecoder.state !== 'configured') return;
 
@@ -341,11 +380,20 @@ async function createPC() {
           const chunkData = new Uint8Array(e.data, 9);
 
           // --- RESILIENCY LAYER ---
-          if (waitingForKeyframe) {
+          // window.nsWaitKey (not a channel-local flag) so decoder resets in
+          // recoverWebCodecsDecoder() re-arm this gate too — otherwise this
+          // path keeps feeding deltas to a freshly reset decoder.
+          if (window.nsWaitKey) {
             if (!isKey) return;
-            waitingForKeyframe = false;
             window.nsWaitKey = false;
             console.log('[WebCodecs] Locked onto keyframe stream.');
+          }
+
+          // Renderer stalled and decode work piled up: reset and resync at
+          // the next keyframe rather than playing a stale burst in fast-forward.
+          if (wcDecoder.decodeQueueSize > 8) {
+            recoverWebCodecsDecoder();
+            return;
           }
 
           try {
@@ -595,14 +643,36 @@ async function connect() {
       const byteLen = e.data.byteLength;
       if (byteLen > 9) {
         const firstByte = new Uint8Array(e.data, 0, 1)[0];
+        // PCM audio shares this socket with no framing of its own, so a chunk
+        // whose first sample byte happens to be 0/1 can masquerade as video
+        // and poison the decoder. Real capture timestamps are finite,
+        // non-negative microseconds — reject anything else as audio.
+        let plausibleVideo = false;
         if (firstByte === 0 || firstByte === 1) {
+          const ts = new DataView(e.data).getFloat64(1, true);
+          plausibleVideo = Number.isFinite(ts) && ts >= 0 && ts < 4e15;
+        }
+        if (plausibleVideo) {
           // WebCodecs video chunk: [isKey(1)] [timestamp(8)] [payload...]
+          // In non-VPS (tunnel-relay) mode the host also sends every frame on
+          // the per-viewer DataChannel — when that channel is open, it is the
+          // renderer and this WS copy must be ignored or every frame decodes
+          // twice.
+          const isVpsWs = ws && typeof ws.url === 'string' && ws.url.includes('/vps');
+          if (window._wcDcOpen && !isVpsWs) return;
+
           if (!wcDecoder || wcDecoder.state !== 'configured') return;
           const isKey = firstByte === 1;
           if (window.nsWaitKey) {
             if (!isKey) return;
             window.nsWaitKey = false;
             console.log('[WebCodecs/VPS] Locked onto keyframe.');
+          }
+          // Renderer stalled and decode work piled up: reset and resync at
+          // the next keyframe rather than playing a stale burst in fast-forward.
+          if (wcDecoder.decodeQueueSize > 8) {
+            recoverWebCodecsDecoder();
+            return;
           }
           const view = new DataView(e.data);
           const timestamp = view.getFloat64(1, true);
