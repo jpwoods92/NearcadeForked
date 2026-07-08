@@ -10,6 +10,22 @@ let pinEnabled = true,
 let kbmPanicActive = false;
 const viewerAudioStates = {}; // Tracks { volume: 100, state: 0 } per viewer
 
+// Nulls onicecandidate/onconnectionstatechange before closing a peer connection.
+// Required whenever a successor connection for the same viewer ID may be created
+// right after (sendOfferToViewer, startCapture's bulk re-offer) — otherwise a
+// late-firing event from the closing connection can still fire against the new
+// one's viewer ID. Sites that don't immediately recreate a connection for the
+// same viewer (viewer-left, stopCapture) don't strictly need this, but use it
+// too for consistency. See REFACTOR_PLAN.md Phase 5.2 follow-up.
+function closePeerConnection(pc) {
+  if (!pc) return;
+  try {
+    pc.onicecandidate = null;
+    pc.onconnectionstatechange = null;
+    pc.close();
+  } catch {}
+}
+
 // ── HOISTED CONFIG — declared here to prevent TDZ ReferenceErrors ─────────────
 // These are `const`/`let` — not hoisted like `var`. Any onclick or early function
 // that runs before the bottom of the file would throw "Cannot access before init".
@@ -532,7 +548,7 @@ function connectWS() {
       knownViewers.delete(msg.viewerId);
       delete _viewerRegions[msg.viewerId];
       if (peerConnections[msg.viewerId]) {
-        peerConnections[msg.viewerId].close();
+        closePeerConnection(peerConnections[msg.viewerId]);
         delete peerConnections[msg.viewerId];
       }
       log(I18N.t('Viewer') + ' ' + (msg.name || msg.viewerId) + ' left');
@@ -693,11 +709,7 @@ function connectWS() {
 async function sendOfferToViewer(viewerId) {
   if (!currentStream) return;
   if (peerConnections[viewerId]) {
-    try {
-      peerConnections[viewerId].onicecandidate = null;
-      peerConnections[viewerId].onconnectionstatechange = null;
-      peerConnections[viewerId].close();
-    } catch {}
+    closePeerConnection(peerConnections[viewerId]);
     delete peerConnections[viewerId];
   }
 

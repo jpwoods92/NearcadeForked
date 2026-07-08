@@ -125,7 +125,7 @@ async function startCapture() {
     stopAudioMeter();
     currentStream = null;
   }
-  Object.values(peerConnections).forEach((pc) => pc.close());
+  Object.values(peerConnections).forEach((pc) => closePeerConnection(pc));
   peerConnections = {};
 
   const isLinux = navigator.userAgent.includes('Linux') || navigator.platform.toLowerCase().includes('linux');
@@ -586,7 +586,7 @@ function stopCapture() {
   _elDisabled('btnKbmPanic', true);
   kbmPanicActive = false;
   updateKbmPanicButton();
-  Object.values(peerConnections).forEach((pc) => pc.close());
+  Object.values(peerConnections).forEach((pc) => closePeerConnection(pc));
   peerConnections = {};
   streamActive = false;
   _updateDiscordRPC();
