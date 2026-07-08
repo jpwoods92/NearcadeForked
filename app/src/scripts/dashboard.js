@@ -154,7 +154,6 @@ function syncSettingsUI() {
   document.getElementById('settingTrackFpsUnlock')?.classList.toggle('on', !!appConfig.fpsUnlock);
   document.getElementById('settingTrackVsyncOff')?.classList.toggle('on', !!appConfig.vsyncOff);
   document.getElementById('settingTrackZeroCopy')?.classList.toggle('on', !!appConfig.zeroCopy);
-  document.getElementById('settingTrackAllowVR')?.classList.toggle('on', !!appConfig.allowVR);
   renderAutoHosts();
 }
 

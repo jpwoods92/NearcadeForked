@@ -65,6 +65,8 @@ import sys
 import json
 import struct
 import socket
+import subprocess
+import os
 
 STEAMVR_HOST = "127.0.0.1"
 STEAMVR_PORT = 27015   # Agreed port between this script and the C++ SteamVR driver plugin
@@ -107,9 +109,17 @@ def _build_packet(seq, data):
 
 def start_vr_backend():
     print("[backend_vr] Initializing WebXR / VR Headset Backend...", flush=True)
+
+    steamvr_path = os.path.expanduser("~/.local/share/Steam/steamapps/common/SteamVR/bin/vrmonitor.sh")
+    steamvr_proc = None
+    if os.path.exists(steamvr_path):
+        print("[backend_vr] Auto-launching SteamVR...", flush=True)
+        # We launch vrmonitor.sh natively. Under Wayland, ALVR's wrapper will intercept Wayland DRM leases.
+        steamvr_proc = subprocess.Popen([steamvr_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
     print(
         f"[backend_vr] Forwarding 6-DOF data to SteamVR driver at "
-        f"{STEAMVR_HOST}:{STEAMVR_PORT} (C++ driver must be installed separately).",
+        f"{STEAMVR_HOST}:{STEAMVR_PORT} (Windows/Linux C++ driver must be installed separately).",
         flush=True,
     )
 
@@ -120,16 +130,19 @@ def start_vr_backend():
         sys.exit(1)
 
     seq = 0
-    for line in sys.stdin:
-        try:
-            data = json.loads(line)
-            packet = _build_packet(seq, data)
-            sock.sendto(packet, (STEAMVR_HOST, STEAMVR_PORT))
-            seq = (seq + 1) & 0xFFFFFFFF
-        except (json.JSONDecodeError, KeyError, ValueError, OSError):
-            continue
-
-    sock.close()
+    try:
+        for line in sys.stdin:
+            try:
+                data = json.loads(line)
+                packet = _build_packet(seq, data)
+                sock.sendto(packet, (STEAMVR_HOST, STEAMVR_PORT))
+                seq = (seq + 1) & 0xFFFFFFFF
+            except (json.JSONDecodeError, KeyError, ValueError, OSError):
+                continue
+    finally:
+        sock.close()
+        if steamvr_proc:
+            print("[backend_vr] Exiting. Leaving SteamVR running to avoid Wayland compositor crashes. Please close it via Steam if necessary.", flush=True)
 
 
 if __name__ == "__main__":

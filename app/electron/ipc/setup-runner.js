@@ -10,13 +10,26 @@ function register() {
     const fs = require('fs');
 
     if (os.platform() === 'win32') {
-      // WINDOWS: Run the PowerShell setup script natively as Administrator
+      // WINDOWS: Run the PowerShell setup script natively as Administrator.
       // This module lives at app/electron/ipc/setup-runner.js — three levels
       // below the repo root these paths were originally written relative to.
-      const scriptPath = path.join(__dirname, '..', '..', '..', 'bin', 'windows_setup.ps1');
-      const psCommand = `Start-Process powershell -ArgumentList '-ExecutionPolicy Bypass -File ""${scriptPath}""' -Verb RunAs`;
+      // If running from an MSI/electron-builder build, extraResources places 'bin'
+      // in resourcesPath (outside app.asar). An elevated PowerShell cannot read
+      // files inside app.asar, so redirect to the unpacked copy — same as Linux.
+      let scriptPath = path.join(__dirname, '..', '..', '..', 'bin', 'windows_setup.ps1');
+      if (__dirname.includes('app.asar')) {
+        scriptPath = path.join(process.resourcesPath, 'bin', 'windows_setup.ps1');
+      }
+      if (!fs.existsSync(scriptPath)) {
+        console.error('[Setup] windows_setup.ps1 not found at', scriptPath);
+        event.reply('setup-failed', 'Setup script not found: ' + scriptPath);
+        return;
+      }
+      // -Wait makes the outer process block until the elevated script window
+      // closes, so setup-success reflects actual completion, not mere launch.
+      const psCommand = `Start-Process powershell -ArgumentList '-ExecutionPolicy Bypass -File ""${scriptPath}""' -Verb RunAs -Wait`;
 
-      exec(`powershell -Command "${psCommand}"`, (error) => {
+      exec(`powershell -NoProfile -Command "${psCommand}"`, (error) => {
         if (error) {
           console.error('[Setup] Windows setup failed:', error.message);
           event.reply('setup-failed', error.message);

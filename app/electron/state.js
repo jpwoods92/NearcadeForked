@@ -14,6 +14,7 @@ const runtime = {
   serverPort: null,
   serverCore: null,
   settings: null,
+  selectedSourceId: null,
 };
 
 module.exports = { runtime };

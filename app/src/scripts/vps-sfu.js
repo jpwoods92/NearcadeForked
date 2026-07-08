@@ -39,7 +39,6 @@ async function sendVpsViewerBootstrap(viewerId) {
     type: 'ctrl-settings',
     touchLayout: ctrlSettings.touchLayout,
     enableMotion: ctrlSettings.enableMotion,
-    allowVR: appSettings.allowVR,
     expDevices: expDevices,
   });
   if (_smartDb && Object.keys(_smartDb).length) {
@@ -264,7 +263,12 @@ function connectVps(cfg) {
         inner.viewer_id = viewerId;
         if (inner.type === 'gamepad' && !inner.pad_id) inner.pad_id = viewerId + '_0';
 
-        if (inner.type === 'answer' || inner.type === 'ice-viewer' || inner.type === 'viewer-mic-ready') {
+        if (
+          inner.type === 'answer' ||
+          inner.type === 'ice-viewer' ||
+          inner.type === 'viewer-mic-ready' ||
+          inner.type === 'viewer-vr-active'
+        ) {
           inner._viewerId = viewerId;
           // Feed directly to the local host's websocket handler so it processes the WebRTC handshake
           if (ws && typeof ws.onmessage === 'function') {

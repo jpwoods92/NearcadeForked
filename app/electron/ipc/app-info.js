@@ -2,6 +2,7 @@
 const path = require('path');
 const fs = require('fs');
 const { ipcMain, desktopCapturer } = require('electron');
+const state = require('../state.js');
 
 // This module lives at app/electron/ipc/app-info.js — three levels below the
 // repo root (package.json/commit.txt) and two levels below app/ (src/docs).
@@ -38,6 +39,10 @@ function register() {
     } catch (_) {
       return [];
     }
+  });
+
+  ipcMain.on('set-selected-source', (event, id) => {
+    state.runtime.selectedSourceId = id;
   });
 
   ipcMain.handle('read-doc', async (event, filename) => {

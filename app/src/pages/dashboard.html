@@ -1,366 +1,635 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>NearsecTogether</title>
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/dashboard.css">
-</head>
-<body>
-  <!-- Error / Warning Popup Overlay -->
-  <div id="ns-error-popup" style="display:none; position:fixed; top:20px; left:50%; transform:translateX(-50%); z-index:9999999; background:#d32f2f; color:#fff; padding:12px 24px; border-radius:8px; font-family:monospace; box-shadow:0 8px 16px rgba(0,0,0,0.5); font-weight:bold; align-items:center; gap:12px;">
-    <span id="ns-error-text">Critical Error occurred.</span>
-    <button onclick="this.parentElement.style.display='none'" style="background:rgba(255,255,255,0.2); border:none; color:white; padding:4px 8px; border-radius:4px; cursor:pointer; font-weight:bold; display:inline-block; margin-left:12px;">✕</button>
-  </div>
-  <script src="/js/ui/error-popup.js"></script>
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+    <title>NearsecTogether</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/css/dashboard.css" />
+  </head>
+  <body>
+    <!-- Error / Warning Popup Overlay -->
+    <div
+      id="ns-error-popup"
+      style="
+        display: none;
+        position: fixed;
+        top: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 9999999;
+        background: #d32f2f;
+        color: #fff;
+        padding: 12px 24px;
+        border-radius: 8px;
+        font-family: monospace;
+        box-shadow: 0 8px 16px rgba(0, 0, 0, 0.5);
+        font-weight: bold;
+        align-items: center;
+        gap: 12px;
+      "
+    >
+      <span id="ns-error-text">Critical Error occurred.</span>
+      <button
+        onclick="this.parentElement.style.display = 'none'"
+        style="
+          background: rgba(255, 255, 255, 0.2);
+          border: none;
+          color: white;
+          padding: 4px 8px;
+          border-radius: 4px;
+          cursor: pointer;
+          font-weight: bold;
+          display: inline-block;
+          margin-left: 12px;
+        "
+      >
+        ✕
+      </button>
+    </div>
+    <script src="/js/ui/error-popup.js"></script>
 
-  <div id="ns-splash-screen">
-    <img src="../../assets/NearsecTogetherTitle.png" alt="Nearsec Logo">
-  </div>
-<div id="docsFloatBtn" style="position: fixed; top: 24px; right: 24px; z-index: 999; display: flex; gap: 8px;">
-    <button onclick="openAbout()" title="About Nearsec" style="background: var(--accent); border: none; border-radius: 8px; padding: 10px; cursor: pointer; color: #000; font-weight: bold; display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; font-family: inherit;">
-      <img src="../../assets/icons/info.svg" style="width: 20px; filter: invert(1);" onerror="this.style.display='none'; this.parentElement.textContent='?'" />
-    </button>
-    <button onclick="openDocs()" title="Documentation & Help" style="background: var(--accent); border: none; border-radius: 8px; padding: 10px; cursor: pointer; display: flex; align-items: center; justify-content: center; width: 40px; height: 40px;">
-      <img src="../../assets/icons/book.svg" style="width: 20px; filter: invert(1);" />
-    </button>
-  </div>
+    <div id="ns-splash-screen">
+      <img src="../../assets/NearsecTogetherTitle.png" alt="Nearsec Logo" />
+    </div>
+    <div id="docsFloatBtn" style="position: fixed; top: 24px; right: 24px; z-index: 999; display: flex; gap: 8px">
+      <button
+        onclick="openAbout()"
+        title="About Nearsec"
+        style="
+          background: var(--accent);
+          border: none;
+          border-radius: 8px;
+          padding: 10px;
+          cursor: pointer;
+          color: #000;
+          font-weight: bold;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 40px;
+          height: 40px;
+          font-family: inherit;
+        "
+      >
+        <img
+          src="../../assets/icons/info.svg"
+          style="width: 20px; filter: invert(1)"
+          onerror="
+            this.style.display = 'none';
+            this.parentElement.textContent = '?';
+          "
+        />
+      </button>
+      <button
+        onclick="openDocs()"
+        title="Documentation & Help"
+        style="
+          background: var(--accent);
+          border: none;
+          border-radius: 8px;
+          padding: 10px;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 40px;
+          height: 40px;
+        "
+      >
+        <img src="../../assets/icons/book.svg" style="width: 20px; filter: invert(1)" />
+      </button>
+    </div>
 
-  <div id="titlebar"></div>
-  <div id="virtual-cursor"></div>
+    <div id="titlebar"></div>
+    <div id="virtual-cursor"></div>
 
-  <div id="app">
-    <div id="sidebar">
-      <div class="sidebar-header">
-        <button class="collapse-btn" onclick="toggleSidebar()" title="Toggle Sidebar">
+    <div id="app">
+      <div id="sidebar">
+        <div class="sidebar-header">
+          <button class="collapse-btn" onclick="toggleSidebar()" title="Toggle Sidebar">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="3" y1="12" x2="21" y2="12"></line>
+              <line x1="3" y1="6" x2="21" y2="6"></line>
+              <line x1="3" y1="18" x2="21" y2="18"></line>
+            </svg>
+          </button>
+          <div class="brand-wrap">
+            <img
+              src="../../assets/NearsecTogetherLogo.png"
+              alt="Logo"
+              class="brand-logo"
+              onerror="this.style.display = 'none'"
+            />
+            <div class="brand-text">Nearsec Together</div>
+          </div>
+        </div>
+
+        <button class="nav-btn active" onclick="switchTab('connect')" id="tab-connect">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="3" y1="12" x2="21" y2="12"></line>
-            <line x1="3" y1="6"  x2="21" y2="6"></line>
-            <line x1="3" y1="18" x2="21" y2="18"></line>
+            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+            <polyline points="9 22 9 12 15 12 15 22"></polyline>
           </svg>
+          <span class="btn-text">Home</span>
         </button>
-        <div class="brand-wrap">
-          <img src="../../assets/NearsecTogetherLogo.png" alt="Logo" class="brand-logo" onerror="this.style.display='none'">
-          <div class="brand-text">Nearsec Together</div>
-        </div>
-      </div>
 
-      <button class="nav-btn active" onclick="switchTab('connect')" id="tab-connect">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
-          <polyline points="9 22 9 12 15 12 15 22"></polyline>
-        </svg>
-        <span class="btn-text">Home</span>
-      </button>
-
-      <button class="nav-btn" onclick="switchTab('arcade')" id="tab-arcade">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="10"></circle>
-          <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
-        </svg>
-        <span class="btn-text">Live Arcade</span>
-      </button>
-
-      <button class="nav-btn" onclick="launchHostSession()" id="tab-host">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
-          <line x1="8"  y1="21" x2="16" y2="21"></line>
-          <line x1="12" y1="17" x2="12" y2="21"></line>
-        </svg>
-        <span class="btn-text">Host Session</span>
-      </button>
-
-      <button class="nav-btn" onclick="switchTab('containers')" id="tab-containers">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
-          <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
-          <line x1="6" y1="6" x2="6.01" y2="6"></line>
-          <line x1="6" y1="18" x2="6.01" y2="18"></line>
-        </svg>
-        <span class="btn-text">Auto-Hosts</span>
-      </button>
-
-      <div class="spacer"></div>
-
-      <button class="nav-btn" onclick="document.getElementById('gpModal').classList.add('open')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <rect x="2" y="6" width="20" height="12" rx="2"></rect>
-          <path d="M6 12h4m-2-2v4m10-4a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm-2 4a1 1 0 1 0 0-2 1 1 0 0 0 0 2z"></path>
-        </svg>
-        <span class="btn-text">Test Controller</span>
-      </button>
-
-      <button class="nav-btn" onclick="switchTab('settings')" id="tab-settings">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="3"></circle>
-          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-        </svg>
-        <span class="btn-text">App Settings</span>
-      </button>
-
-      <div class="lang-switcher">
-        <img src="../../assets/icons/globe.svg" class="globe-icon" alt="Lang" onerror="this.style.display='none'">
-        <select id="langSelect" onchange="saveLangAndReload(this.value)">
-          </select>
-      </div>
-    </div>
-
-    <div id="main-content">
-      <div class="panel active" id="panel-connect">
-        <div class="connect-container">
-          <h1>Connect to Session</h1>
-          <p class="sub">Paste a tunnel URL to instantly join a private session, or browse public games in the Live Arcade.</p>
-
-          <div class="connect-card">
-            <h2>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
-                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
-              </svg>
-              Direct Link or Room Code
-            </h2>
-            <div class="input-row" style="margin-bottom: 12px;">
-              <div class="input-wrapper">
-                <input type="text" id="directLinkInput" placeholder="URL (https://) or Room Code" onkeydown="if(event.key==='Enter')joinDirectLink()">
-                <button class="btn-paste" onclick="pasteFromClipboard()" title="Paste from Clipboard">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                  </svg>
-                </button>
-              </div>
-            </div>
-            <div class="input-row">
-              <div class="input-wrapper">
-                <input type="text" id="pinInput" placeholder="PIN Code (if required)" autocomplete="off" maxlength="32" onkeydown="if(event.key==='Enter')joinDirectLink()">
-              </div>
-              <button class="btn-connect" onclick="joinDirectLink()">Join</button>
-            </div>
-            <div class="error-msg" id="directLinkErr"></div>
-          </div>
-
-          <div class="info-grid">
-            <div class="info-card">
-              <h3>Quick Tip</h3>
-              <p>Connect a controller and press any button. The app will automatically switch to gamepad navigation mode.</p>
-            </div>
-            <div class="info-card">
-              <h3>Discord RPC</h3>
-              <p>Your Discord status automatically updates when you host or join a session, showing the game you are playing.</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="panel" id="panel-arcade">
-        <iframe src="https://nearsec.cutefame.net/arcade?electron=1" style="width:100%; height:100%; border:none; flex:1;" allow="gamepad"></iframe>
-      </div>
-
-      <div class="panel" id="panel-containers">
-        <div class="settings-container">
-          <h1>Unattended Auto-Hosts</h1>
-          <p class="sub">Deploy and manage headless game sessions that auto-reset when empty.</p>
-
-          <div class="settings-section">
-            <h2>Deploy New Game</h2>
-            <div class="setting-row" style="flex-direction: column; align-items: flex-start; gap: 8px;">
-              <h4 style="margin: 0;">Game/Lobby Name</h4>
-              <input type="text" id="autoName" placeholder="e.g., Sonic the Fighters 24/7" style="width: 100%; padding: 8px; background: #000; border: 1px solid var(--border); color: #fff; border-radius: 4px;">
-            </div>
-            <div class="setting-row" style="flex-direction: column; align-items: flex-start; gap: 8px;">
-              <h4 style="margin: 0;">Terminal Launch Command</h4>
-              <input type="text" id="autoCmd" placeholder="steam steam://rungameid/APPID  (or any shell command)" style="width: 100%; padding: 8px; background: #000; border: 1px solid var(--border); color: #fff; border-radius: 4px;">
-            </div>
-            <div class="setting-row" style="flex-direction: column; align-items: flex-start; gap: 8px;">
-              <h4 style="margin: 0;">Dedicated Tunnel Provider</h4>
-              <select id="autoTunnel" style="width: 100%; padding: 8px; background: #000; border: 1px solid var(--border); color: #fff; border-radius: 4px;">
-                <option value="default">Use Global App Default</option>
-                <option value="cloudflared">Cloudflare (Random URL)</option>
-                <option value="zrok">zrok.io (Best Performance)</option>
-                <option value="playit">playit.gg</option>
-              </select>
-            </div>
-            <button class="btn-confirm" onclick="saveAutoHost()" style="width:100%;padding:12px;margin-top:12px;border-radius:6px;cursor:pointer;background:var(--accent);color:#000;font-weight:bold;border:none;">Save Configuration</button>
-            <button id="btnOpenTerminal" onclick="openAutoHostTerminal()" style="display:none;width:100%;padding:10px;margin-top:8px;border-radius:6px;cursor:pointer;background:rgba(52,211,153,0.12);color:#34d399;font-weight:bold;border:1px solid rgba(52,211,153,0.3);font-family:inherit;font-size:12px;">⌘ Open Terminal for Auto-Host</button>
-          </div>
-
-          <div class="settings-section" id="activeAutoHostsList">
-            <h2>Saved Configurations</h2>
-          </div>
-        </div>
-      </div>
-
-      <div class="panel" id="panel-serverlist">
-        <div class="settings-container">
-          <h1>Public Servers</h1>
-          <p class="sub">Browse and join active public P2P and Tunneled matches.</p>
-          <div class="settings-section">
-            <div id="serverListContainer" style="display:flex;flex-direction:column;gap:12px;">
-              <!-- Servers would populate here -->
-              <div style="padding: 20px; text-align: center; color: var(--muted); border: 1px dashed var(--border); border-radius: 8px;">No servers currently available.</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="panel" id="panel-settings">
-        <div class="settings-container">
-          <h1>App Settings</h1>
-          <p class="sub">Configure global client behaviours and preferences.</p>
-
-          <div class="settings-section">
-            <h2>General</h2>
-            <div class="setting-row">
-              <div class="setting-info" style="flex:1; margin-right: 20px;">
-                <h4>Display Name</h4>
-                <p>Your name shown in sessions and Discord. Leave blank to randomize.</p>
-              </div>
-              <div class="input-wrapper" style="max-width: 200px;">
-                <input type="text" id="settingHostName" placeholder="Guest" onchange="saveHostName(this.value)" style="padding-right: 18px; text-align: center;">
-              </div>
-            </div>
-            <div class="setting-row" onclick="toggleAppSetting('rumble')">
-              <div class="setting-info">
-                <h4>Controller Rumble</h4>
-                <p>Allow the host to send vibration data to connected clients.</p>
-              </div>
-              <div class="toggle" id="settingTrackRumble"><div class="toggle-thumb"></div></div>
-            </div>
-            <div class="setting-row" id="settingRowDiscordRPC" onclick="toggleAppSetting('discordRPC')">
-              <div class="setting-info">
-                <h4>Discord Rich Presence</h4>
-                <p>Show your friends what game you're playing on Nearsec Arcade.</p>
-              </div>
-              <div class="toggle" id="settingTrackDiscordRPC"><div class="toggle-thumb"></div></div>
-            </div>
-            <div class="setting-row" onclick="toggleAppSetting('checkForUpdates')" id="settingRowUpdates">
-              <div class="setting-info">
-                <h4>Check for Updates</h4>
-                <p>Automatically check for a new version of NearsecTogether on startup.</p>
-              </div>
-              <div class="toggle" id="settingTrackCheckForUpdates"><div class="toggle-thumb"></div></div>
-            </div>
-            <div class="setting-row" id="settingRowOpenLog" style="cursor:default;">
-              <div class="setting-info">
-                <h4>Session Logs & Configs</h4>
-                <p>View diagnostic logs or open the install folder to edit .env</p>
-              </div>
-              <div style="display: flex; gap: 8px;">
-                <button style="padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 600; border: 1px solid var(--border); background: var(--surface); color: var(--text);" onclick="window.electronAPI.openLog()">Open Log</button>
-                <button style="padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 600; border: 1px solid var(--border); background: var(--surface); color: var(--text);" onclick="window.electronAPI.openInstallDir()">Open Folder</button>
-              </div>
-            </div>
-          </div>
-          <div class="setting-row" id="settingRowUISelect">
-            <div class="setting-info">
-              <h4>Host Dashboard Design</h4>
-              <p>Select the layout for the Host screen. Selecting Custom prompts for a file.</p>
-            </div>
-            <div style="display:flex; gap:8px; align-items:center;">
-              <select id="hostUISelect" onchange="setHostUI(this.value)" style="padding: 8px; background: #000; border: 1px solid var(--border); color: #fff; border-radius: 4px; font-family: inherit;">
-                <option value="default">Default</option>
-                <option value="playground">Playground</option>
-                <option value="minimal">Minimal</option>
-                <option value="custom">Custom</option>
-              </select>
-              <input type="file" id="customUIFile" accept=".html" style="display:none;" onchange="uploadCustomUI(this)">
-            </div>
-          </div>
-          <div class="setting-row" onclick="toggleAutoHost()" id="settingRowAutoHost" style="margin-top:8px;">
-            <div class="setting-info">
-              <h4>Auto-Start Host Mode</h4>
-              <p>Skips this dashboard and jumps straight into hosting on startup.</p>
-            </div>
-            <div class="toggle" id="settingTrackAutoHost"><div class="toggle-thumb"></div></div>
-          </div>
-          <div class="settings-section">
-            <h2>Experimental (Requires App Restart)</h2>
-            <div class="setting-row" onclick="toggleAppSetting('allowVR')">
-              <div class="setting-info">
-                <h4>Allow VR Viewers</h4>
-                <p>Permit viewers with VR headsets to activate WebXR and send 6-DOF tracking data.</p>
-              </div>
-              <div class="toggle" id="settingTrackAllowVR"><div class="toggle-thumb"></div></div>
-            </div>
-            <div class="setting-row" onclick="toggleAppSetting('hwDecode')">
-              <div class="setting-info">
-                <h4>Hardware Decoding</h4>
-                <p>Use your GPU to decode video for lower latency and battery usage.</p>
-              </div>
-              <div class="toggle" id="settingTrackHWDecode"><div class="toggle-thumb"></div></div>
-            </div>
-            <div class="setting-row" onclick="toggleAppSetting('fpsUnlock')">
-              <div class="setting-info">
-                <h4>Unlock Framerate (120Hz+)</h4>
-                <p>Disables the standard 60fps cap for high refresh rate streaming.</p>
-              </div>
-              <div class="toggle" id="settingTrackFpsUnlock"><div class="toggle-thumb"></div></div>
-            </div>
-            <div class="setting-row" onclick="toggleAppSetting('vsyncOff')">
-              <div class="setting-info">
-                <h4>Disable V-Sync</h4>
-                <p>Disables vertical sync for the absolute lowest latency. May cause screen tearing.</p>
-              </div>
-              <div class="toggle" id="settingTrackVsyncOff"><div class="toggle-thumb"></div></div>
-            </div>
-            <div class="setting-row" onclick="toggleAppSetting('zeroCopy')">
-              <div class="setting-info">
-                <h4>Zero-Copy Video Capture</h4>
-                <p>Bypasses system memory and keeps video frames entirely on the GPU. Extremely fast, but may glitch on some hardware.</p>
-              </div>
-              <div class="toggle" id="settingTrackZeroCopy"><div class="toggle-thumb"></div></div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <div class="modal-bg" id="gpModal" onclick="if(event.target === this) this.classList.remove('open');">
-    <div class="modal-content">
-      <div class="modal-head">
-        <span>Controller Settings</span>
-        <button class="close-modal" onclick="document.getElementById('gpModal').classList.remove('open')">
+        <button class="nav-btn" onclick="switchTab('arcade')" id="tab-arcade">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="18" y1="6"  x2="6"  y2="18"></line>
-            <line x1="6"  y1="6"  x2="18" y2="18"></line>
+            <circle cx="12" cy="12" r="10"></circle>
+            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
           </svg>
+          <span class="btn-text">Live Arcade</span>
         </button>
+
+        <button class="nav-btn" onclick="launchHostSession()" id="tab-host">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+            <line x1="8" y1="21" x2="16" y2="21"></line>
+            <line x1="12" y1="17" x2="12" y2="21"></line>
+          </svg>
+          <span class="btn-text">Host Session</span>
+        </button>
+
+        <button class="nav-btn" onclick="switchTab('containers')" id="tab-containers">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
+            <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
+            <line x1="6" y1="6" x2="6.01" y2="6"></line>
+            <line x1="6" y1="18" x2="6.01" y2="18"></line>
+          </svg>
+          <span class="btn-text">Auto-Hosts</span>
+        </button>
+
+        <div class="spacer"></div>
+
+        <button class="nav-btn" onclick="document.getElementById('gpModal').classList.add('open')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="2" y="6" width="20" height="12" rx="2"></rect>
+            <path d="M6 12h4m-2-2v4m10-4a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm-2 4a1 1 0 1 0 0-2 1 1 0 0 0 0 2z"></path>
+          </svg>
+          <span class="btn-text">Test Controller</span>
+        </button>
+
+        <button class="nav-btn" onclick="switchTab('settings')" id="tab-settings">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path
+              d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"
+            ></path>
+          </svg>
+          <span class="btn-text">App Settings</span>
+        </button>
+
+        <div class="lang-switcher">
+          <img src="../../assets/icons/globe.svg" class="globe-icon" alt="Lang" onerror="this.style.display = 'none'" />
+          <select id="langSelect" onchange="saveLangAndReload(this.value)"></select>
+        </div>
       </div>
-      <iframe src="gamepad-popup.html" style="flex:1; border:none;"></iframe>
+
+      <div id="main-content">
+        <div class="panel active" id="panel-connect">
+          <div class="connect-container">
+            <h1>Connect to Session</h1>
+            <p class="sub">
+              Paste a tunnel URL to instantly join a private session, or browse public games in the Live Arcade.
+            </p>
+
+            <div class="connect-card">
+              <h2>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                  <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+                </svg>
+                Direct Link or Room Code
+              </h2>
+              <div class="input-row" style="margin-bottom: 12px">
+                <div class="input-wrapper">
+                  <input
+                    type="text"
+                    id="directLinkInput"
+                    placeholder="URL (https://) or Room Code"
+                    onkeydown="if (event.key === 'Enter') joinDirectLink();"
+                  />
+                  <button class="btn-paste" onclick="pasteFromClipboard()" title="Paste from Clipboard">
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    >
+                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+              <div class="input-row">
+                <div class="input-wrapper">
+                  <input
+                    type="text"
+                    id="pinInput"
+                    placeholder="PIN Code (if required)"
+                    autocomplete="off"
+                    maxlength="32"
+                    onkeydown="if (event.key === 'Enter') joinDirectLink();"
+                  />
+                </div>
+                <button class="btn-connect" onclick="joinDirectLink()">Join</button>
+              </div>
+              <div class="error-msg" id="directLinkErr"></div>
+            </div>
+
+            <div class="info-grid">
+              <div class="info-card">
+                <h3>Quick Tip</h3>
+                <p>
+                  Connect a controller and press any button. The app will automatically switch to gamepad navigation
+                  mode.
+                </p>
+              </div>
+              <div class="info-card">
+                <h3>Discord RPC</h3>
+                <p>
+                  Your Discord status automatically updates when you host or join a session, showing the game you are
+                  playing.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel" id="panel-arcade">
+          <iframe
+            src="https://nearsec.cutefame.net/arcade?electron=1"
+            style="width: 100%; height: 100%; border: none; flex: 1"
+            allow="gamepad"
+          ></iframe>
+        </div>
+
+        <div class="panel" id="panel-containers">
+          <div class="settings-container">
+            <h1>Unattended Auto-Hosts</h1>
+            <p class="sub">Deploy and manage headless game sessions that auto-reset when empty.</p>
+
+            <div class="settings-section">
+              <h2>Deploy New Game</h2>
+              <div class="setting-row" style="flex-direction: column; align-items: flex-start; gap: 8px">
+                <h4 style="margin: 0">Game/Lobby Name</h4>
+                <input
+                  type="text"
+                  id="autoName"
+                  placeholder="e.g., Sonic the Fighters 24/7"
+                  style="
+                    width: 100%;
+                    padding: 8px;
+                    background: #000;
+                    border: 1px solid var(--border);
+                    color: #fff;
+                    border-radius: 4px;
+                  "
+                />
+              </div>
+              <div class="setting-row" style="flex-direction: column; align-items: flex-start; gap: 8px">
+                <h4 style="margin: 0">Terminal Launch Command</h4>
+                <input
+                  type="text"
+                  id="autoCmd"
+                  placeholder="steam steam://rungameid/APPID  (or any shell command)"
+                  style="
+                    width: 100%;
+                    padding: 8px;
+                    background: #000;
+                    border: 1px solid var(--border);
+                    color: #fff;
+                    border-radius: 4px;
+                  "
+                />
+              </div>
+              <div class="setting-row" style="flex-direction: column; align-items: flex-start; gap: 8px">
+                <h4 style="margin: 0">Dedicated Tunnel Provider</h4>
+                <select
+                  id="autoTunnel"
+                  style="
+                    width: 100%;
+                    padding: 8px;
+                    background: #000;
+                    border: 1px solid var(--border);
+                    color: #fff;
+                    border-radius: 4px;
+                  "
+                >
+                  <option value="default">Use Global App Default</option>
+                  <option value="cloudflared">Cloudflare (Random URL)</option>
+                  <option value="zrok">zrok.io (Best Performance)</option>
+                  <option value="playit">playit.gg</option>
+                </select>
+              </div>
+              <button
+                class="btn-confirm"
+                onclick="saveAutoHost()"
+                style="
+                  width: 100%;
+                  padding: 12px;
+                  margin-top: 12px;
+                  border-radius: 6px;
+                  cursor: pointer;
+                  background: var(--accent);
+                  color: #000;
+                  font-weight: bold;
+                  border: none;
+                "
+              >
+                Save Configuration
+              </button>
+              <button
+                id="btnOpenTerminal"
+                onclick="openAutoHostTerminal()"
+                style="
+                  display: none;
+                  width: 100%;
+                  padding: 10px;
+                  margin-top: 8px;
+                  border-radius: 6px;
+                  cursor: pointer;
+                  background: rgba(52, 211, 153, 0.12);
+                  color: #34d399;
+                  font-weight: bold;
+                  border: 1px solid rgba(52, 211, 153, 0.3);
+                  font-family: inherit;
+                  font-size: 12px;
+                "
+              >
+                ⌘ Open Terminal for Auto-Host
+              </button>
+            </div>
+
+            <div class="settings-section" id="activeAutoHostsList">
+              <h2>Saved Configurations</h2>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel" id="panel-serverlist">
+          <div class="settings-container">
+            <h1>Public Servers</h1>
+            <p class="sub">Browse and join active public P2P and Tunneled matches.</p>
+            <div class="settings-section">
+              <div id="serverListContainer" style="display: flex; flex-direction: column; gap: 12px">
+                <!-- Servers would populate here -->
+                <div
+                  style="
+                    padding: 20px;
+                    text-align: center;
+                    color: var(--muted);
+                    border: 1px dashed var(--border);
+                    border-radius: 8px;
+                  "
+                >
+                  No servers currently available.
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel" id="panel-settings">
+          <div class="settings-container">
+            <h1>App Settings</h1>
+            <p class="sub">Configure global client behaviours and preferences.</p>
+
+            <div class="settings-section">
+              <h2>General</h2>
+              <div class="setting-row">
+                <div class="setting-info" style="flex: 1; margin-right: 20px">
+                  <h4>Display Name</h4>
+                  <p>Your name shown in sessions and Discord. Leave blank to randomize.</p>
+                </div>
+                <div class="input-wrapper" style="max-width: 200px">
+                  <input
+                    type="text"
+                    id="settingHostName"
+                    placeholder="Guest"
+                    onchange="saveHostName(this.value)"
+                    style="padding-right: 18px; text-align: center"
+                  />
+                </div>
+              </div>
+              <div class="setting-row" onclick="toggleAppSetting('rumble')">
+                <div class="setting-info">
+                  <h4>Controller Rumble</h4>
+                  <p>Allow the host to send vibration data to connected clients.</p>
+                </div>
+                <div class="toggle" id="settingTrackRumble"><div class="toggle-thumb"></div></div>
+              </div>
+              <div class="setting-row" id="settingRowDiscordRPC" onclick="toggleAppSetting('discordRPC')">
+                <div class="setting-info">
+                  <h4>Discord Rich Presence</h4>
+                  <p>Show your friends what game you're playing on Nearsec Arcade.</p>
+                </div>
+                <div class="toggle" id="settingTrackDiscordRPC"><div class="toggle-thumb"></div></div>
+              </div>
+              <div class="setting-row" onclick="toggleAppSetting('checkForUpdates')" id="settingRowUpdates">
+                <div class="setting-info">
+                  <h4>Check for Updates</h4>
+                  <p>Automatically check for a new version of NearsecTogether on startup.</p>
+                </div>
+                <div class="toggle" id="settingTrackCheckForUpdates"><div class="toggle-thumb"></div></div>
+              </div>
+              <div class="setting-row" id="settingRowOpenLog" style="cursor: default">
+                <div class="setting-info">
+                  <h4>Session Logs & Configs</h4>
+                  <p>View diagnostic logs or open the install folder to edit .env</p>
+                </div>
+                <div style="display: flex; gap: 8px">
+                  <button
+                    style="
+                      padding: 8px 16px;
+                      border-radius: 6px;
+                      cursor: pointer;
+                      font-weight: 600;
+                      border: 1px solid var(--border);
+                      background: var(--surface);
+                      color: var(--text);
+                    "
+                    onclick="window.electronAPI.openLog()"
+                  >
+                    Open Log
+                  </button>
+                  <button
+                    style="
+                      padding: 8px 16px;
+                      border-radius: 6px;
+                      cursor: pointer;
+                      font-weight: 600;
+                      border: 1px solid var(--border);
+                      background: var(--surface);
+                      color: var(--text);
+                    "
+                    onclick="window.electronAPI.openInstallDir()"
+                  >
+                    Open Folder
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div class="setting-row" id="settingRowUISelect">
+              <div class="setting-info">
+                <h4>Host Dashboard Design</h4>
+                <p>Select the layout for the Host screen. Selecting Custom prompts for a file.</p>
+              </div>
+              <div style="display: flex; gap: 8px; align-items: center">
+                <select
+                  id="hostUISelect"
+                  onchange="setHostUI(this.value)"
+                  style="
+                    padding: 8px;
+                    background: #000;
+                    border: 1px solid var(--border);
+                    color: #fff;
+                    border-radius: 4px;
+                    font-family: inherit;
+                  "
+                >
+                  <option value="default">Default</option>
+                  <option value="playground">Playground</option>
+                  <option value="minimal">Minimal</option>
+                  <option value="custom">Custom</option>
+                </select>
+                <input
+                  type="file"
+                  id="customUIFile"
+                  accept=".html"
+                  style="display: none"
+                  onchange="uploadCustomUI(this)"
+                />
+              </div>
+            </div>
+            <div class="setting-row" onclick="toggleAutoHost()" id="settingRowAutoHost" style="margin-top: 8px">
+              <div class="setting-info">
+                <h4>Auto-Start Host Mode</h4>
+                <p>Skips this dashboard and jumps straight into hosting on startup.</p>
+              </div>
+              <div class="toggle" id="settingTrackAutoHost"><div class="toggle-thumb"></div></div>
+            </div>
+            <div class="settings-section">
+              <h2>Experimental (Requires App Restart)</h2>
+              <div class="setting-row" onclick="toggleAppSetting('hwDecode')">
+                <div class="setting-info">
+                  <h4>Hardware Decoding</h4>
+                  <p>Use your GPU to decode video for lower latency and battery usage.</p>
+                </div>
+                <div class="toggle" id="settingTrackHWDecode"><div class="toggle-thumb"></div></div>
+              </div>
+              <div class="setting-row" onclick="toggleAppSetting('fpsUnlock')">
+                <div class="setting-info">
+                  <h4>Unlock Framerate (120Hz+)</h4>
+                  <p>Disables the standard 60fps cap for high refresh rate streaming.</p>
+                </div>
+                <div class="toggle" id="settingTrackFpsUnlock"><div class="toggle-thumb"></div></div>
+              </div>
+              <div class="setting-row" onclick="toggleAppSetting('vsyncOff')">
+                <div class="setting-info">
+                  <h4>Disable V-Sync</h4>
+                  <p>Disables vertical sync for the absolute lowest latency. May cause screen tearing.</p>
+                </div>
+                <div class="toggle" id="settingTrackVsyncOff"><div class="toggle-thumb"></div></div>
+              </div>
+              <div class="setting-row" onclick="toggleAppSetting('zeroCopy')">
+                <div class="setting-info">
+                  <h4>Zero-Copy Video Capture</h4>
+                  <p>
+                    Bypasses system memory and keeps video frames entirely on the GPU. Extremely fast, but may glitch on
+                    some hardware.
+                  </p>
+                </div>
+                <div class="toggle" id="settingTrackZeroCopy"><div class="toggle-thumb"></div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
+
+    <div class="modal-bg" id="gpModal" onclick="if (event.target === this) this.classList.remove('open');">
+      <div class="modal-content">
+        <div class="modal-head">
+          <span>Controller Settings</span>
+          <button class="close-modal" onclick="document.getElementById('gpModal').classList.remove('open')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
+        <iframe src="gamepad-popup.html" style="flex: 1; border: none"></iframe>
+      </div>
     </div>
-  </div>
 
-  <div id="version-display" style="position:fixed; bottom: 12px; right: 16px; font-size: 11px; color: var(--muted); cursor: pointer; text-align: right; z-index: 100; user-select: none;" onclick="copyVersion()" title="Click to copy version">
-    <div id="version-text"></div>
-    <div id="commit-hash" style="font-size: 9px; opacity: 0.7;"></div>
-  </div>
+    <div
+      id="version-display"
+      style="
+        position: fixed;
+        bottom: 12px;
+        right: 16px;
+        font-size: 11px;
+        color: var(--muted);
+        cursor: pointer;
+        text-align: right;
+        z-index: 100;
+        user-select: none;
+      "
+      onclick="copyVersion()"
+      title="Click to copy version"
+    >
+      <div id="version-text"></div>
+      <div id="commit-hash" style="font-size: 9px; opacity: 0.7"></div>
+    </div>
 
-  <script>
-    // Synchronously load the Update/About/Docs modals before other scripts run
-    var xhr = new XMLHttpRequest();
-    xhr.open('GET', '/pages/partials/dashboard-modals.html', false);
-    xhr.send(null);
-    if (xhr.status === 200) {
-      document.body.insertAdjacentHTML('beforeend', xhr.responseText);
-    } else {
-      console.error("Failed to load dashboard modals, status:", xhr.status);
-    }
-  </script>
-  <script src="/js/i18n.js"></script>
-  <script src="/js/dashboard.js"></script>
+    <script>
+      // Synchronously load the Update/About/Docs modals before other scripts run
+      var xhr = new XMLHttpRequest();
+      xhr.open('GET', '/pages/partials/dashboard-modals.html', false);
+      xhr.send(null);
+      if (xhr.status === 200) {
+        document.body.insertAdjacentHTML('beforeend', xhr.responseText);
+      } else {
+        console.error('Failed to load dashboard modals, status:', xhr.status);
+      }
+    </script>
+    <script src="/js/i18n.js"></script>
+    <script src="/js/dashboard.js"></script>
 
-  <button id="floating-setup-btn" onclick="runInAppSetup()" title="Install System Drivers">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-      <polyline points="7 10 12 15 17 10"></polyline>
-      <line x1="12" y1="15" x2="12" y2="3"></line>
-    </svg>
-    <span id="setup-btn-text">Install Drivers</span>
-  </button>
+    <button id="floating-setup-btn" onclick="runInAppSetup()" title="Install System Drivers">
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+        <polyline points="7 10 12 15 17 10"></polyline>
+        <line x1="12" y1="15" x2="12" y2="3"></line>
+      </svg>
+      <span id="setup-btn-text">Install Drivers</span>
+    </button>
 
-  <div id="setup-toast">Finished!</div>
+    <div id="setup-toast">Finished!</div>
   </body>
 </html>

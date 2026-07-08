@@ -38,6 +38,10 @@ async function hotSwapCapture() {
     // Strip artificial height constraints so the browser doesn't crop the screen
     let videoConstraints = { frameRate: { ideal: fpsVal } };
 
+    if (window._lastSourceId && window.electronAPI && typeof window.electronAPI.setSelectedSource === 'function') {
+      window.electronAPI.setSelectedSource(window._lastSourceId);
+    }
+
     // 2. Grab the new video track (with timeout protection)
     let newScreenStream;
     if (window._lastSourceId && window.electronAPI) {
@@ -181,6 +185,14 @@ async function startCapture() {
     else if (!screenStream && selectedSourceId && window.electronAPI) {
       try {
         window._lastSourceId = selectedSourceId;
+
+        // Windows Audio Capture fallback bug:
+        // Chromium on Windows refuses to start a new getUserMedia capture if the
+        // previous MediaStreamTrack was not explicitly stopped AND nulled.
+        // Furthermore, if we fall back to getDisplayMedia, the main process needs to know what we selected.
+        if (window.electronAPI && typeof window.electronAPI.setSelectedSource === 'function') {
+          window.electronAPI.setSelectedSource(selectedSourceId);
+        }
 
         // Chromium on Windows requires a strictly prefixed source ID.
         // IDs without a prefix default to the primary monitor (entire screen).

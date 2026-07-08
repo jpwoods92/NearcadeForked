@@ -28,7 +28,6 @@ const appSettings = {
   alwaysOnTop: localStorage.getItem('ns_app_alwaysOnTop') === 'true',
   hidePreviewOnStart: localStorage.getItem('ns_app_hidePreview') === 'true',
   captureMic: localStorage.getItem('ns_app_captureMic') === 'true',
-  allowVR: localStorage.getItem('ns_app_allowVR') === 'true',
 };
 let selectedMicDeviceId = localStorage.getItem('ns_audio_input') || 'default';
 let selectedOutputDeviceId = localStorage.getItem('ns_audio_output') || 'default';
@@ -1230,20 +1229,24 @@ function sendCtrlSettings() {
     else expDevices = JSON.parse(localStorage.getItem('ns_exp_devices') || '[]');
   } catch (e) {}
 
+  const payload = JSON.stringify({
+    type: 'ctrl-settings',
+    forceXboxOne: ctrlSettings.forceXboxOne,
+    enableDualShock: ctrlSettings.enableDualShock,
+    enableMotion: ctrlSettings.enableMotion,
+    defaultInputMode: ctrlSettings.defaultInputMode,
+    hybridInput: ctrlSettings.hybridInput,
+    ctrlType: ctrlSettings.ctrlType,
+    touchLayout: ctrlSettings.touchLayout,
+    expDevices: expDevices,
+  });
+
   if (ws && ws.readyState === 1) {
-    ws.send(
-      JSON.stringify({
-        type: 'ctrl-settings',
-        forceXboxOne: ctrlSettings.forceXboxOne,
-        enableDualShock: ctrlSettings.enableDualShock,
-        enableMotion: ctrlSettings.enableMotion,
-        defaultInputMode: ctrlSettings.defaultInputMode,
-        hybridInput: ctrlSettings.hybridInput,
-        ctrlType: ctrlSettings.ctrlType,
-        touchLayout: ctrlSettings.touchLayout,
-        expDevices: expDevices,
-      })
-    );
+    ws.send(payload);
+  }
+
+  if (typeof _vpsWs !== 'undefined' && _vpsWs && _vpsWs.readyState === 1) {
+    _vpsWs.send(payload);
   }
 }
 
@@ -1776,7 +1779,7 @@ function addExpDevice(inVal, inText, inEnabled = true) {
   if (list.querySelector(`[data-exp-val="${val}"]`)) return;
 
   // Determine status text based on device type
-  const isImplemented = val === 'tablet' || val === 'guitar' || val === 'eye' || val === 'hotas';
+  const isImplemented = val === 'tablet' || val === 'guitar' || val === 'eye' || val === 'hotas' || val === 'vr';
   const statusText = isImplemented
     ? '<span style="color:var(--green);">Status: Active</span>'
     : '<span style="color:var(--muted2);">0 Users (Coming Soon)</span>';

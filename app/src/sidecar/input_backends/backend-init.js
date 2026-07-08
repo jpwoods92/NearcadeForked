@@ -51,7 +51,14 @@ function init(screenWidth, screenHeight) {
   }
 
   const pythonCmd = isWin ? 'python' : 'python3';
-  state.pythonProc = spawn(pythonCmd, [pythonScript], { stdio: ['pipe', 'pipe', 'inherit'] });
+  const spawnOpts = { stdio: ['pipe', 'pipe', 'pipe'] };
+  if (isWin) spawnOpts.windowsHide = true;
+  state.pythonProc = spawn(pythonCmd, [pythonScript], spawnOpts);
+
+  state.pythonProc.stderr.on('data', (chunk) => {
+    const s = chunk.toString('utf8').trim();
+    if (s) console.error('[input][python stderr]', s);
+  });
 
   // Parse stdout from the Python sidecar as JSON lines.
   // The sidecar emits structured { "type": "...", "message": "..." } payloads

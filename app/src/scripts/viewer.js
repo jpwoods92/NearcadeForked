@@ -980,7 +980,7 @@ async function connect() {
     }
     if (msg.type === 'ctrl-settings') {
       hostMotionEnabled = msg.enableMotion;
-      window.hostAllowVR = msg.allowVR;
+      window.hostAllowVR = msg.expDevices && msg.expDevices.some((d) => d.enabled && d.val === 'vr');
       if (typeof maybeShowVRButton === 'function') maybeShowVRButton();
 
       if (msg.expDevices) {
