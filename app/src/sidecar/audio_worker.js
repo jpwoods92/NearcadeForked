@@ -91,7 +91,7 @@ async function initVirtualAudio() {
     _vAudioModules.loopback = await _pactlExec(
       `pactl load-module module-loopback source=NearsecVirtual.monitor sink=${hwSink} latency_msec=30`
     );
-    startLoopbackWatcher();
+    startLoopbackWatcher(hwSink);
     log(`Loopback mirror successfully attached to: ${hwSink}`);
   } else {
     err('Could not find hardware sink for loopback. You may not hear game audio.');
@@ -159,8 +159,12 @@ async function destroyVirtualAudio() {
 let _loopbackWatchInterval = null;
 let _lastLoopbackSink = null;
 
-function startLoopbackWatcher() {
+function startLoopbackWatcher(currentSink) {
   if (_loopbackWatchInterval) return;
+  // Seed with the sink the loopback was just attached to — otherwise the
+  // first tick sees null, treats the unchanged default sink as "new", and
+  // pointlessly tears down and rebuilds a working loopback.
+  _lastLoopbackSink = currentSink || null;
   _loopbackWatchInterval = setInterval(async () => {
     try {
       const current = (await _pactlExec('pactl get-default-sink')).trim();

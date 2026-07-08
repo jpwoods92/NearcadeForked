@@ -541,8 +541,9 @@ function setBandwidthProfile(key) {
   document.querySelectorAll('[data-bw]').forEach((btn) => {
     btn.classList.toggle('ns-btn-active', btn.dataset.bw === key);
   });
-  // Apply immediately if a PC exists
-  if (pc) _applyBwProfile(pc);
+  // Apply immediately if a PC exists (typeof guard: `pc` is viewer.js's
+  // binding — absent on the host page, which also loads this file)
+  if (typeof pc !== 'undefined' && pc) _applyBwProfile(pc);
   console.log('[BW] Profile set:', key);
 }
 

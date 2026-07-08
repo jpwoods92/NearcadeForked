@@ -159,7 +159,10 @@ let prevDecodeTime = 0,
   prevFramesDecoded = 0;
 
 async function updateStats() {
-  if (!pc) return;
+  // `pc` is viewer.js's peer connection; this file also loads on the host
+  // page, where viewer.js (and thus the `pc` binding) doesn't exist at all —
+  // a bare `pc` read there throws ReferenceError on every poll tick.
+  if (typeof pc === 'undefined' || !pc) return;
   try {
     const stats = await pc.getStats();
     let rtt = null,

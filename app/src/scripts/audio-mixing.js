@@ -188,7 +188,9 @@ async function enableMic() {
     const audioTrack = localMicStream.getAudioTracks()[0];
     if (!audioTrack) throw new Error('No audio track returned');
 
-    if (pc && pc.signalingState !== 'closed') {
+    // typeof guard: `pc` is viewer.js's binding — absent on the host page,
+    // which also loads this file (same reason as updateStats() in stats-hud.js)
+    if (typeof pc !== 'undefined' && pc && pc.signalingState !== 'closed') {
       micSender = pc.addTrack(audioTrack, localMicStream);
       // NEW: Command the Host to send a fresh offer picking up this new audio track
       if (ws && ws.readyState === 1) {
@@ -217,7 +219,7 @@ function disableMic() {
   stopVAD();
   teardownSelfMonitor();
 
-  if (micSender && pc && pc.signalingState !== 'closed') {
+  if (micSender && typeof pc !== 'undefined' && pc && pc.signalingState !== 'closed') {
     try {
       pc.removeTrack(micSender);
     } catch (e) {
