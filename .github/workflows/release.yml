@@ -40,7 +40,7 @@ jobs:
             else
               git log --pretty=format:'- %s (%h)'
             fi
-          } > release-notes.md
+          } | grep -v -E '^- chore:' > release-notes.md
 
           echo "tag=$CURRENT_TAG" >> "$GITHUB_OUTPUT"
 
