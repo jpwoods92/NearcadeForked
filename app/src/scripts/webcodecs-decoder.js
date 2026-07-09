@@ -125,6 +125,23 @@ function initWebCodecsViewer(config) {
   // can rebuild immediately instead of stalling on a host config round trip.
   window._wcLastConfigMsg = config;
 
+  // Decode-stall guard threshold: ~0.5s of queued frames means the decoder
+  // is genuinely wedged; anything less is ordinary delivery jitter. Sized
+  // from the stream's actual frame rate (host UI allows 15-140fps — a fixed
+  // frame count would be seconds at 15fps and milliseconds at 140fps).
+  // Hosts predating the framerate field get the 140fps-safe default.
+  window._wcQueueGuard = Math.max(24, Math.round((config.framerate || 140) / 2));
+
+  // WebCodecs is [SecureContext]-only: a viewer page served over plain
+  // http:// (not localhost) has no VideoDecoder at all. Fail loudly instead
+  // of dying on the constructor below with a blank screen.
+  if (typeof VideoDecoder === 'undefined') {
+    console.error('[WebCodecs] VideoDecoder unavailable — WebCodecs requires HTTPS (or localhost).');
+    if (typeof setStatus === 'function')
+      setStatus('This browser blocks WebCodecs over HTTP — use an HTTPS link', false);
+    return;
+  }
+
   const videoEl = document.getElementById('video');
   if (videoEl) videoEl.style.display = 'none';
   const frameCanvas = document.getElementById('frameCanvas');
@@ -275,6 +292,23 @@ function initWebCodecsViewer(config) {
   };
 
   if (config.description) decoderConfig.description = new Uint8Array(config.description);
+
+  // Fire-and-forget capability probe: e.g. Safari has no AV1 decoder on
+  // most hardware. The decoder error path already retries/recovers; this
+  // just replaces a silent black screen with an actionable message.
+  try {
+    VideoDecoder.isConfigSupported(decoderConfig)
+      .then((s) => {
+        if (s && s.supported === false) {
+          console.error(`[WebCodecs] This browser cannot decode ${config.codec}.`);
+          if (typeof setStatus === 'function') {
+            setStatus(`This browser can't decode ${config.codec} — ask the host to switch codec`, false);
+          }
+        }
+      })
+      .catch(() => {});
+  } catch (_) {}
+
   try {
     wcDecoder.configure(decoderConfig);
   } catch (_) {

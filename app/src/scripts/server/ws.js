@@ -263,16 +263,25 @@ function attachWebSocketServer(wss, deps) {
           // Per-socket backpressure: `ws` buffers unboundedly, so a slow
           // viewer would otherwise accumulate seconds of latency. Dropping a
           // frame breaks that viewer's decode chain, so keep dropping deltas
-          // (_wcNeedsKey) until the next keyframe (byte 0 of the header)
-          // resyncs it — the host emits one at least every 2s.
+          // (_wcNeedsKey) until a keyframe (byte 0 of the header) resyncs it.
           const isKey = raw.length > 9 && raw[0] === 1;
+          const now = Date.now();
           state.viewers.forEach((vws) => {
             if (!vws || vws.readyState !== 1) return;
+            if (vws._wcNeedsKey && !isKey) {
+              // Ask the host for the resync keyframe only once this socket's
+              // backlog has drained — requested any earlier it would arrive
+              // into a still-full buffer and be dropped again.
+              if (vws.bufferedAmount < 128 * 1024 && now - (vws._wcKfReqTs || 0) > 500 && ws.readyState === 1) {
+                vws._wcKfReqTs = now;
+                ws.send(JSON.stringify({ type: 'request-keyframe' }));
+              }
+              return;
+            }
             if (vws.bufferedAmount > 512 * 1024) {
               vws._wcNeedsKey = true;
               return;
             }
-            if (vws._wcNeedsKey && !isKey) return;
             vws.send(raw);
             if (isKey) vws._wcNeedsKey = false;
           });

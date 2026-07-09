@@ -729,11 +729,13 @@ async function sendOfferToViewer(viewerId) {
 
   if (forceWc) {
     // ── THE MISSING UDP TUNNEL ──
-    // ordered + maxRetransmits:0 = SCTP partial reliability: frames that
-    // arrive are delivered in encode order (a reordered delta fed to the
-    // decoder corrupts until the next keyframe), lost ones are abandoned
-    // without head-of-line blocking retransmits.
-    pc.wcChannel = pc.createDataChannel('webcodecs', { ordered: true, maxRetransmits: 0 });
+    // Fully reliable + ordered. Unreliable modes (maxRetransmits: 0) are
+    // fatal here: a keyframe spans 50-130 SCTP packets and losing ANY one
+    // abandons the whole message, so on a WAN with ~1% loss most keyframes
+    // die in transit and the viewer cycles freeze→resync forever. SCTP
+    // retransmits cost one RTT on loss; sustained congestion is handled by
+    // the bufferedAmount send gate in webcodecs-encoder.js instead.
+    pc.wcChannel = pc.createDataChannel('webcodecs', { ordered: true });
 
     // When the channel opens for this viewer, send the cached decoder config
     // immediately so they don't wait for the next keyframe (which may be seconds away).

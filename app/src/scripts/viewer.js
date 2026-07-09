@@ -123,6 +123,58 @@ function recoverWebCodecsDecoder() {
     } catch (_) {}
   }
 }
+// Decode one complete [isKey(1)][timestamp(8)][payload] frame received on
+// the WebCodecs DataChannel (whole message, or reassembled from fragments —
+// see the ondatachannel handler in createPC()).
+function _wcHandleDcVideo(buf) {
+  // Prevent double-decoding if we are receiving frames from the VPS SFU.
+  // (P2P mode's WebSocket-shaped object has no .url — guard it, or every
+  // frame dies on a TypeError inside the async onmessage handler.)
+  if (ws && typeof ws.url === 'string' && ws.url.includes('/vps')) return;
+
+  if (!wcDecoder || wcDecoder.state !== 'configured') return;
+  if (buf.byteLength <= 9) return;
+
+  const view = new DataView(buf);
+  const isKey = view.getUint8(0) === 1;
+  const timestamp = view.getFloat64(1, true);
+  const chunkData = new Uint8Array(buf, 9);
+
+  // --- RESILIENCY LAYER ---
+  // window.nsWaitKey (not a channel-local flag) so decoder resets in
+  // recoverWebCodecsDecoder() re-arm this gate too — otherwise this path
+  // keeps feeding deltas to a freshly reset decoder.
+  if (window.nsWaitKey) {
+    if (!isKey) return;
+    window.nsWaitKey = false;
+    console.log('[WebCodecs] Locked onto keyframe stream.');
+  }
+
+  // Stall guard: ~0.5s of queued frames (threshold set per-stream-fps in
+  // initWebCodecsViewer) means the decoder is wedged — reset and resync.
+  // Smaller backlogs are ordinary jitter and simply drain.
+  if (wcDecoder.decodeQueueSize > (window._wcQueueGuard || 70)) {
+    if (Date.now() - (window._wcLastStallWarnTs || 0) > 5000) {
+      window._wcLastStallWarnTs = Date.now();
+      console.warn(`[WebCodecs] Decoder stalled (${wcDecoder.decodeQueueSize} queued) — resyncing at next keyframe`);
+    }
+    recoverWebCodecsDecoder();
+    return;
+  }
+
+  try {
+    const chunk = new EncodedVideoChunk({
+      type: isKey ? 'key' : 'delta',
+      timestamp: timestamp,
+      data: chunkData,
+    });
+    wcDecoder.decode(chunk);
+  } catch (err) {
+    console.error('[WebCodecs] Decode error, dropping frame...', err);
+    recoverWebCodecsDecoder();
+  }
+}
+
 let sysAudioCtx = null;
 let nextAudioTime = 0;
 // Note: stopReconnect and vpsConnected are declared below near connect()
@@ -365,48 +417,34 @@ async function createPC() {
 
         // 2. Process Binary Video Frames
         if (e.data instanceof ArrayBuffer) {
-          // Prevent double-decoding if we are receiving frames from the VPS
-          // SFU. (P2P mode's WebSocket-shaped object has no .url — guard it,
-          // or every frame dies on a TypeError inside this async handler.)
-          if (ws && typeof ws.url === 'string' && ws.url.includes('/vps')) return;
+          if (e.data.byteLength < 1) return;
+          const tag = new Uint8Array(e.data, 0, 1)[0];
 
-          if (!wcDecoder || wcDecoder.state !== 'configured') return;
-
-          const view = new DataView(e.data);
-          if (e.data.byteLength <= 9) return;
-
-          const isKey = view.getUint8(0) === 1;
-          const timestamp = view.getFloat64(1, true);
-          const chunkData = new Uint8Array(e.data, 9);
-
-          // --- RESILIENCY LAYER ---
-          // window.nsWaitKey (not a channel-local flag) so decoder resets in
-          // recoverWebCodecsDecoder() re-arm this gate too — otherwise this
-          // path keeps feeding deltas to a freshly reset decoder.
-          if (window.nsWaitKey) {
-            if (!isKey) return;
-            window.nsWaitKey = false;
-            console.log('[WebCodecs] Locked onto keyframe stream.');
-          }
-
-          // Renderer stalled and decode work piled up: reset and resync at
-          // the next keyframe rather than playing a stale burst in fast-forward.
-          if (wcDecoder.decodeQueueSize > 8) {
-            recoverWebCodecsDecoder();
+          // Fragmented frame (byte0: 2 = fragment, 3 = final). The host
+          // splits frames > ~60KB because SCTP rejects messages larger than
+          // the receiver's advertised limit — 256KB on Chrome, 64KB on
+          // Safari — which silently killed every keyframe for those
+          // browsers. Channel is reliable+ordered, so simple concatenation
+          // reassembles correctly.
+          if (tag === 2 || tag === 3) {
+            if (!window._wcFragParts) window._wcFragParts = [];
+            window._wcFragParts.push(new Uint8Array(e.data, 1));
+            if (tag !== 3) return;
+            const parts = window._wcFragParts;
+            window._wcFragParts = [];
+            let total = 0;
+            for (const p of parts) total += p.byteLength;
+            const whole = new Uint8Array(total);
+            let off = 0;
+            for (const p of parts) {
+              whole.set(p, off);
+              off += p.byteLength;
+            }
+            _wcHandleDcVideo(whole.buffer);
             return;
           }
 
-          try {
-            const chunk = new EncodedVideoChunk({
-              type: isKey ? 'key' : 'delta',
-              timestamp: timestamp,
-              data: chunkData,
-            });
-            wcDecoder.decode(chunk);
-          } catch (err) {
-            console.error('[WebCodecs] Decode error, dropping frame...', err);
-            recoverWebCodecsDecoder();
-          }
+          _wcHandleDcVideo(e.data);
         }
       };
       return; // Stop here so it doesn't fall through to the input block
@@ -668,9 +706,16 @@ async function connect() {
             window.nsWaitKey = false;
             console.log('[WebCodecs/VPS] Locked onto keyframe.');
           }
-          // Renderer stalled and decode work piled up: reset and resync at
-          // the next keyframe rather than playing a stale burst in fast-forward.
-          if (wcDecoder.decodeQueueSize > 8) {
+          // Stall guard: ~0.5s of queued frames (threshold set per-stream-fps
+          // in initWebCodecsViewer) means the decoder is wedged — reset and
+          // resync. Smaller backlogs are ordinary jitter and simply drain.
+          if (wcDecoder.decodeQueueSize > (window._wcQueueGuard || 70)) {
+            if (Date.now() - (window._wcLastStallWarnTs || 0) > 5000) {
+              window._wcLastStallWarnTs = Date.now();
+              console.warn(
+                `[WebCodecs] Decoder stalled (${wcDecoder.decodeQueueSize} queued) — resyncing at next keyframe`
+              );
+            }
             recoverWebCodecsDecoder();
             return;
           }

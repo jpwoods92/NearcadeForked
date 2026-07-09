@@ -170,6 +170,9 @@ async function startWebCodecsNetworkPipeline(videoTrack) {
           codec: metadata.decoderConfig.codec,
           codedWidth: metadata.decoderConfig.codedWidth || exactWidth,
           codedHeight: metadata.decoderConfig.codedHeight || exactHeight,
+          // The viewer sizes its decode-stall guard from this (host UI
+          // allows 15-140fps, so frame-count thresholds can't be fixed).
+          framerate: _wcFps,
           description: metadata.decoderConfig.description
             ? Array.from(new Uint8Array(metadata.decoderConfig.description))
             : null,
@@ -212,13 +215,17 @@ async function startWebCodecsNetworkPipeline(videoTrack) {
   const _bitSel = parseInt(document.getElementById('bitrateSelect')?.value, 10);
   const _wcMaxBitrate = _bitSel > 0 ? _bitSel : 8000000;
 
+  // Actual capture frame rate — the UI allows 15-140fps, so every
+  // frame-count threshold below derives from this rather than assuming 60.
+  const _wcFps = Math.round(settings.frameRate || 60);
+
   const _wcCodecStr = _wcCodecMap[_wcCodecSel] || 'vp8';
   const wcConfig = {
     codec: _wcCodecStr,
     width: exactWidth,
     height: exactHeight,
     bitrate: _wcMaxBitrate,
-    framerate: Math.round(settings.frameRate || 60),
+    framerate: _wcFps,
     hardwareAcceleration: 'prefer-hardware',
     latencyMode: 'realtime',
   };
@@ -235,6 +242,21 @@ async function startWebCodecsNetworkPipeline(videoTrack) {
   console.log(
     `[WebCodecs] Encoder configured with codec: ${_wcCodecStr} (from UI: ${_wcCodecSel}, hw: ${wcConfig.hardwareAcceleration})`
   );
+  // Surface the negotiated mode in the host UI: 'no-preference' on AV1/VP9
+  // at high fps almost always means software encode, which is the usual
+  // culprit when the encoder itself can't keep up.
+  if (typeof log === 'function') {
+    const hwLabel = wcConfig.hardwareAcceleration === 'prefer-hardware' ? 'hardware' : 'software/auto';
+    log(
+      `WebCodecs encoder: ${_wcCodecStr} @ ${_wcFps}fps, max ${(_wcMaxBitrate / 1e6).toFixed(0)} Mbps (${hwLabel})`,
+      'ok'
+    );
+  }
+
+  // ~50ms of encode pipeline depth regardless of frame rate: 2 frames at
+  // 15fps, 3 at 60, 7 at 140. Deeper absorbs bursts better; shallower keeps
+  // latency down.
+  const _wcEncQueueMax = Math.max(2, Math.round(_wcFps * 0.05));
 
   const processor = new MediaStreamTrackProcessor({ track: videoTrack });
   const reader = processor.readable.getReader();
@@ -270,11 +292,13 @@ async function startWebCodecsNetworkPipeline(videoTrack) {
           _wcForceKeyframe = true;
         }
 
-        if (encoder.encodeQueueSize > 2) {
+        if (encoder.encodeQueueSize > _wcEncQueueMax) {
           // Encoder can't keep up (CPU-bound). Dropping an unencoded frame is
-          // safe (no reference chain break), but count it so the bitrate
-          // controller backs off and lightens the encode load.
-          _wcDroppedThisTick++;
+          // safe (no reference chain break), but count it separately — the
+          // bitrate controller backs off and the operator gets a distinct
+          // warning, since the real fix for CPU overload is lower
+          // fps/resolution or another codec, not just less bitrate.
+          _wcEncDropsThisTick++;
           frame.close();
         } else {
           const keyFrame = _wcForceKeyframe;
@@ -301,38 +325,90 @@ async function startWebCodecsNetworkPipeline(videoTrack) {
     _wcForceKeyframe = true;
   }, 2000);
 
-  // ── ADAPTIVE BITRATE (AIMD) ───────────────────────────────────────────────
+  // ── ADAPTIVE BITRATE ──────────────────────────────────────────────────────
   // The DataChannel/WS transports have no congestion control of their own
-  // (unlike WebRTC's RTP path), so react to frames dropped by the send gate
-  // or the encode queue: cut 30% on any congested second, probe back up 10%
-  // after 5 clean seconds, bounded to [1 Mbps, UI-selected max].
-  _wcDroppedThisTick = 0;
+  // (unlike WebRTC's RTP path). Two signals, sampled every second:
+  //   - transport bufferedAmount climbing = congestion building (early — no
+  //     frames have been dropped yet, so reacting here is invisible)
+  //   - gated/dropped frames = congestion already biting (late — the viewer
+  //     saw a freeze)
+  // Cut 30% on either. Probe +10% only after 5 clean seconds AND a
+  // near-empty buffer, so probing backs off before it ever causes a visible
+  // drop. Reconfigures are spaced ≥2s apart to avoid encoder churn.
+  // Encoder-queue drops (CPU overload) also cut bitrate, but get their own
+  // operator warning since the real fix there is lower fps/res or a
+  // different codec.
+  _wcSendDropsThisTick = 0;
+  _wcEncDropsThisTick = 0;
   let _wcCleanTicks = 0;
+  let _wcLastReconfigTs = 0;
+  let _wcLastCongestionLogTs = 0;
   const _abrInterval = setInterval(() => {
     if (!_wcEncoder || _wcEncoder.state !== 'configured') {
       clearInterval(_abrInterval);
       return;
     }
-    const drops = _wcDroppedThisTick;
-    _wcDroppedThisTick = 0;
+    const sendDrops = _wcSendDropsThisTick;
+    const encDrops = _wcEncDropsThisTick;
+    _wcSendDropsThisTick = 0;
+    _wcEncDropsThisTick = 0;
+    const buffered = _wcMaxBufferedAmount();
+    const congested = sendDrops > 0 || buffered > _WC_BUFFER_LIMIT / 2;
+    const now = Date.now();
+
     let next = encoder._lastConfig.bitrate;
-    if (drops > 0) {
+    if (congested || encDrops > 0) {
       _wcCleanTicks = 0;
       next = Math.max(1000000, Math.round(next * 0.7));
-    } else if (++_wcCleanTicks >= 5 && next < _wcMaxBitrate) {
+    } else if (++_wcCleanTicks >= 5 && next < _wcMaxBitrate && buffered < _WC_BUFFER_LIMIT / 16) {
       _wcCleanTicks = 0;
       next = Math.min(_wcMaxBitrate, Math.round(next * 1.1));
     }
-    if (next !== encoder._lastConfig.bitrate) {
+
+    if (now - _wcLastCongestionLogTs > 10000) {
+      if (encDrops > 0) {
+        _wcLastCongestionLogTs = now;
+        const m = `WebCodecs: encoder overloaded (${encDrops} frames/s dropped pre-encode) — CPU-bound, consider lower fps/resolution or another codec`;
+        console.warn('[WebCodecs] ' + m);
+        if (typeof log === 'function') log(m, 'warn');
+      } else if (congested) {
+        _wcLastCongestionLogTs = now;
+        const m = `WebCodecs: link congested (${(buffered / 1024) | 0} KB buffered, ${sendDrops} drops/s) — bitrate → ${(next / 1e6).toFixed(1)} Mbps`;
+        console.warn('[WebCodecs] ' + m);
+        if (typeof log === 'function') log(m, 'warn');
+      }
+    }
+
+    if (next !== encoder._lastConfig.bitrate && now - _wcLastReconfigTs >= 2000) {
+      _wcLastReconfigTs = now;
       encoder._lastConfig.bitrate = next;
       try {
         encoder.configure(encoder._lastConfig);
-        console.log(`[WebCodecs] Adaptive bitrate → ${(next / 1e6).toFixed(1)} Mbps (${drops} drops last tick)`);
+        console.log(`[WebCodecs] Adaptive bitrate → ${(next / 1e6).toFixed(1)} Mbps`);
       } catch (e) {
         console.error('[WebCodecs] Bitrate reconfigure failed:', e);
       }
     }
   }, 1000);
+}
+
+// Worst per-transport backlog across everything video currently flows over —
+// the bitrate controller's early congestion signal.
+function _wcMaxBufferedAmount() {
+  let max = 0;
+  if (typeof _vpsWs !== 'undefined' && _vpsWs && _vpsWs.readyState === 1) {
+    max = Math.max(max, _vpsWs.bufferedAmount || 0);
+  }
+  if (typeof ws !== 'undefined' && ws && ws.readyState === 1) {
+    max = Math.max(max, ws.bufferedAmount || 0);
+  }
+  if (typeof peerConnections !== 'undefined') {
+    for (const pc of Object.values(peerConnections)) {
+      const ch = pc.wcChannel;
+      if (ch && ch.readyState === 'open') max = Math.max(max, ch.bufferedAmount || 0);
+    }
+  }
+  return max;
 }
 
 // ── SEND GATE (backpressure) ────────────────────────────────────────────────
@@ -347,9 +423,36 @@ async function startWebCodecsNetworkPipeline(videoTrack) {
 // keyframe goes through — undecodable deltas would only waste bandwidth and
 // trigger decoder-recovery round trips on the viewer.
 const _WC_BUFFER_LIMIT = 512 * 1024;
-let _wcDroppedThisTick = 0;
+let _wcSendDropsThisTick = 0;
+let _wcEncDropsThisTick = 0;
 
-function _wcGatedSend(transport, data, isKey) {
+// SCTP rejects messages larger than the REMOTE peer's advertised
+// maxMessageSize — ~1GB on Firefox but 256KB on Chrome and 64KB on Safari.
+// A keyframe at streaming bitrates easily exceeds both small limits, so
+// sending frames as single messages makes send() throw on every keyframe
+// for those browsers = permanently gated channel = audio but no video.
+// Split anything bigger than 60KB (under every browser's floor) into tagged
+// fragments; the channel is reliable+ordered so reassembly is trivial.
+// Wire tags: byte0 2 = fragment, 3 = final fragment (0/1 = whole frame,
+// unchanged legacy format). DC-only — the WS paths are TCP and unaffected.
+const _WC_DC_CHUNK = 60 * 1024;
+
+function _wcSendFragmented(channel, data) {
+  const bytes = new Uint8Array(data);
+  if (bytes.byteLength <= _WC_DC_CHUNK) {
+    channel.send(data);
+    return;
+  }
+  for (let off = 0; off < bytes.byteLength; off += _WC_DC_CHUNK) {
+    const end = Math.min(off + _WC_DC_CHUNK, bytes.byteLength);
+    const frag = new Uint8Array(1 + (end - off));
+    frag[0] = end >= bytes.byteLength ? 3 : 2;
+    frag.set(bytes.subarray(off, end), 1);
+    channel.send(frag.buffer);
+  }
+}
+
+function _wcGatedSend(transport, data, isKey, isDataChannel) {
   // Config strings are tiny and mandatory for decoder bootstrap — never gate.
   if (typeof data === 'string') {
     try {
@@ -358,24 +461,29 @@ function _wcGatedSend(transport, data, isKey) {
     return;
   }
   if (transport._wcNeedsKey && !isKey) {
-    _wcDroppedThisTick++;
+    _wcSendDropsThisTick++;
+    // The resync keyframe is deferred until the backlog has actually
+    // drained — forcing one the instant the gate arms just wastes it into a
+    // still-full buffer (at 120fps it's produced ~8ms later), leaving the
+    // viewer frozen until the next 2s interval keyframe.
+    if (transport.bufferedAmount < _WC_BUFFER_LIMIT / 4) _wcForceKeyframe = true;
     return;
   }
   if (transport.bufferedAmount > _WC_BUFFER_LIMIT) {
-    if (!transport._wcNeedsKey) {
-      transport._wcNeedsKey = true;
-      _wcForceKeyframe = true; // resync this transport ASAP, not in up to 2s
-    }
-    _wcDroppedThisTick++;
+    transport._wcNeedsKey = true;
+    _wcSendDropsThisTick++;
     return;
   }
   try {
-    transport.send(data);
+    if (isDataChannel) {
+      _wcSendFragmented(transport, data);
+    } else {
+      transport.send(data);
+    }
     if (isKey) transport._wcNeedsKey = false;
   } catch (_) {
     transport._wcNeedsKey = true;
-    _wcForceKeyframe = true;
-    _wcDroppedThisTick++;
+    _wcSendDropsThisTick++;
   }
 }
 
@@ -405,7 +513,7 @@ function _broadcastP2P(data, isKey) {
   Object.values(peerConnections).forEach((pc) => {
     const channel = pc.wcChannel;
     if (channel && channel.readyState === 'open') {
-      _wcGatedSend(channel, data, isKey);
+      _wcGatedSend(channel, data, isKey, true);
     }
   });
 }
@@ -421,5 +529,6 @@ if (typeof module !== 'undefined' && module.exports) {
     broadcastToViewers,
     _broadcastP2P,
     _wcGatedSend,
+    _wcSendFragmented,
   };
 }

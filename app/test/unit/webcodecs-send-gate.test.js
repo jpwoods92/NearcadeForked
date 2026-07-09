@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { _wcGatedSend } from '../../src/scripts/webcodecs-encoder.js';
+import { _wcGatedSend, _wcSendFragmented } from '../../src/scripts/webcodecs-encoder.js';
 
 // Tests for the WebCodecs transport send gate (webcodecs-encoder.js).
 // _wcGatedSend wraps every video-chunk send (VPS WS, tunnel WS, per-viewer
@@ -37,21 +37,27 @@ describe('_wcGatedSend()', () => {
     expect(t._wcNeedsKey).toBe(false);
   });
 
-  it('drops when the buffer is over the limit and requests a keyframe once', () => {
+  it('drops when the buffer is over the limit without immediately forcing a keyframe', () => {
     const t = fakeTransport(LIMIT + 1);
     _wcGatedSend(t, DELTA, false);
     expect(t.sent).toEqual([]);
     expect(t._wcNeedsKey).toBe(true);
-    expect(globalThis._wcForceKeyframe).toBe(true);
+    // Forcing now would waste the keyframe into a full buffer — it is
+    // deferred until the backlog drains (next test).
+    expect(globalThis._wcForceKeyframe).toBe(false);
   });
 
-  it('keeps dropping deltas after a drop even once the buffer drains', () => {
+  it('keeps dropping deltas after a drop, and requests the resync keyframe once drained', () => {
     const t = fakeTransport(LIMIT + 1);
     _wcGatedSend(t, DELTA, false); // drop, arms needsKey
+    _wcGatedSend(t, DELTA, false); // buffer still full: dropped, no keyframe request yet
+    expect(globalThis._wcForceKeyframe).toBe(false);
     t.bufferedAmount = 0;
-    _wcGatedSend(t, DELTA, false); // still dropped — decoder can't use it
+    _wcGatedSend(t, DELTA, false); // still dropped — decoder can't use it...
     expect(t.sent).toEqual([]);
     expect(t._wcNeedsKey).toBe(true);
+    // ...but the buffer has drained, so NOW the resync keyframe is requested.
+    expect(globalThis._wcForceKeyframe).toBe(true);
   });
 
   it('resumes on the next keyframe that fits in the buffer', () => {
@@ -74,11 +80,16 @@ describe('_wcGatedSend()', () => {
 
   it('treats a send() throw as a drop and arms the keyframe gate', () => {
     const t = fakeTransport(0);
+    const realSend = t.send.bind(t);
     t.send = () => {
       throw new Error('closing');
     };
     _wcGatedSend(t, DELTA, false);
     expect(t._wcNeedsKey).toBe(true);
+    // Buffer is empty, so the very next gated delta requests the resync key.
+    t.send = realSend;
+    _wcGatedSend(t, DELTA, false);
+    expect(t.sent).toEqual([]);
     expect(globalThis._wcForceKeyframe).toBe(true);
   });
 
@@ -88,5 +99,55 @@ describe('_wcGatedSend()', () => {
     _wcGatedSend(t, '{"type":"webcodecs-config"}');
     expect(t.sent).toEqual(['{"type":"webcodecs-config"}']);
     expect(t._wcNeedsKey).toBe(true); // config doesn't clear the video gate
+  });
+});
+
+// Frames sent over a DataChannel must stay under the receiver's SCTP
+// maxMessageSize (256KB Chrome, 64KB Safari) — oversized frames are split
+// into tagged fragments (byte0 2 = fragment, 3 = final) and reassembled by
+// the viewer. WebSocket transports are exempt (TCP, no message-size limit).
+describe('_wcSendFragmented()', () => {
+  const CHUNK = 60 * 1024;
+
+  it('sends small frames as a single untouched message', () => {
+    const t = fakeTransport(0);
+    const frame = new Uint8Array(CHUNK).fill(7).buffer;
+    _wcSendFragmented(t, frame);
+    expect(t.sent).toEqual([frame]);
+  });
+
+  it('splits an oversized frame into tagged fragments that reassemble byte-for-byte', () => {
+    const t = fakeTransport(0);
+    const original = new Uint8Array(CHUNK * 2 + 123);
+    for (let i = 0; i < original.length; i++) original[i] = i % 251;
+    _wcSendFragmented(t, original.buffer);
+
+    expect(t.sent.length).toBe(3);
+    const tags = t.sent.map((m) => new Uint8Array(m)[0]);
+    expect(tags).toEqual([2, 2, 3]); // final fragment tagged 3
+
+    // Every message fits under the strictest browser limit (+1 tag byte).
+    for (const m of t.sent) expect(m.byteLength).toBeLessThanOrEqual(CHUNK + 1);
+
+    // Viewer-side reassembly: concatenate payloads after the tag byte.
+    const parts = t.sent.map((m) => new Uint8Array(m, 1));
+    const whole = new Uint8Array(parts.reduce((n, p) => n + p.byteLength, 0));
+    let off = 0;
+    for (const p of parts) {
+      whole.set(p, off);
+      off += p.byteLength;
+    }
+    expect(whole).toEqual(original);
+  });
+
+  it('is applied by the gate only to DataChannel transports', () => {
+    const big = new Uint8Array(CHUNK * 2).buffer;
+    const dc = fakeTransport(0);
+    _wcGatedSend(dc, big, true, true);
+    expect(dc.sent.length).toBe(2); // fragmented
+
+    const wsT = fakeTransport(0);
+    _wcGatedSend(wsT, big, true, false);
+    expect(wsT.sent).toEqual([big]); // whole message — TCP handles size
   });
 });
