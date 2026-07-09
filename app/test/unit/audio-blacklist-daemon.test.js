@@ -7,6 +7,8 @@ const {
   parseSinks,
   isBlacklisted,
   DEFAULT_BLACKLIST,
+  VOICE_BLACKLIST,
+  MEDIA_BLACKLIST,
 } = require('../../src/sidecar/audio_blacklist_daemon.js');
 
 // Characterization tests (REFACTOR_PLAN.md Phase 0 / Phase 8) for the pactl
@@ -90,6 +92,26 @@ describe('parseSinks', () => {
     const { byName, byId } = parseSinks('');
     expect(byName).toEqual({});
     expect(byId).toEqual({});
+  });
+});
+
+describe('blacklist tiers', () => {
+  it('DEFAULT_BLACKLIST is exactly the union of the voice and media tiers', () => {
+    expect(new Set(DEFAULT_BLACKLIST)).toEqual(new Set([...VOICE_BLACKLIST, ...MEDIA_BLACKLIST]));
+  });
+
+  it('keeps voice apps out of the media tier — ALL_DESKTOP mode must never capture them', () => {
+    for (const voiceApp of ['discord', 'zoom', 'teamspeak', 'slack', 'mumble']) {
+      expect(VOICE_BLACKLIST).toContain(voiceApp);
+      expect(MEDIA_BLACKLIST).not.toContain(voiceApp);
+    }
+  });
+
+  it('classifies browsers and music players as media (capturable in ALL_DESKTOP mode)', () => {
+    for (const mediaApp of ['firefox', 'chrome', 'spotify']) {
+      expect(MEDIA_BLACKLIST).toContain(mediaApp);
+      expect(VOICE_BLACKLIST).not.toContain(mediaApp);
+    }
   });
 });
 

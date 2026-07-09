@@ -47,11 +47,13 @@ const { execFile, exec } = require('child_process');
 // Union of this daemon's original list and audio_worker.js's inline
 // AUDIO_BLACKLIST (REFACTOR_PLAN.md Phase 8 — the two lists had drifted
 // apart with different entries each was missing).
-const DEFAULT_BLACKLIST = [
-  'chrome',
-  'firefox',
-  'brave',
-  'vivaldi',
+//
+// Split into two tiers so ALL_DESKTOP capture can behave sanely:
+//  - VOICE_BLACKLIST: private conversations — NEVER captured, in any mode.
+//  - MEDIA_BLACKLIST: browsers/music — kept off the stream when a specific
+//    game is targeted, but INCLUDED when the host explicitly streams
+//    ALL_DESKTOP (watching a video together is the whole point of that mode).
+const VOICE_BLACKLIST = [
   'discord',
   'vesktop',
   'armcord',
@@ -64,8 +66,11 @@ const DEFAULT_BLACKLIST = [
   'zoom',
   'teams',
   'telegram-desktop',
-  'spotify',
 ];
+
+const MEDIA_BLACKLIST = ['chrome', 'firefox', 'brave', 'vivaldi', 'spotify'];
+
+const DEFAULT_BLACKLIST = [...VOICE_BLACKLIST, ...MEDIA_BLACKLIST];
 
 // Target the new virtual sink architecture
 const VIRTUAL_SINK = 'NearsecVirtual';
@@ -252,6 +257,16 @@ async function tick(blacklist) {
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
+// The active list is mutable so audio_worker.js can relax it to VOICE_BLACKLIST
+// for the duration of an ALL_DESKTOP routing session (media apps are then
+// allowed onto the capture sink) and restore the full list afterwards.
+let _activeBlacklist = [...DEFAULT_BLACKLIST];
+
+function setDaemonBlacklist(blacklist) {
+  _activeBlacklist = [...new Set((blacklist || DEFAULT_BLACKLIST).map((s) => s.toLowerCase()))];
+  process.stdout.write(`[blacklist] Active list now: ${_activeBlacklist.join(', ')}\n`);
+}
+
 function startDaemon(blacklist = DEFAULT_BLACKLIST, targetSink = null) {
   if (process.platform !== 'linux') {
     process.stdout.write('[blacklist] Non-Linux platform — daemon not started.\n');
@@ -259,20 +274,20 @@ function startDaemon(blacklist = DEFAULT_BLACKLIST, targetSink = null) {
   }
 
   _fallbackSink = targetSink;
-  const list = [...new Set(blacklist.map((s) => s.toLowerCase()))];
+  _activeBlacklist = [...new Set(blacklist.map((s) => s.toLowerCase()))];
 
   process.stdout.write(`[blacklist] Daemon started  |  sink: ${VIRTUAL_SINK}  |  poll: ${POLL_MS}ms\n`);
   process.stdout.write(`[blacklist] Target hardware: ${targetSink || 'Dynamic'}\n`);
 
   const interval = setInterval(
     () =>
-      tick(list).catch((e) => {
+      tick(_activeBlacklist).catch((e) => {
         if (!e.message?.includes('ENOENT')) process.stderr.write(`[blacklist] Tick error: ${e.message}\n`);
       }),
     POLL_MS
   );
 
-  tick(list).catch(() => {});
+  tick(_activeBlacklist).catch(() => {});
   return interval;
 }
 
@@ -283,7 +298,10 @@ function stopDaemon(handle) {
 module.exports = {
   startDaemon,
   stopDaemon,
+  setDaemonBlacklist,
   DEFAULT_BLACKLIST,
+  VOICE_BLACKLIST,
+  MEDIA_BLACKLIST,
   // Exported for characterization tests (REFACTOR_PLAN.md Phase 0) — pure
   // parsing/matching logic, no behavior change to the daemon itself.
   parseSinkInputs,

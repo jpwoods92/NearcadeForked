@@ -119,6 +119,61 @@ function stopRouting() {
 }
 
 /**
+ * Synchronous pre-unload evacuation: move every app stream off Nearsec
+ * sinks onto a real hardware sink, and repair the default sink if it points
+ * at a Nearsec device. Unloading a sink that still owns streams makes
+ * PipeWire "rescue" them to an arbitrary device — observed leaving apps
+ * silent (rescued to a sink nobody is listening to) or half-linked with one
+ * channel until the app recreates its stream. Deliberately moving them also
+ * updates stream-restore's memory, so apps don't jump back onto the next
+ * session's fresh sink. Must run BEFORE any module unload, in both the
+ * quit path (destroyVirtualAudio) and the purge path (purgeStaleModules) —
+ * the audio worker's async 'destroy' handler does its own move-back, but
+ * the sync unloads below always win that race.
+ */
+function _evacuateNearsecSinks() {
+  if (process.platform !== 'linux') return;
+  const { execSync } = require('child_process');
+  const sh = (cmd) => execSync(cmd, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+  try {
+    const sinkLines = sh('pactl list short sinks').split('\n').filter(Boolean);
+    const nearsecSinkIds = new Set();
+    let target = null;
+    for (const line of sinkLines) {
+      const [id, name] = line.trim().split(/\s+/);
+      if (!name) continue;
+      if (name.includes('Nearsec')) nearsecSinkIds.add(id);
+      else if (!target) target = name;
+    }
+
+    // Prefer the sink the loopback mirror points at — that's the device the
+    // user is actually listening on, not just whichever sink lists first.
+    const loopbackLine = sh('pactl list short modules')
+      .split('\n')
+      .find((l) => l.includes('module-loopback') && l.includes('NearsecVirtual.monitor'));
+    const loopbackSink = loopbackLine && (loopbackLine.match(/sink=(\S+)/) || [])[1];
+    if (loopbackSink && !loopbackSink.includes('Nearsec') && sinkLines.some((l) => l.includes(loopbackSink))) {
+      target = loopbackSink;
+    }
+    if (!target) return;
+
+    if (sh('pactl get-default-sink').trim().includes('Nearsec')) {
+      execSync(`pactl set-default-sink ${target}`, { stdio: 'ignore' });
+    }
+
+    if (nearsecSinkIds.size === 0) return;
+    for (const line of sh('pactl list short sink-inputs').split('\n').filter(Boolean)) {
+      const [inputId, sinkId] = line.trim().split(/\s+/);
+      if (nearsecSinkIds.has(sinkId) && /^\d+$/.test(inputId)) {
+        try {
+          execSync(`pactl move-sink-input ${inputId} ${target}`, { stdio: 'ignore' });
+        } catch (_) {}
+      }
+    }
+  } catch (_) {}
+}
+
+/**
  * PUBLIC — Purge any leftover Nearsec PulseAudio modules from a previous
  * run (e.g. after a crash that skipped destroyVirtualAudio()). Synchronous
  * and safe to call before the audio worker exists — used by this module's
@@ -137,6 +192,7 @@ function purgeStaleModules() {
     const staleIds = parseStaleModuleIds(moduleList);
     if (staleIds.length > 0) {
       console.log(`[VirtualAudio] Purging ${staleIds.length} stale PA module(s)`);
+      _evacuateNearsecSinks();
       for (const id of staleIds) {
         try {
           execSync(`pactl unload-module ${id}`, { stdio: 'ignore' });
@@ -167,6 +223,11 @@ function destroyVirtualAudio() {
   if (process.platform === 'linux') {
     const { execSync } = require('child_process');
 
+    // Move app streams off the virtual sink and repair the default sink
+    // BEFORE unloading anything — see _evacuateNearsecSinks() for why the
+    // worker's own async move-back can't be relied on here.
+    _evacuateNearsecSinks();
+
     // THE FIX: Unload loopback BEFORE the sink to prevent the audio buzz
     const unloadOrder = ['loopback', 'remap', 'sink'];
     for (const key of unloadOrder) {
@@ -182,17 +243,16 @@ function destroyVirtualAudio() {
     // Belt and braces PulseAudio cleanup
     purgeStaleModules();
 
-    // PipeWire node cleanup — destroy any pw-loopback nodes created by the worker
-    try {
-      execSync(
-        "pw-cli list-objects | grep -A2 'Nearsec' | grep 'id ' | awk '{print $2}' | tr -d ',' | xargs -r -I{} pw-cli destroy {}",
-        { stdio: 'ignore', timeout: 2000 }
-      );
-    } catch (_) {}
-    // Belt-and-braces: kill any dangling pw-loopback processes we spawned
-    try {
-      execSync("pkill -f 'pw-loopback.*Nearsec'", { stdio: 'ignore' });
-    } catch (_) {}
+    // NOTE: this used to also run a `pw-cli list-objects | grep -A2 Nearsec |
+    // grep 'id ' | ... pw-cli destroy` sweep plus a `pkill pw-loopback` here,
+    // claiming to clean up pw-loopback nodes "created by the worker". The
+    // worker never spawns pw-loopback (it is pure pactl — "Legacy Pactl
+    // Mode"), and the grep pipeline also matched `node.id = "..."` property
+    // lines and bled into NEIGHBORING objects, issuing `pw-cli destroy` on
+    // unrelated ids — including hardware sink nodes, killing the host's
+    // audio devices at app close until re-plug/power cycle. The module
+    // unloads + purgeStaleModules() above already remove everything the
+    // worker creates. Do not reintroduce a pw-cli object sweep.
   }
 }
 

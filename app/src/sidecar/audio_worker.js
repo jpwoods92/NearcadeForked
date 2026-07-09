@@ -13,7 +13,9 @@ const { parseStaleModuleIds } = require('./audio-module-utils.js');
 const {
   startDaemon: startBlacklistDaemon,
   stopDaemon: stopBlacklistDaemon,
+  setDaemonBlacklist,
   DEFAULT_BLACKLIST,
+  VOICE_BLACKLIST,
 } = require('./audio_blacklist_daemon.js');
 
 // ── Module-ID tracking ────────────────────────────────────────────────────────
@@ -70,13 +72,15 @@ async function initVirtualAudio() {
     'pactl load-module module-remap-source master=NearsecVirtual.monitor source_name=NearsecVirtualCapture source_properties=device.description="NearsecVirtualCapture"'
   );
 
-  // 3. THE GHOST MUTE FIX (Ensure OS doesn't auto-mute the new sink)
+  // 3. THE GHOST MUTE FIX (Ensure OS doesn't auto-mute the new sink).
+  // Volume is deliberately NOT forced to 100% here anymore — PipeWire
+  // restores the previous session's levels for these virtual devices, and
+  // stomping them to full on every boot both overrides a user who turned
+  // the cable down (e.g. in pavucontrol) and turns any startup routing
+  // glitch into a full-volume one.
   await _pactlExec('pactl set-sink-mute NearsecVirtual 0');
-  await _pactlExec('pactl set-sink-volume NearsecVirtual 100%');
   await _pactlExec('pactl set-source-mute NearsecVirtual.monitor 0');
-  await _pactlExec('pactl set-source-volume NearsecVirtual.monitor 100%');
   await _pactlExec('pactl set-source-mute NearsecVirtualCapture 0');
-  await _pactlExec('pactl set-source-volume NearsecVirtualCapture 100%');
 
   // 4. Resolve Hardware Sink (Your headphones/speakers)
   let hwSink = (await _pactlExec('pactl get-default-sink')).trim();
@@ -88,9 +92,17 @@ async function initVirtualAudio() {
 
   // 5. Establish the Loopback Mirror (Sends game audio from virtual cable BACK to your ears)
   if (hwSink) {
+    // Mute the cable while the loopback attaches: stream-restore can have
+    // already moved remembered app streams onto the fresh sink, and letting
+    // the new loopback slam that audio onto a hardware device that's still
+    // waking from suspend is an audible burst. Same mute-swap-unmute pattern
+    // as the watcher below and THE SCREECH FIX in destroyVirtualAudio().
+    await _pactlExec('pactl set-sink-mute NearsecVirtual 1');
     _vAudioModules.loopback = await _pactlExec(
       `pactl load-module module-loopback source=NearsecVirtual.monitor sink=${hwSink} latency_msec=30`
     );
+    await new Promise((r) => setTimeout(r, 250));
+    await _pactlExec('pactl set-sink-mute NearsecVirtual 0');
     startLoopbackWatcher(hwSink);
     log(`Loopback mirror successfully attached to: ${hwSink}`);
   } else {
@@ -112,6 +124,23 @@ async function initVirtualAudio() {
     },
   });
   parentPort.postMessage({ type: 'ready', hwSink: hwSink || null });
+
+  // WirePlumber restores each device's last stored mute state BY NAME shortly
+  // (and asynchronously) after the node appears — and the quit path's SCREECH
+  // FIX mutes the sink right before unloading it, so "muted" is often what
+  // got stored. If that restore lands after the unmutes above, the whole
+  // cable goes silent (viewers hear nothing, monitor/local mirror dead) even
+  // though every device looks present. Re-assert after the restore window.
+  for (const delayMs of [1000, 3000]) {
+    setTimeout(() => {
+      _assertCableUnmuted();
+    }, delayMs);
+  }
+}
+
+function _assertCableUnmuted() {
+  _pactlExec('pactl set-sink-mute NearsecVirtual 0');
+  _pactlExec('pactl set-source-mute NearsecVirtualCapture 0');
 }
 
 // ── Virtual audio teardown ────────────────────────────────────────────────────
@@ -191,11 +220,16 @@ function stopLoopbackWatcher() {
 }
 
 // ── Game audio routing ────────────────────────────────────────────────────────
-// Shared app-name blacklist (audio_blacklist_daemon.js's DEFAULT_BLACKLIST),
-// plus technical/self exclusions specific to this allow-list router — not
-// app names, so they don't belong in the daemon's shared list (REFACTOR_PLAN.md
+// Technical/self exclusions specific to this allow-list router — not app
+// names, so they don't belong in the daemon's shared lists (REFACTOR_PLAN.md
 // Phase 8 — this used to be its own independent, drifted copy of the list).
-const AUDIO_BLACKLIST = [...DEFAULT_BLACKLIST, 'webrtc', 'sd_dummy'];
+const TECH_EXCLUSIONS = ['webrtc', 'sd_dummy'];
+
+// Active app blacklist for the mover. Swapped per routing mode in
+// routeGameAudio(): targeting a specific game keeps the full list (browsers/
+// music stay private); explicit ALL_DESKTOP capture only excludes voice apps
+// — streaming a browser video to viewers is what that mode is for.
+let _moverBlacklist = [...DEFAULT_BLACKLIST, ...TECH_EXCLUSIONS];
 
 let _targetProcess = null;
 let _routingInterval = null;
@@ -204,6 +238,16 @@ function routeGameAudio(gameProcessName) {
   _targetProcess = gameProcessName && gameProcessName !== 'ALL_DESKTOP' ? gameProcessName.toLowerCase() : null;
 
   if (_routingInterval) clearInterval(_routingInterval);
+
+  // A session is starting — audio must flow now, so defeat any stale
+  // WirePlumber mute-restore that landed after init's unmutes.
+  _assertCableUnmuted();
+
+  // Keep the ejection daemon's list in lockstep with the mover — otherwise
+  // the daemon would evict the very streams ALL_DESKTOP mode just routed in.
+  const privacyList = _targetProcess ? DEFAULT_BLACKLIST : VOICE_BLACKLIST;
+  _moverBlacklist = [...privacyList, ...TECH_EXCLUSIONS];
+  setDaemonBlacklist(privacyList);
 
   log(`Continuous pactl routing active. Target: ${_targetProcess || 'ALL_DESKTOP'}`);
 
@@ -217,6 +261,9 @@ function stopRoutingDaemon() {
     clearInterval(_routingInterval);
     _routingInterval = null;
   }
+  // Session over — restore full privacy protection on the idle cable.
+  _moverBlacklist = [...DEFAULT_BLACKLIST, ...TECH_EXCLUSIONS];
+  setDaemonBlacklist(DEFAULT_BLACKLIST);
 }
 
 // THE BRUTEFORCE PACTL MOVER
@@ -245,7 +292,7 @@ function _routeViaPatctl() {
         if (!identifier || identifier.includes('nearsec')) continue;
 
         // Apply blacklist
-        if (AUDIO_BLACKLIST.some((b) => identifier.includes(b.toLowerCase()))) continue;
+        if (_moverBlacklist.some((b) => identifier.includes(b.toLowerCase()))) continue;
 
         // Apply target filter if specific game requested
         if (_targetProcess && !identifier.includes(_targetProcess)) continue;
