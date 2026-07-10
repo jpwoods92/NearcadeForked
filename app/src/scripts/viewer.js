@@ -599,10 +599,33 @@ function connectInputWS() {
     console.log('[Input] Dedicated 250Hz Fast Lane connected.');
     // The server needs us to identify ourselves on this separate pipe!
     if (myId) inputWs.send(JSON.stringify({ type: 'identify', viewerId: myId }));
+
+    // Clock-sync loop for the server's input-latency log: lets the server
+    // convert our _lt input stamps to its own clock (see sendInputData and
+    // server/input-latency-log.js). Re-synced every 30s to ride out drift
+    // and NTP steps; the server keeps whichever sample had the lowest RTT.
+    if (window._nsClockSyncTimer) clearInterval(window._nsClockSyncTimer);
+    const sendClockSync = () => {
+      if (inputWs && inputWs.readyState === 1) {
+        inputWs.send(JSON.stringify({ type: 'clock-sync', vt: Date.now() }));
+      }
+    };
+    sendClockSync();
+    window._nsClockSyncTimer = setInterval(sendClockSync, 30000);
+  };
+
+  inputWs.onmessage = (e) => {
+    try {
+      const msg = JSON.parse(e.data);
+      if (msg.type === 'clock-sync-ack') {
+        inputWs.send(JSON.stringify({ type: 'clock-sync-done', vt: msg.vt, st: msg.st, vt2: Date.now() }));
+      }
+    } catch (_) {}
   };
 
   inputWs.onclose = () => {
     console.warn('[Input] Fast Lane disconnected. Retrying in 2s...');
+    if (window._nsClockSyncTimer) clearInterval(window._nsClockSyncTimer);
     setTimeout(connectInputWS, 2000);
   };
 

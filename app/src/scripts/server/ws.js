@@ -7,7 +7,8 @@ const WebSocket = require('ws');
 const state = require('./state.js');
 const { toUinput, normalizeGamepadMsg } = require('./input-bridge.js');
 const { routeGameAudio, stopRouting } = require('./audio-routing.js');
-const { loadConfig } = require('./env.js');
+const { loadConfig, dataDir } = require('./env.js');
+const inputLatencyLog = require('./input-latency-log.js');
 const { shouldRequirePin } = require('./network-info.js');
 const {
   arcadeSessions,
@@ -36,6 +37,10 @@ function hashIp(ip) {
  */
 function attachWebSocketServer(wss, deps) {
   const { sanitize, makePin } = deps;
+
+  // Daily viewer→server input latency CSVs (<dataDir>/latency-logs/),
+  // self-pruned after 7 days — see input-latency-log.js.
+  inputLatencyLog.init(dataDir);
 
   // ── INPUT ORCHESTRATOR (Hybrid C++ / Python) ──
   const screenW = global.currentResW || 1920;
@@ -663,6 +668,11 @@ function attachWebSocketServer(wss, deps) {
             (msg.type === 'gamepad' || msg.type === 'keyboard' || msg.type === 'kbm' || msg.type === 'gpid') &&
             msg.viewerId
           ) {
+            // DataChannel fast-lane inputs are relayed through the host page
+            // to this socket; latency stamps survive the JSON round trip.
+            // (VPS-relayed viewers have no clock offset — skipped inside.)
+            inputLatencyLog.recordInput(msg.viewerId, msg);
+
             if (msg.type === 'gamepad') {
               // Add simple debug logging to see if VPS inputs even reach this point
               console.log(`[DEBUG VPS-GP] Arrived: viewerId=${msg.viewerId} pad_id=${msg.pad_id}`);
@@ -1054,8 +1064,11 @@ function attachWebSocketServer(wss, deps) {
             return;
           }
 
+          if (inputLatencyLog.handleClockSync(ws, msg, id)) return;
+
           if (msg.type === 'gamepad' || msg.type === 'keyboard') {
             if (msg.type === 'keyboard') msg.type = 'kbm';
+            inputLatencyLog.recordInput(id, msg);
 
             // ── PPS flood protection ──────────────────────────────────────────
             // Track packets per second per viewer. Drop the packet and kick the
@@ -1193,6 +1206,10 @@ function attachWebSocketServer(wss, deps) {
             console.log('[input] identified as', myId);
             return;
           }
+          // Clock-sync exchange + latency sample for every stamped input —
+          // this socket is the viewer's sync channel (see input-latency-log.js).
+          if (inputLatencyLog.handleClockSync(ws, msg, myId)) return;
+          if (myId) inputLatencyLog.recordInput(myId, msg);
           if (msg.type === 'gpid') {
             if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1)
               state.runtime.hostWS.send(JSON.stringify({ type: 'viewer-gpid', viewerId: myId, id: msg.id }));

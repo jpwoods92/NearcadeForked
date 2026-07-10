@@ -79,13 +79,23 @@ const mouseMap = { 0: 'BTN_LEFT', 1: 'BTN_MIDDLE', 2: 'BTN_RIGHT' };
 
 // ── Fast-Lane Input Dispatcher ────────────────────────────────────────────────
 // Tries WebRTC DataChannel first (zero-latency), falls back to inputWs, then ws.
+// Every object message gets a latency stamp: _lt (viewer clock, ms) and _lp
+// (which transport actually carried it) — the server diffs _lt against its
+// clock-sync offset to log one-way input latency per transport. See
+// server/input-latency-log.js for the sync protocol.
 function sendInputData(data) {
-  const str = typeof data === 'string' ? data : JSON.stringify(data);
+  const stampable = typeof data !== 'string';
+  const ser = (lp) => {
+    if (!stampable) return data;
+    data._lt = Date.now();
+    data._lp = lp;
+    return JSON.stringify(data);
+  };
 
   // 1. WebTransport Unreliable Datagrams (VPS Fast Lane)
   if (window.wtInputWriter) {
     try {
-      window.wtInputWriter.write(new TextEncoder().encode(str));
+      window.wtInputWriter.write(new TextEncoder().encode(ser('wt')));
       return;
     } catch (_) {}
   }
@@ -93,16 +103,16 @@ function sendInputData(data) {
   // 2. WebRTC DataChannel (P2P Fast Lane)
   if (window._fastLaneChannel && window._fastLaneChannel.readyState === 'open') {
     try {
-      window._fastLaneChannel.send(str);
+      window._fastLaneChannel.send(ser('dc'));
       return;
     } catch (_) {}
   }
   if (inputWs && inputWs.readyState === 1) {
-    inputWs.send(str);
+    inputWs.send(ser('wsi'));
     return;
   }
   if (ws && ws.readyState === 1) {
-    ws.send(str);
+    ws.send(ser('ws'));
   }
 }
 
