@@ -2224,6 +2224,10 @@ async function main() {
             viewerNames.set(id, joinName);
             console.log("[viewer]", id, "name resolved to:", joinName);
 
+            // Always acknowledge the viewer immediately so it can transition
+            // past the "Connecting" state, regardless of host connection status.
+            ws.send(JSON.stringify({ type: "join-ack", id, name: joinName, viewerCount: viewers.size }));
+
             if (hostWS && hostWS.readyState === 1) {
               hostWS.send(JSON.stringify({
                 type: "viewer-joined",
@@ -2232,21 +2236,25 @@ async function main() {
                 viewerRegion: msg.viewerRegion || null,
                 isDesktopApp: !!msg.isDesktopApp
               }));
-              const chatMsg = JSON.stringify({ type: "chat", from: "Nearcade", msg: joinName + ' joined' });
-              broadcast(chatMsg);
-              hostWS.send(chatMsg);
-              const hCfg = loadConfig();
-              ws.send(JSON.stringify({ type: "host-connected", hostName: hCfg.hostName || 'Host' }));
-              ws.send(JSON.stringify({
-                type: "ctrl-settings",
-                enableMotion: !!global.enableMotion,
-                touchLayout: global.touchLayout || 'default',
-                expDevices: global.expDevices || []
-              }));
-              if (hostStreaming) {
-                ws.send(JSON.stringify({ type: "host-stream-ready" }));
-              }
             }
+
+            // Send host info to viewer unconditionally — it's needed for the UI
+            // even if the host reconnects moments later.
+            const hCfg = loadConfig();
+            ws.send(JSON.stringify({ type: "host-connected", hostName: hCfg.hostName || 'Host' }));
+            ws.send(JSON.stringify({
+              type: "ctrl-settings",
+              enableMotion: !!global.enableMotion,
+              touchLayout: global.touchLayout || 'default',
+              expDevices: global.expDevices || []
+            }));
+            if (hostStreaming) {
+              ws.send(JSON.stringify({ type: "host-stream-ready" }));
+            }
+
+            // Chat notification — broadcast covers all viewers + hostWS
+            const chatMsg = JSON.stringify({ type: "chat", from: "Nearcade", msg: joinName + ' joined' });
+            broadcast(chatMsg);
 
             broadcastRoster();
             return;
@@ -2487,9 +2495,9 @@ async function main() {
           broadcastRoster();
           const leftName = viewerNames.get(id) || id;
           if (hostWS && hostWS.readyState === 1) hostWS.send(JSON.stringify({ type: "viewer-left", viewerId: id, name: leftName }));
+          // broadcast() already sends to hostWS — no need for a second send
           const leaveMsg = JSON.stringify({ type: "chat", from: "Nearcade", msg: leftName + ' left' });
           broadcast(leaveMsg);
-          if (hostWS && hostWS.readyState === 1) hostWS.send(leaveMsg);
         }
         console.log("[viewer]", id, "left (" + viewers.size + " total, " + controllerViewerCount() + " with controllers)");
       });

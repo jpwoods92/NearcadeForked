@@ -935,13 +935,31 @@ function appendChat(name, text, isMe) {
     }
 }
 
+const chatHistory = [];
+let chatHistoryIndex = -1;
 function sendChat() {
     const inp = document.getElementById('chatMsg');
     const msg = inp.value.trim(); if (!msg || !ws || ws.readyState !== 1) return;
     ws.send(JSON.stringify({ type: 'chat', from: 'Host', msg }));
     appendChat('Host', msg, true);
+    chatHistory.push(msg);
+    chatHistoryIndex = chatHistory.length;
     inp.value = '';
 }
+document.addEventListener('keydown', e => {
+    if (e.target.id !== 'chatMsg') return;
+    const inp = e.target;
+    if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (chatHistory.length === 0) return;
+        chatHistoryIndex = Math.max(0, chatHistoryIndex - 1);
+        inp.value = chatHistory[chatHistoryIndex];
+    } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        chatHistoryIndex = Math.min(chatHistory.length, chatHistoryIndex + 1);
+        inp.value = chatHistoryIndex < chatHistory.length ? chatHistory[chatHistoryIndex] : '';
+    }
+});
 
 function setCapDot(state) {
     const d = document.getElementById('capDot');
@@ -1599,27 +1617,30 @@ async function sendOfferToViewer(viewerId) {
         delete peerConnections[viewerId];
     }
 
-    const stunPool = [
-        'stun:stun.l.google.com:19302',
+    if (!_turnCredentials && _turnFetchPromise) {
+        await _turnFetchPromise;
+    }
+
+    // Always include Google STUN as the primary — it's the most reliable.
+    const iceServers = [{ urls: 'stun:stun.l.google.com:19302' }];
+
+    // Pick a second from trusted alternates
+    const trustedPool = [
         'stun:stun1.l.google.com:19302',
         'stun:stun2.l.google.com:19302',
         'stun:stun3.l.google.com:19302',
         'stun:stun4.l.google.com:19302',
         'stun:stun.cloudflare.com:3478',
+    ];
+    iceServers.push({ urls: trustedPool.sort(() => 0.5 - Math.random())[0] });
+
+    // Last-resort fallback for restricted networks
+    const fallbackPool = [
         'stun:stun.twilio.com:3478',
         'stun:global.stun.twilio.com:3478',
-        'stun:stun.miwifi.com:3478'
+        'stun:stun.miwifi.com:3478',
     ];
-
-    if (!_turnCredentials && _turnFetchPromise) {
-        await _turnFetchPromise;
-    }
-
-    // Pick 2 random STUN servers to avoid the "Using five or more STUN/TURN servers slows down discovery" warning
-    // and naturally rotate STUN/TURN across retries for users with VPNs.
-    const shuffledStun = stunPool.sort(() => 0.5 - Math.random()).slice(0, 2).map(url => ({ urls: url }));
-    
-    const iceServers = [...shuffledStun];
+    iceServers.push({ urls: fallbackPool.sort(() => 0.5 - Math.random())[0] });
     if (_turnCredentials) iceServers.push(_turnCredentials);
 
     const pc = new RTCPeerConnection({
@@ -3182,7 +3203,7 @@ window.saveCodecUI = async function(val) {
                     const cb = document.getElementById('codecBadge');
                     if (codec && cb) cb.textContent = codec.split('/')[1];
 
-                    pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: false })
+                    pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: false, iceRestart: true })
                         .then(offer => pc.setLocalDescription(offer))
                         .then(() => {
                             const msg = { type: 'offer', sdp: pc.localDescription, _viewerId: vid, codec: rawCodecName };
@@ -3587,7 +3608,11 @@ function applyCtrlSettingsUI() {
     const trackHybrid = document.getElementById('ctrlTrackHybrid');
     if (trackHybrid) trackHybrid.classList.toggle('on', !!ctrlSettings.hybridInput);
     const ctrlTypeSelect = document.getElementById('ctrlTypeSelect');
-    if (ctrlTypeSelect) ctrlTypeSelect.value = ctrlSettings.ctrlType || 'xbox360';
+    if (ctrlTypeSelect) {
+        ctrlTypeSelect.value = ctrlSettings.forceXboxOne ? 'xboxone' : (ctrlSettings.ctrlType || 'xbox360');
+        const opt360 = ctrlTypeSelect.querySelector('option[value="xbox360"]');
+        if (opt360) opt360.disabled = ctrlSettings.forceXboxOne;
+    }
 
     const btn = document.getElementById('ctrlSettingsBtn');
 
@@ -3681,6 +3706,8 @@ function sendCtrlSettings() {
         else expDevices = JSON.parse(localStorage.getItem('ns_exp_devices') || '[]');
     } catch(e) {}
 
+    const effectiveCtrlType = ctrlSettings.forceXboxOne ? 'xboxone' : ctrlSettings.ctrlType;
+
     const payload = JSON.stringify({
         type: 'ctrl-settings',
         forceXboxOne:     ctrlSettings.forceXboxOne,
@@ -3688,7 +3715,7 @@ function sendCtrlSettings() {
         enableMotion:     ctrlSettings.enableMotion,
         defaultInputMode: ctrlSettings.defaultInputMode,
         hybridInput:      ctrlSettings.hybridInput,
-        ctrlType:         ctrlSettings.ctrlType,
+        ctrlType:         effectiveCtrlType,
         touchLayout:      ctrlSettings.touchLayout,
         expDevices:       expDevices,
     });

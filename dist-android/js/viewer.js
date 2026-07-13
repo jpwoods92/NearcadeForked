@@ -312,23 +312,26 @@ async function createPC() {
         await _turnFetchPromise;
     }
 
-    const stunPool = [
-        'stun:stun.l.google.com:19302',
+    // Always include Google STUN as the primary — it's the most reliable.
+    const iceServers = [{ urls: 'stun:stun.l.google.com:19302' }];
+
+    // Pick a second from trusted alternates
+    const trustedPool = [
         'stun:stun1.l.google.com:19302',
         'stun:stun2.l.google.com:19302',
         'stun:stun3.l.google.com:19302',
         'stun:stun4.l.google.com:19302',
         'stun:stun.cloudflare.com:3478',
+    ];
+    iceServers.push({ urls: trustedPool.sort(() => 0.5 - Math.random())[0] });
+
+    // Last-resort fallback for restricted networks
+    const fallbackPool = [
         'stun:stun.twilio.com:3478',
         'stun:global.stun.twilio.com:3478',
-        'stun:stun.miwifi.com:3478'
+        'stun:stun.miwifi.com:3478',
     ];
-
-    // Pick 2 random STUN servers to avoid the "Using five or more STUN/TURN servers slows down discovery" warning
-    // and naturally rotate STUN/TURN across retries for users with VPNs.
-    const shuffledStun = stunPool.sort(() => 0.5 - Math.random()).slice(0, 2).map(url => ({ urls: url }));
-    
-    const iceServers = [...shuffledStun];
+    iceServers.push({ urls: fallbackPool.sort(() => 0.5 - Math.random())[0] });
     if (_turnCredentials) iceServers.push(_turnCredentials);
 
     pc = new RTCPeerConnection({
@@ -2280,14 +2283,32 @@ function appendChat(name, text, isMe) {
     d.appendChild(document.createTextNode(text));
     el.appendChild(d); el.scrollTop = el.scrollHeight;
 }
+const chatHistory = [];
+let chatHistoryIndex = -1;
 function sendChat() {
     const inp = document.getElementById('chatMsg');
     const msg = inp.value.trim();
     if (!msg || !ws || ws.readyState !== 1) return;
     ws.send(JSON.stringify({ type: 'chat', from: myName, msg }));
     appendChat(myName, msg, true);
+    chatHistory.push(msg);
+    chatHistoryIndex = chatHistory.length;
     inp.value = '';
 }
+document.addEventListener('keydown', e => {
+    if (e.target.id !== 'chatMsg') return;
+    const inp = e.target;
+    if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (chatHistory.length === 0) return;
+        chatHistoryIndex = Math.max(0, chatHistoryIndex - 1);
+        inp.value = chatHistory[chatHistoryIndex];
+    } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        chatHistoryIndex = Math.min(chatHistory.length, chatHistoryIndex + 1);
+        inp.value = chatHistoryIndex < chatHistory.length ? chatHistory[chatHistoryIndex] : '';
+    }
+});
 function toggleChat() {
     document.getElementById('chatPanel').classList.toggle('open');
     document.getElementById('nsBar').classList.remove('open');
