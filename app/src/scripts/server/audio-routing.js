@@ -221,22 +221,28 @@ function destroyVirtualAudio() {
   }
 
   if (process.platform === 'linux') {
-    const { execSync } = require('child_process');
+    const { execFileSync } = require('child_process');
 
     // Move app streams off the virtual sink and repair the default sink
     // BEFORE unloading anything — see _evacuateNearsecSinks() for why the
     // worker's own async move-back can't be relied on here.
     _evacuateNearsecSinks();
 
-    // THE FIX: Unload loopback BEFORE the sink to prevent the audio buzz
+    // THE FIX: Unload loopback BEFORE the sink to prevent the audio buzz.
+    // execFileSync + parseInt (upstream v3.0.2): module ids come from parsed
+    // pactl output — validate as integers rather than interpolating into a
+    // shell string.
     const unloadOrder = ['loopback', 'remap', 'sink'];
     for (const key of unloadOrder) {
       const id = _vAudioModules[key];
       if (id) {
-        try {
-          execSync(`pactl unload-module ${id}`, { stdio: 'ignore' });
-        } catch (_) {}
-        console.log(`[VirtualAudio] Cleaned up ${key} module ${id}`);
+        const moduleId = parseInt(id, 10);
+        if (!isNaN(moduleId)) {
+          try {
+            execFileSync('pactl', ['unload-module', String(moduleId)], { stdio: 'ignore' });
+          } catch (_) {}
+          console.log(`[VirtualAudio] Cleaned up ${key} module ${moduleId}`);
+        }
       }
     }
 

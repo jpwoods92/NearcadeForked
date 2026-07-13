@@ -27,7 +27,7 @@ if (typeof PusherRaw === 'function') {
 // in sync by hand if either changes. See REFACTOR_PLAN.md Phase 5.7.
 const pusher = new Pusher('a93f5405058cd9fc7967', {
   cluster: 'us2',
-  authEndpoint: 'https://nearsec.cutefame.net/api/pusher-auth',
+  authEndpoint: 'https://nearcade.cutefame.net/api/pusher-auth',
 });
 
 const globalArcadeChannel = pusher.subscribe('private-arcade-global');

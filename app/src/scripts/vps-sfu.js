@@ -169,6 +169,7 @@ function connectVps(cfg) {
                       : '';
               const viewerUrl = origin + '/?v3&host=' + hostParam + pipeArg;
               window._globalTunnelUrl = viewerUrl;
+              if (typeof _updateDiscordRPC === 'function') _updateDiscordRPC();
               const el = document.getElementById('urlList');
               if (el) {
                 el.innerHTML = '';

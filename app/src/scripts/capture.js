@@ -483,6 +483,7 @@ async function startCapture() {
     _elDisabled('btnSwitch', false);
     _elDisabled('btnStop', false);
     _elDisabled('btnKbmPanic', false);
+    updatePlaygroundToolbarState(true);
   } catch (err) {
     // UNFREEZE TRIGGER: Now runs cleanly whether by user abort or by our timeout
     const sysName = isLinux ? (window.electronAPI ? 'Wayland/PipeWire' : 'Linux Native') : 'Windows/Mac Desktop API';
@@ -498,6 +499,7 @@ async function startCapture() {
     _elDisabled('btnStart', false);
     _elDisabled('btnSwitch', true);
     _elDisabled('btnStop', true);
+    updatePlaygroundToolbarState(false);
   }
 }
 
@@ -520,6 +522,7 @@ function _forceKillStream(stream) {
 }
 
 function stopCapture() {
+  const _wasArcade = isArcade;
   isArcade = false;
   if (currentStream) {
     _forceKillStream(currentStream);
@@ -585,6 +588,7 @@ function stopCapture() {
   _elDisabled('btnStop', true);
   _elDisabled('btnKbmPanic', true);
   kbmPanicActive = false;
+  updatePlaygroundToolbarState(false);
   updateKbmPanicButton();
   Object.values(peerConnections).forEach((pc) => closePeerConnection(pc));
   peerConnections = {};
@@ -592,6 +596,9 @@ function stopCapture() {
   _updateDiscordRPC();
 
   if (ws && ws.readyState === 1) {
+    if (_wasArcade) {
+      ws.send(JSON.stringify({ type: 'arcade-session-stop' }));
+    }
     ws.send(JSON.stringify({ type: 'host-stream-stopped' }));
   }
 

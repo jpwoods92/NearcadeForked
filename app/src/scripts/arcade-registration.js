@@ -17,7 +17,7 @@
 Pusher.logToConsole = false;
 const pusher = new Pusher('a93f5405058cd9fc7967', {
   cluster: 'us2',
-  authEndpoint: 'https://nearsec.cutefame.net/api/pusher-auth',
+  authEndpoint: 'https://nearcade.cutefame.net/api/pusher-auth',
 });
 const arcadeChannel = pusher.subscribe('private-arcade-global');
 
@@ -43,7 +43,9 @@ arcadeChannel.bind('pusher:subscription_error', (status) => {
 
 let arcadePingInterval = null;
 let arcadeOverrodePin = false;
-const hostSessionId = 'ns-' + Math.random().toString(36).substr(2, 9);
+const hostSessionId =
+  'ns-' +
+  (window.crypto?.randomUUID ? window.crypto.randomUUID().slice(0, 9) : Math.random().toString(36).substr(2, 9));
 
 let isArcade = false;
 const arcadeConfig = {
@@ -52,9 +54,35 @@ const arcadeConfig = {
   thumbnail: localStorage.getItem('ns_arcade_thumb') || '',
   maxPlayers: localStorage.getItem('ns_arcade_maxPlayers') || '4',
   requirePin: localStorage.getItem('ns_arcade_requirePin') === 'true',
+  category: localStorage.getItem('ns_arcade_category') || '',
 };
 
 async function startArcadeSession() {
+  if (typeof appConfig !== 'undefined' && appConfig.hidmaestro) {
+    log(
+      I18N.t(
+        'Arcade mode is not compatible with the HIDMaestro backend. Disable HIDMaestro in Settings to host Arcade sessions.'
+      ),
+      'err'
+    );
+    const overlay = document.createElement('div');
+    overlay.id = 'arcadeHmConflict';
+    overlay.style.cssText =
+      'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;';
+    overlay.innerHTML = `<div style="background:#121518;border:1px solid var(--warn);border-radius:12px;padding:32px;max-width:440px;text-align:center;box-shadow:0 16px 48px rgba(0,0,0,0.8);font-family:sans-serif;">
+        <h2 style="color:var(--warn);margin:0 0 12px 0;font-size:15px;">HIDMaestro Conflicts With Arcade</h2>
+        <p style="color:#949ba4;font-size:13px;line-height:1.6;margin:0 0 6px 0;">
+            The HIDMaestro virtual controller backend is not compatible with Arcade mode.
+        </p>
+        <p style="color:#949ba4;font-size:13px;line-height:1.6;margin:0 0 20px 0;">
+            Disable it in <strong>Settings → HIDMaestro Virtual Controller</strong> to host Arcade sessions.
+        </p>
+        <button onclick="this.closest('[id=arcadeHmConflict]').remove()" style="padding:10px 28px;border-radius:6px;border:none;background:var(--accent);color:#000;font-weight:600;cursor:pointer;">OK</button>
+    </div>`;
+    document.body.appendChild(overlay);
+    closeArcadeModal();
+    return;
+  }
   const provider = document.querySelector('input[name="provider"]:checked');
   if (provider && provider.value === 'p2p') {
     log(I18N.t('Arcade mode is not supported over P2P tunnels.'), 'err');
@@ -65,6 +93,7 @@ async function startArcadeSession() {
   arcadeConfig.desc = document.getElementById('arcadeGameDesc').value.trim();
   arcadeConfig.maxPlayers = document.getElementById('arcadeMaxPlayers').value;
   arcadeConfig.requirePin = document.getElementById('arcadeRequirePin').checked;
+  arcadeConfig.category = document.getElementById('arcadeCategory')?.value || '';
 
   arcadeConfig.thumbnail = await fetchGameThumbnail(arcadeConfig.title);
 
@@ -73,6 +102,7 @@ async function startArcadeSession() {
   localStorage.setItem('ns_arcade_thumb', arcadeConfig.thumbnail);
   localStorage.setItem('ns_arcade_maxPlayers', arcadeConfig.maxPlayers);
   localStorage.setItem('ns_arcade_requirePin', arcadeConfig.requirePin);
+  localStorage.setItem('ns_arcade_category', arcadeConfig.category);
 
   closeArcadeModal();
 
@@ -140,17 +170,41 @@ function _doArcadeRegister() {
         log(I18N.t('PIN disabled for Arcade session'), 'ok');
       }
 
-      const getPingData = () => ({
-        id: hostSessionId,
-        game: arcadeConfig.title,
-        thumbnail: arcadeConfig.thumbnail,
-        hasPin: arcadeConfig.requirePin,
-        url: info.tunnelUrl,
-        hostRegion,
-        region: `${knownViewers.size + 1}/${arcadeConfig.maxPlayers} Players • ${getHostOS()}`,
-      });
+      const getPingData = () => {
+        const pipelineVal = document.getElementById('pipelineSelect')?.value;
+        const forceWc =
+          new URLSearchParams(window.location.search).get('wc') === '1' ||
+          pipelineVal === 'webcodecs' ||
+          pipelineVal === 'custom_webcodecs';
+        const codec = localStorage.getItem('ns_codec') || document.getElementById('codecSelect')?.value || 'Auto';
+        return {
+          id: hostSessionId,
+          game: arcadeConfig.title,
+          thumbnail: arcadeConfig.thumbnail,
+          hasPin: arcadeConfig.requirePin,
+          url: info.tunnelUrl,
+          version: window.NEARSEC_VERSION || '0.0.0',
+          hostRegion,
+          os: getHostOS(),
+          codecType: forceWc ? 'WebCodecs' : 'WebRTC',
+          codec,
+          category: arcadeConfig.category,
+          region: `${knownViewers.size + 1}/${arcadeConfig.maxPlayers} Players`,
+        };
+      };
 
       arcadeChannel.trigger('client-session-ping', getPingData());
+
+      // One-shot registration with the arcade directory (KV session tracking
+      // + Discord embed on the Cloudflare Worker, upstream v3.0.2). Sent once
+      // — every POST can fire a webhook embed, so this must not be on the
+      // 10s interval below.
+      fetch('https://nearcade.cutefame.net/api/arcade/ping', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(getPingData()),
+      }).catch((e) => console.error('[Arcade] Server ping failed:', e));
+
       sysChat(I18N.t('Arcade Mode started:') + ' ' + arcadeConfig.title);
       document.getElementById('btnArcade').innerHTML =
         '<span style="color:var(--green); font-weight:bold; font-size: 10px;">ARCADE<br>LIVE</span>';

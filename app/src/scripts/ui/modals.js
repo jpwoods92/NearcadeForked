@@ -219,6 +219,14 @@ function toggleAppSetting(key) {
   if (key === 'alwaysOnTop' && window.electronAPI?.toggleAlwaysOnTop) {
     window.electronAPI.toggleAlwaysOnTop();
   }
+  // Persist app-behaviour toggles to the config file so the main process
+  // sees them on next boot (upstream v3.0.2 — e.g. tray=false means the
+  // close button quits instead of hiding).
+  if (window.electronAPI?.saveSettings) {
+    if (key === 'tray') window.electronAPI.saveSettings({ tray: appSettings[key] });
+    if (key === 'discordRPC') window.electronAPI.saveSettings({ discordRPC: appSettings[key] });
+    if (key === 'rumble') window.electronAPI.saveSettings({ rumble: appSettings[key] });
+  }
   log(I18N.t('Setting') + ' ' + key + ' = ' + appSettings[key], 'ok');
 }
 

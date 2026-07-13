@@ -6,7 +6,7 @@
       name="viewport"
       content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
     />
-    <title>NearsecTogether</title>
+    <title>Nearcade</title>
     <link
       href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&display=swap"
       rel="stylesheet"
@@ -56,12 +56,12 @@
     <script src="/js/ui/error-popup.js"></script>
 
     <div id="ns-splash-screen">
-      <img src="../../assets/NearsecTogetherTitle.png" alt="Nearsec Logo" />
+      <img src="../../assets/NearcadeTitle.png" alt="Nearcade Logo" />
     </div>
     <div id="docsFloatBtn" style="position: fixed; top: 24px; right: 24px; z-index: 999; display: flex; gap: 8px">
       <button
         onclick="openAbout()"
-        title="About Nearsec"
+        title="About Nearcade"
         style="
           background: var(--accent);
           border: none;
@@ -122,12 +122,12 @@
           </button>
           <div class="brand-wrap">
             <img
-              src="../../assets/NearsecTogetherLogo.png"
+              src="../../assets/NearcadeLogo.png"
               alt="Logo"
               class="brand-logo"
               onerror="this.style.display = 'none'"
             />
-            <div class="brand-text">Nearsec Together</div>
+            <div class="brand-text">Nearcade</div>
           </div>
         </div>
 
@@ -275,7 +275,7 @@
 
         <div class="panel" id="panel-arcade">
           <iframe
-            src="https://nearsec.cutefame.net/arcade?electron=1"
+            src="https://nearcade.cutefame.net/arcade?electron=1"
             style="width: 100%; height: 100%; border: none; flex: 1"
             allow="gamepad"
           ></iframe>
@@ -436,19 +436,62 @@
                 </div>
                 <div class="toggle" id="settingTrackRumble"><div class="toggle-thumb"></div></div>
               </div>
+              <div class="setting-row" onclick="toggleAppSetting('useSystemAccent')">
+                <div class="setting-info">
+                  <h4>
+                    Use System Accent Color
+                    <span
+                      id="sysAccentIndicator"
+                      style="
+                        display: none;
+                        font-size: 9px;
+                        font-weight: 400;
+                        color: var(--accent);
+                        background: var(--accent-dim);
+                        padding: 2px 8px;
+                        border-radius: 4px;
+                        margin-left: 8px;
+                        vertical-align: middle;
+                      "
+                      >Active</span
+                    >
+                  </h4>
+                  <p>Follow your desktop's accent color instead of the default theme.</p>
+                </div>
+                <div class="toggle" id="settingTrackSystemAccent"><div class="toggle-thumb"></div></div>
+              </div>
+              <div class="setting-row" id="settingRowHidMaestro" style="display: none" onclick="toggleHidMaestro()">
+                <div class="setting-info">
+                  <h4>HIDMaestro Virtual Controller</h4>
+                  <p>
+                    Experimental Windows backend. Uses HIDMaestro instead of ViGEmBus for virtual gamepads.<br /><strong
+                      style="color: var(--warn)"
+                      >Not compatible with Arcade mode.</strong
+                    >
+                  </p>
+                </div>
+                <div class="toggle" id="settingTrackHidMaestro"><div class="toggle-thumb"></div></div>
+              </div>
               <div class="setting-row" id="settingRowDiscordRPC" onclick="toggleAppSetting('discordRPC')">
                 <div class="setting-info">
                   <h4>Discord Rich Presence</h4>
-                  <p>Show your friends what game you're playing on Nearsec Arcade.</p>
+                  <p>Show your friends what game you're playing on Nearcade Arcade.</p>
                 </div>
                 <div class="toggle" id="settingTrackDiscordRPC"><div class="toggle-thumb"></div></div>
               </div>
               <div class="setting-row" onclick="toggleAppSetting('checkForUpdates')" id="settingRowUpdates">
                 <div class="setting-info">
                   <h4>Check for Updates</h4>
-                  <p>Automatically check for a new version of NearsecTogether on startup.</p>
+                  <p>Automatically check for a new version of Nearcade on startup.</p>
                 </div>
                 <div class="toggle" id="settingTrackCheckForUpdates"><div class="toggle-thumb"></div></div>
+              </div>
+              <div class="setting-row" onclick="toggleAppSetting('tray')">
+                <div class="setting-info">
+                  <h4>Minimize to Tray</h4>
+                  <p>Closing the window hides to the system tray instead of quitting.</p>
+                </div>
+                <div class="toggle" id="settingTrackTray"><div class="toggle-thumb"></div></div>
               </div>
               <div class="setting-row" id="settingRowOpenLog" style="cursor: default">
                 <div class="setting-info">
@@ -485,6 +528,26 @@
                     Open Folder
                   </button>
                 </div>
+              </div>
+              <div class="setting-row" id="settingRowSetupWizard" style="cursor: default">
+                <div class="setting-info">
+                  <h4>Setup Wizard</h4>
+                  <p>Re-open the first-time setup wizard to install drivers or review options.</p>
+                </div>
+                <button
+                  onclick="window.location.href = '/setup'"
+                  style="
+                    padding: 8px 16px;
+                    border-radius: 6px;
+                    cursor: pointer;
+                    font-weight: 600;
+                    border: 1px solid var(--border);
+                    background: var(--surface);
+                    color: var(--text);
+                  "
+                >
+                  Open Setup
+                </button>
               </div>
             </div>
             <div class="setting-row" id="settingRowUISelect">
@@ -525,6 +588,202 @@
                 <p>Skips this dashboard and jumps straight into hosting on startup.</p>
               </div>
               <div class="toggle" id="settingTrackAutoHost"><div class="toggle-thumb"></div></div>
+            </div>
+            <div class="settings-section">
+              <h2>Arcade Moderation</h2>
+              <div class="setting-row" style="cursor: default; flex-wrap: wrap">
+                <div class="setting-info" style="flex: 1; min-width: 200px">
+                  <h4>Mod API Endpoint</h4>
+                  <p>
+                    Your Cloudflare Worker URL for the arcade moderation API (e.g.
+                    https://your-worker.workers.dev/api/mod)
+                  </p>
+                </div>
+                <input
+                  type="url"
+                  id="settingModEndpoint"
+                  placeholder="https://your-worker.workers.dev/api/mod"
+                  onchange="saveModSettings()"
+                  style="
+                    flex: 1;
+                    min-width: 200px;
+                    padding: 8px;
+                    background: #000;
+                    border: 1px solid var(--border);
+                    color: #fff;
+                    border-radius: 4px;
+                    font-family: inherit;
+                  "
+                />
+              </div>
+              <div class="setting-row" style="cursor: default; flex-wrap: wrap">
+                <div class="setting-info" style="flex: 1; min-width: 200px">
+                  <h4>Mod Secret Token</h4>
+                  <p>The token generated by the mod console. Grants access to ban/unban API.</p>
+                </div>
+                <input
+                  type="password"
+                  id="settingModSecret"
+                  placeholder="64-char hex token"
+                  onchange="saveModSettings()"
+                  style="
+                    flex: 1;
+                    min-width: 200px;
+                    padding: 8px;
+                    background: #000;
+                    border: 1px solid var(--border);
+                    color: #fff;
+                    border-radius: 4px;
+                    font-family: inherit;
+                  "
+                />
+              </div>
+              <div class="setting-row" style="cursor: default; flex-wrap: wrap">
+                <div class="setting-info" style="flex: 1; min-width: 200px">
+                  <h4>Discord Webhook</h4>
+                  <p>Webhook URL for arcade session announcements (leave empty to disable).</p>
+                </div>
+                <input
+                  type="url"
+                  id="settingArcadeWebhook"
+                  placeholder="https://discord.com/api/webhooks/..."
+                  onchange="saveModSettings()"
+                  style="
+                    flex: 1;
+                    min-width: 200px;
+                    padding: 8px;
+                    background: #000;
+                    border: 1px solid var(--border);
+                    color: #fff;
+                    border-radius: 4px;
+                    font-family: inherit;
+                  "
+                />
+              </div>
+              <div class="setting-row" style="cursor: default; flex-wrap: wrap">
+                <div class="setting-info" style="flex: 1; min-width: 200px">
+                  <h4>Arcade Role ID</h4>
+                  <p>Discord role ID to ping on session start (leave empty to not ping anyone).</p>
+                </div>
+                <input
+                  type="text"
+                  id="settingArcadeRoleId"
+                  placeholder="123456789012345678"
+                  onchange="saveModSettings()"
+                  style="
+                    flex: 1;
+                    min-width: 200px;
+                    padding: 8px;
+                    background: #000;
+                    border: 1px solid var(--border);
+                    color: #fff;
+                    border-radius: 4px;
+                    font-family: inherit;
+                  "
+                />
+              </div>
+              <div class="setting-row" style="cursor: default; flex-wrap: wrap">
+                <div class="setting-info" style="flex: 1; min-width: 200px">
+                  <h4>Username Blacklist</h4>
+                  <p>Comma-separated words. Viewers with matching names get a generic name instead.</p>
+                </div>
+                <input
+                  type="text"
+                  id="settingNameBlacklist"
+                  placeholder="word1, word2, word3"
+                  onchange="saveModSettings()"
+                  style="
+                    flex: 1;
+                    min-width: 200px;
+                    padding: 8px;
+                    background: #000;
+                    border: 1px solid var(--border);
+                    color: #fff;
+                    border-radius: 4px;
+                    font-family: inherit;
+                  "
+                />
+              </div>
+              <div class="setting-row" style="cursor: default; gap: 8px">
+                <button
+                  onclick="verifyModConnection()"
+                  style="
+                    padding: 8px 16px;
+                    border-radius: 6px;
+                    cursor: pointer;
+                    font-weight: 600;
+                    border: 1px solid var(--border);
+                    background: var(--surface);
+                    color: var(--text);
+                  "
+                >
+                  Verify Connection
+                </button>
+                <span id="modConnectionStatus" style="font-size: 12px; color: var(--muted2)"></span>
+              </div>
+              <div id="banManagementArea" style="display: none; margin-top: 12px">
+                <div style="display: flex; gap: 8px; margin-bottom: 8px">
+                  <input
+                    type="text"
+                    id="banIPInput"
+                    placeholder="IP address to ban"
+                    style="
+                      flex: 1;
+                      min-width: 120px;
+                      padding: 8px;
+                      background: #000;
+                      border: 1px solid var(--border);
+                      color: #fff;
+                      border-radius: 4px;
+                      font-family: inherit;
+                    "
+                  />
+                  <button
+                    onclick="executeBan()"
+                    style="
+                      padding: 8px 16px;
+                      border-radius: 6px;
+                      cursor: pointer;
+                      font-weight: 600;
+                      border: 1px solid var(--danger);
+                      background: transparent;
+                      color: var(--danger);
+                      font-family: inherit;
+                    "
+                  >
+                    Ban
+                  </button>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px">
+                  <button
+                    onclick="fetchBanList()"
+                    style="
+                      padding: 6px 12px;
+                      border-radius: 6px;
+                      cursor: pointer;
+                      font-weight: 600;
+                      border: 1px solid var(--border);
+                      background: var(--surface);
+                      color: var(--text);
+                      font-size: 12px;
+                      font-family: inherit;
+                    "
+                  >
+                    Refresh Ban List
+                  </button>
+                  <span id="banStatus" style="font-size: 12px; color: var(--muted)"></span>
+                </div>
+                <div
+                  id="banListContainer"
+                  style="
+                    max-height: 220px;
+                    overflow-y: auto;
+                    border: 1px solid var(--border);
+                    border-radius: 6px;
+                    background: #000;
+                  "
+                ></div>
+              </div>
             </div>
             <div class="settings-section">
               <h2>Experimental (Requires App Restart)</h2>
@@ -613,23 +872,5 @@
     </script>
     <script src="/js/i18n.js"></script>
     <script src="/js/dashboard.js"></script>
-
-    <button id="floating-setup-btn" onclick="runInAppSetup()" title="Install System Drivers">
-      <svg
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      >
-        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-        <polyline points="7 10 12 15 17 10"></polyline>
-        <line x1="12" y1="15" x2="12" y2="3"></line>
-      </svg>
-      <span id="setup-btn-text">Install Drivers</span>
-    </button>
-
-    <div id="setup-toast">Finished!</div>
   </body>
 </html>

@@ -18,6 +18,11 @@ const {
   _arcadePost,
 } = require('./arcade-signaling.js');
 const inputDriver = require('../../sidecar/input_backends/InputOrchestrator.js');
+const { wivrnBumpVrActivity, wivrnEnsureRunning, wivrnInt } = require('./wivrn-lifecycle.js');
+
+// Upstream v3.0.2: one virtual controller per viewer (was 4) — multi-pad
+// per-viewer was a griefing vector on public arcade sessions.
+const MAX_VIEWER_CONTROLLERS = 1;
 const experimentalDriver = require('../../sidecar/input_backends/experimental/ExperimentalOrchestrator.js');
 const { playSound: playSoundUtil } = require('../audio-util');
 
@@ -45,6 +50,13 @@ function attachWebSocketServer(wss, deps) {
   // ── INPUT ORCHESTRATOR (Hybrid C++ / Python) ──
   const screenW = global.currentResW || 1920;
   const screenH = global.currentResH || 1080;
+
+  // HIDMaestro backend selection (upstream v3.0.2, from persistent config)
+  const _hmCfg = loadConfig();
+  if (_hmCfg.hidmaestro && typeof inputDriver.setHidMaestroEnabled === 'function') {
+    inputDriver.setHidMaestroEnabled(true);
+    console.log('[input] HIDMaestro backend enabled by config');
+  }
 
   // This will try C++ first, and automatically fall back to Python if the .node file is missing
   inputDriver.init(screenW, screenH);
@@ -529,65 +541,32 @@ function attachWebSocketServer(wss, deps) {
             return;
           }
 
-          if (msg.type === 'regen-pin') {
-            if (state.session.sessionPassword && arcadeSessions.size === 0) {
-              console.log('[host] Ignoring regen-pin because persistent PIN is set.');
-              return;
+          if (msg.type === 'report-viewer') {
+            const realId = String(msg.viewerId || '').split('_')[0];
+            const name = state.viewerNames.get(realId) || realId;
+            const anonHash = msg.anonHash || null;
+            console.log(
+              `[host] Report for viewer ${realId} (${name})${anonHash ? ' hash=' + anonHash.slice(0, 8) : ''} reason: ${msg.reason || 'none'}`
+            );
+            if (anonHash) {
+              const list = state.reports.get(anonHash) || [];
+              list.push({ timestamp: Date.now(), sessionId: msg.sessionId || '?' });
+              state.reports.set(anonHash, list);
+              console.log(`[host] Viewer ${name} reported (${list.length} total reports)`);
             }
-            state.session.pin = makePin();
-            console.log('[host] PIN regenerated: ****');
+            return;
+          }
+
+          if (msg.type === 'regen-pin') {
+            // Upstream v3.0.2 simplified: with a persistent password set the
+            // PIN never changes, but the current PIN is always re-sent so the
+            // host UI can refresh its display.
+            if (!state.session.sessionPassword) {
+              state.session.pin = makePin();
+              console.log('[host] PIN regenerated: ****');
+            }
             if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1)
               state.runtime.hostWS.send(JSON.stringify({ type: 'regen-pin', pin: state.session.pin }));
-            return;
-          }
-
-          if (msg.type === 'arcade-session-start') {
-            if (state.session.sessionPassword) {
-              state.session.pin = makePin();
-              if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1)
-                state.runtime.hostWS.send(JSON.stringify({ type: 'regen-pin', pin: state.session.pin }));
-            }
-
-            const arcadeUrl = msg.tunnelUrl || state.runtime.tunnelUrl;
-            if (!arcadeUrl) {
-              /* error logic */ return;
-            }
-
-            const cfg = loadConfig(); // Fetch live config
-            const sessionName = cfg.hostName || 'Host';
-            const sessionId = 'ns-' + Date.now() + '-' + nextArcadeHostId();
-            const session = {
-              id: sessionId,
-              game: msg.config?.title || 'Arcade Game',
-              thumbnail: msg.config?.thumbnail || null,
-              region: `${sessionName}'s Arcade`, // FIXED: Uses actual name for Rich Presence
-              hasPin: !!msg.config?.requirePin,
-              maxPlayers: parseInt(msg.config?.maxPlayers || 4),
-              url: arcadeUrl,
-              startedAt: Date.now(),
-              isStreaming: true,
-            };
-            arcadeSessions.set(sessionId, session);
-            console.log('[arcade] Session registered:', session.game, arcadeUrl);
-            broadcastToArcade({ type: 'arcade-session-active', session });
-            if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1)
-              state.runtime.hostWS.send(JSON.stringify({ type: 'arcade-session-active', session }));
-            _arcadePost({ type: 'session-active', session });
-            return;
-          }
-
-          if (msg.type === 'arcade-session-stop') {
-            if (state.session.sessionPassword) {
-              state.session.pin = state.session.sessionPassword;
-              if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1)
-                state.runtime.hostWS.send(JSON.stringify({ type: 'regen-pin', pin: state.session.pin }));
-            }
-            for (const [id, s] of arcadeSessions) {
-              arcadeSessions.delete(id);
-              broadcastToArcade({ type: 'arcade-session-stopped', id });
-              console.log('[arcade] Session stopped:', s.game);
-              _arcadePost({ type: 'session-stopped', id });
-            }
             return;
           }
 
@@ -739,7 +718,6 @@ function attachWebSocketServer(wss, deps) {
 
           const expTypes = [
             'tablet',
-            'vr',
             'hotas',
             'guitar',
             'balanceboard',
@@ -777,10 +755,36 @@ function attachWebSocketServer(wss, deps) {
 
       // ── VIEWER ───────────────────────────────────────────────────────────────
     } else if (wsPath === '/ws/viewer') {
-      const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
-      const hasTunnelHeader = !!req.headers['x-forwarded-for'] || !!req.headers['cf-connecting-ip'];
+      // cf-connecting-ip is set by Cloudflare itself and can't be spoofed
+      // through the tunnel, unlike x-forwarded-for (upstream v3.0.2).
+      const clientIp = req.headers['cf-connecting-ip'] || req.socket.remoteAddress || 'unknown';
+      const hasTunnelHeader = !!req.headers['cf-connecting-ip'] || !!req.headers['x-forwarded-for'];
       const requirePin = shouldRequirePin(clientIp, hasTunnelHeader);
       const anonHash = hashIp(clientIp);
+      const spamState = state.urlSpam.get(anonHash) || { count: 0, lockedUntil: 0 };
+
+      if (spamState.lockedUntil && Date.now() < spamState.lockedUntil) {
+        try {
+          ws.send(JSON.stringify({ type: 'session-blocked', reason: 'url-spam-timeout' }));
+        } catch {}
+        ws.close(4005, 'URL_SPAM_TIMEOUT');
+        console.log(`[viewer] rejected — URL spam timeout for ${clientIp}`);
+        return;
+      }
+
+      // Temporary ban check (fed locally via reports and remotely via the
+      // directory ban-list sync in server.js)
+      const ban = state.bannedIps.get(anonHash);
+      if (ban && Date.now() < ban.expiresAt) {
+        try {
+          ws.send(JSON.stringify({ type: 'session-blocked', reason: 'banned', banExpiresAt: ban.expiresAt }));
+        } catch {}
+        ws.close(4006, 'BANNED');
+        console.log(
+          `[viewer] rejected — temporarily banned for ${ban.reason || 'reported'} (expires ${new Date(ban.expiresAt).toLocaleTimeString()})`
+        );
+        return;
+      }
 
       if (state.session.pinEnabled && requirePin) {
         const attempt = state.pinAttempts.get(anonHash) || { count: 0, lockedUntil: 0 };
@@ -829,7 +833,7 @@ function attachWebSocketServer(wss, deps) {
       }
       // ─────────────────────────────────────────────────────────────────────
 
-      let id = 'v' + ++state.runtime.vidCount;
+      let id = 'v' + crypto.randomUUID().slice(0, 8);
       const defaultName = 'Guest' + (1000 + Math.floor(Math.random() * 9000));
 
       // ── Arcade viewer cap ─────────────────────────────────────────────────
@@ -894,7 +898,17 @@ function attachWebSocketServer(wss, deps) {
           // This is the first message from the viewer after ws.onopen.
           // We update the name here, then fire viewer-joined to the host.
           if (msg.type === 'join') {
-            const joinName = sanitize(String(msg.name || '')).slice(0, 20) || defaultName;
+            let joinName = sanitize(String(msg.name || '')).slice(0, 20) || defaultName;
+            // Host-configurable username blacklist (upstream v3.0.2)
+            const _joinCfg = loadConfig();
+            const blacklist = (_joinCfg.nameBlacklist || '')
+              .split(',')
+              .map((w) => w.trim().toLowerCase())
+              .filter(Boolean);
+            if (blacklist.some((w) => joinName.toLowerCase().includes(w))) {
+              console.log(`[viewer] blocked name "${joinName}" — matched blacklist`);
+              joinName = defaultName;
+            }
             state.viewerNames.set(id, joinName);
             console.log('[viewer]', id, 'name resolved to:', joinName);
 
@@ -908,6 +922,10 @@ function attachWebSocketServer(wss, deps) {
                   isDesktopApp: !!msg.isDesktopApp,
                 })
               );
+              // Join announcement in lobby chat (upstream v3.0.2)
+              const chatMsg = JSON.stringify({ type: 'chat', from: 'Nearcade', msg: joinName + ' joined' });
+              broadcast(chatMsg);
+              state.runtime.hostWS.send(chatMsg);
               // Include the saved host name so the viewer can display "HOST SESSION — Name"
               const hCfg = loadConfig();
               ws.send(JSON.stringify({ type: 'host-connected', hostName: hCfg.hostName || 'Host' }));
@@ -1006,8 +1024,8 @@ function attachWebSocketServer(wss, deps) {
               console.log('[viewer] global slot cap (16) reached, ignoring from', id);
               return;
             }
-            if ((state.viewerGamepads.get(id) || new Set()).size >= 4) {
-              console.log('[viewer] per-viewer cap (4) reached for', id);
+            if ((state.viewerGamepads.get(id) || new Set()).size >= MAX_VIEWER_CONTROLLERS) {
+              console.log('[viewer] per-viewer cap (' + MAX_VIEWER_CONTROLLERS + ') reached for', id);
               return;
             }
 
@@ -1047,9 +1065,59 @@ function attachWebSocketServer(wss, deps) {
           if (msg.type === 'chat') {
             msg.msg = sanitize(msg.msg);
             msg.from = sanitize(state.viewerNames.get(id) || msg.from || 'Guest').slice(0, 20);
-            broadcast(JSON.stringify(msg));
-            if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1)
-              state.runtime.hostWS.send(JSON.stringify(msg));
+
+            // ── URL-spam filter (upstream v3.0.2) ─────────────────────────
+            // URLs never reach other viewers; three strikes = 2-minute kick.
+            const urlRegex = /\b(?:https?:\/\/|www\.)[^\s]+\b/i;
+            if (urlRegex.test(String(msg.msg || ''))) {
+              const spam = state.urlSpam.get(anonHash) || { count: 0, lockedUntil: 0 };
+              spam.count += 1;
+              if (spam.count > 3) {
+                spam.lockedUntil = Date.now() + 2 * 60 * 1000;
+                state.urlSpam.set(anonHash, spam);
+                console.log(`[viewer] ${id} kicked for URL spam (count=${spam.count})`);
+                if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1) {
+                  state.runtime.hostWS.send(
+                    JSON.stringify({
+                      type: 'viewer-kicked',
+                      viewerId: id,
+                      name: state.viewerNames.get(id) || id,
+                      reason: 'URL spam',
+                    })
+                  );
+                }
+                try {
+                  ws.send(JSON.stringify({ type: 'session-blocked', reason: 'url-spam-timeout' }));
+                } catch {}
+                ws.close(4003, 'URL_SPAM_TIMEOUT');
+                return;
+              }
+              state.urlSpam.set(anonHash, spam);
+              // Only the host dashboard sees that a URL was blocked.
+              if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1) {
+                state.runtime.hostWS.send(
+                  JSON.stringify({ type: 'chat', from: msg.from, msg: '[URL hidden]', viewerId: id, urlHidden: true })
+                );
+              }
+              try {
+                ws.send(
+                  JSON.stringify({
+                    type: 'chat',
+                    from: 'System',
+                    msg: 'URLs are not shared in lobby chat. Your message was hidden from other viewers.',
+                  })
+                );
+              } catch {}
+              return;
+            }
+
+            // No echo back to the sender (upstream v3.0.2) — their own UI
+            // already renders the message locally.
+            const payload = JSON.stringify(msg);
+            state.viewers.forEach((vws) => {
+              if (vws && vws.readyState === 1 && vws !== ws) vws.send(payload);
+            });
+            if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1) state.runtime.hostWS.send(payload);
             return;
           }
 
@@ -1061,6 +1129,62 @@ function attachWebSocketServer(wss, deps) {
             toUinput({ type: 'flush_neutral', viewer_id: rosterId });
             toUinput({ type: 'disconnect_viewer', viewer_id: rosterId });
             broadcastRoster();
+            return;
+          }
+
+          // ── WiVRn VR bridge (upstream v3.0.2) ─────────────────────────────
+          if (msg.type === 'viewer-vr-active') {
+            console.log('[WiVRn] Viewer', id, 'entered VR mode');
+            wivrnEnsureRunning();
+            if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1)
+              state.runtime.hostWS.send(JSON.stringify(msg));
+            return;
+          }
+
+          if (msg.type === 'vr') {
+            wivrnBumpVrActivity();
+            const h = msg.head,
+              l = msg.left,
+              r = msg.right;
+            if (h && l && r) {
+              wivrnInt
+                .injectVirtualTracking(
+                  {
+                    qx: h.qx || 0,
+                    qy: h.qy || 0,
+                    qz: h.qz || 0,
+                    qw: h.qw || 1,
+                    px: h.px || 0,
+                    py: h.py || 0,
+                    pz: h.pz || 0,
+                  },
+                  {
+                    qx: l.qx || 0,
+                    qy: l.qy || 0,
+                    qz: l.qz || 0,
+                    qw: l.qw || 1,
+                    px: l.px || 0,
+                    py: l.py || 0,
+                    pz: l.pz || 0,
+                  },
+                  {
+                    qx: r.qx || 0,
+                    qy: r.qy || 0,
+                    qz: r.qz || 0,
+                    qw: r.qw || 1,
+                    px: r.px || 0,
+                    py: r.py || 0,
+                    pz: r.pz || 0,
+                  },
+                  l.trigger ?? 0,
+                  l.grip ?? 0,
+                  r.trigger ?? 0,
+                  r.grip ?? 0,
+                  l.buttons ?? 0,
+                  r.buttons ?? 0
+                )
+                .catch(() => {});
+            }
             return;
           }
 
@@ -1144,6 +1268,7 @@ function attachWebSocketServer(wss, deps) {
       ws.on('close', () => {
         const hadController = state.viewerHasController.has(id);
         const wasActive = state.viewers.get(id) === ws;
+        const leftName = state.viewerNames.get(id) || id;
         if (wasActive) {
           state.viewers.delete(id);
           state.viewerNames.delete(id);
@@ -1159,9 +1284,11 @@ function attachWebSocketServer(wss, deps) {
           }
           broadcastRoster();
           if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1)
-            state.runtime.hostWS.send(
-              JSON.stringify({ type: 'viewer-left', viewerId: id, name: state.viewerNames.get(id) || id })
-            );
+            state.runtime.hostWS.send(JSON.stringify({ type: 'viewer-left', viewerId: id, name: leftName }));
+          // Leave announcement in lobby chat (upstream v3.0.2)
+          const leaveMsg = JSON.stringify({ type: 'chat', from: 'Nearcade', msg: leftName + ' left' });
+          broadcast(leaveMsg);
+          if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1) state.runtime.hostWS.send(leaveMsg);
         }
         console.log(
           '[viewer]',
@@ -1243,7 +1370,6 @@ function attachWebSocketServer(wss, deps) {
 
           const expTypes = [
             'tablet',
-            'vr',
             'hotas',
             'guitar',
             'balanceboard',

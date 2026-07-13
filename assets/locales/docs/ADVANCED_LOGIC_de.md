@@ -1,4 +1,4 @@
-Dieses Dokument bietet einen tiefen Einblick in die zugrunde liegenden Systeme, die NearsecTogether antreiben. Es richtet sich an Entwickler, Mitwirkende und Power-User, die den genauen Datenfluss von WebRTC, Linux-Audiovirtualisierung und Eingabeinjektion auf Kernel-Ebene verstehen müssen.
+Dieses Dokument bietet einen tiefen Einblick in die zugrunde liegenden Systeme, die Nearcade antreiben. Es richtet sich an Entwickler, Mitwirkende und Power-User, die den genauen Datenfluss von WebRTC, Linux-Audiovirtualisierung und Eingabeinjektion auf Kernel-Ebene verstehen müssen.
 
 ## Inhaltsverzeichnis
 1. [Input-Injection-Architektur](#1-Input-Injection-Architektur)

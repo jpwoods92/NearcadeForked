@@ -8,6 +8,8 @@ const filesToScan = [
   'app/src/pages/index.html',
   'app/src/pages/host.html',
   'app/src/pages/dashboard.html',
+  // Upstream renamed this string to nearcade-arcade.html but the file itself
+  // is still nearsec-arcade.html in the tree — reference the real file.
   'website/nearsec-arcade.html',
   'app/src/scripts/audio-util.js',
   'app/src/scripts/server.js',

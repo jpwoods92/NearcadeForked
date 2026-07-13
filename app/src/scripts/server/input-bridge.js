@@ -35,15 +35,23 @@ function normalizeGamepadMsg(msg) {
   }
 
   // Axes arrive as int16 (-32767..+32767) — pass directly.
-  // _validateGamepadMsg → _clampAxis handles range clamping.
-  const lx = Number(axes[0]) || 0;
-  const ly = Number(axes[1]) || 0;
-  const rx = Number(axes[2]) || 0;
-  const ry = Number(axes[3]) || 0;
+  // _validateGamepadMsg → _clampAxis handles range clamping. isFinite guards
+  // (upstream v3.0.2): `|| 0` lets NaN through for Infinity and rejects
+  // legit -0/0 paths oddly; explicit finiteness checks cover both.
+  let lx = Number(axes[0]);
+  if (!isFinite(lx)) lx = 0;
+  let ly = Number(axes[1]);
+  if (!isFinite(ly)) ly = 0;
+  let rx = Number(axes[2]);
+  if (!isFinite(rx)) rx = 0;
+  let ry = Number(axes[3]);
+  if (!isFinite(ry)) ry = 0;
 
   // Triggers: buttons[6]=LT, buttons[7]=RT (viewer encodes value 0-255)
-  const lt = Number((btns[6] && btns[6].value) || 0) / 255;
-  const rt = Number((btns[7] && btns[7].value) || 0) / 255;
+  let lt = Number((btns[6] && btns[6].value) || 0) / 255;
+  if (!isFinite(lt)) lt = 0;
+  let rt = Number((btns[7] && btns[7].value) || 0) / 255;
+  if (!isFinite(rt)) rt = 0;
 
   //  W3C Gamepad API index → JS viewer bitmask (correct per W3C spec)
   const W3C_TO_JS = [

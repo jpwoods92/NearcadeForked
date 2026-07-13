@@ -56,8 +56,8 @@ async function createWindow() {
     height: Math.max(settings.h, 500),
     minWidth: 600,
     minHeight: 500,
-    title: 'NearsecTogether',
-    icon: path.join(__dirname, '..', '..', 'assets/NearsecTogetherLogo.png'),
+    title: 'Nearcade',
+    icon: path.join(__dirname, '..', '..', 'assets/NearcadeLogo.png'),
     backgroundColor: '#111111',
     alwaysOnTop: settings.alwaysOnTop,
     show: isGamescopeEnv ? true : false,
@@ -107,6 +107,36 @@ async function createWindow() {
       else win.loadURL(`http://localhost:${port}/dashboard?port=${port}`);
     }, 1000);
   });
+
+  win.webContents.on('did-navigate', (e, url) => {
+    if (url.includes('/host')) {
+      win.webContents.insertCSS(`
+        body { animation: nsFadeIn 1.5s ease both; }
+        @keyframes nsFadeIn { from { opacity: 0; } to { opacity: 1; } }
+      `);
+    }
+  });
+
+  // --show-warning: manual smoke test for the host warning banner
+  if (process.argv.includes('--show-warning')) {
+    win.webContents.on('did-finish-load', () => {
+      win.webContents.executeJavaScript(`
+        if (location.pathname.includes('/host') && !document.getElementById('ns-test-warning')) {
+          const el = document.createElement('div');
+          el.id = 'ns-test-warning';
+          el.style.cssText = 'width:100%;background:#fbbf24;color:#000;text-align:center;padding:12px 16px;font-weight:600;font-size:14px;font-family:sans-serif;border-bottom:2px solid #f59e0b;flex-shrink:0;';
+          el.textContent = '⚠ --show-warning was used — host warning banner is working. Restart without the flag to dismiss.';
+          document.body.prepend(el);
+          requestAnimationFrame(function() {
+            var el2 = document.getElementById('ns-test-warning');
+            var h = el2 ? el2.offsetHeight : 0;
+            var c = document.querySelector('.app-layout') || document.querySelector('.app-shell') || document.body;
+            if (c) c.style.height = 'calc(100vh - ' + h + 'px)';
+          });
+        }
+      `);
+    });
+  }
 
   // ── Dashboard Button Injection ──
   win.webContents.on('did-finish-load', () => {
@@ -204,10 +234,10 @@ async function createWindow() {
   if (!isGamescopeEnv) {
     // We only specify height so Electron maintains the natural aspect ratio of the logo
     const trayIcon = nativeImage
-      .createFromPath(path.join(__dirname, '..', '..', 'assets/NearsecTogetherLogo.png'))
+      .createFromPath(path.join(__dirname, '..', '..', 'assets/NearcadeLogo.png'))
       .resize({ height: 22 });
     tray = new Tray(trayIcon);
-    tray.setToolTip('NearsecTogether');
+    tray.setToolTip('Nearcade');
     tray.setContextMenu(
       Menu.buildFromTemplate([
         {
@@ -239,14 +269,14 @@ async function createWindow() {
 
   win.on('close', (e) => {
     if (!app.isQuiting) {
-      if (isGamescopeEnv) {
+      // tray=false means "close = quit", not "hide to a tray that isn't there"
+      if (isGamescopeEnv || !settings.tray) {
         app.isQuiting = true;
         app.quit();
       } else {
         e.preventDefault();
         win.hide();
-        if (tray && tray.displayBalloon)
-          tray.displayBalloon({ title: 'NearsecTogether', content: 'Running in background.' });
+        if (tray && tray.displayBalloon) tray.displayBalloon({ title: 'Nearcade', content: 'Running in background.' });
       }
     }
   });

@@ -138,6 +138,7 @@ function renderRoster(list) {
         <img src="/assets/icons/${v.locked ? 'lock' : 'lock-open'}.svg" style="width:14px;height:14px;${v.locked ? 'filter:invert(0.8) sepia(1) saturate(5) hue-rotate(350deg);' : 'filter:invert(0.5);'}" />
         </button>
         ${v.id === 'host_0' ? '' : `<button class="rkick" onclick="kickViewer('${v.id}')" title="Kick Viewer">×</button>`}
+        ${v.id === 'host_0' || typeof isArcade === 'undefined' || !isArcade ? '' : `<button class="rreport" onclick="reportViewer('${v.id}')" title="Report Viewer">!</button>`}
         `;
     c.appendChild(r);
 
@@ -315,6 +316,25 @@ function updateSlotsAfterDrop(container) {
 
 function kickViewer(id) {
   if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'kick-viewer', viewerId: id }));
+}
+
+// Arcade-only (upstream v3.0.2): report a viewer to the local server's
+// moderation registry — see server/ws.js 'report-viewer'.
+function reportViewer(id) {
+  if (!confirm('Report this viewer for violating the arcade rules?')) return;
+  if (ws && ws.readyState === 1) {
+    const anonHash = typeof _viewerIpHashes !== 'undefined' ? _viewerIpHashes[id] : null;
+    ws.send(
+      JSON.stringify({
+        type: 'report-viewer',
+        viewerId: id,
+        anonHash: anonHash,
+        sessionId: hostSessionId,
+        reason: 'arcade-violation',
+      })
+    );
+    log(`Reported viewer ${id}`, 'ok');
+  }
 }
 
 function toggleSlotLock(rosterId, newLockState) {

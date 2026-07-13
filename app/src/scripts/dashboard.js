@@ -6,11 +6,29 @@
 document.addEventListener('DOMContentLoaded', async () => {
   const vEl = document.getElementById('version-text');
   const cEl = document.getElementById('commit-hash');
+
+  await applySystemAccent();
+
+  // Random brand color: purple, orange, or white (upstream v3.0.2)
+  const brandColors = [
+    { color: '#c084fc', stroke: 'rgba(192,132,252,0.3)', shadow: 'rgba(192,132,252,' },
+    { color: '#ff8a4c', stroke: 'rgba(255,138,76,0.3)', shadow: 'rgba(255,138,76,' },
+    { color: '#eef0ff', stroke: 'rgba(238,240,255,0.3)', shadow: 'rgba(238,240,255,' },
+  ];
+  const bc = brandColors[Math.floor(Math.random() * brandColors.length)];
+  const bt = document.querySelector('.brand-text');
+  if (bt) {
+    bt.style.color = bc.color;
+    bt.style.webkitTextStroke = `0.5px ${bc.stroke}`;
+    bt.style.textShadow = `0 0 12px ${bc.shadow}0.5), 0 0 30px ${bc.shadow}0.15)`;
+  }
+
   if (window.electronAPI) {
     const { version, commit } = await window.electronAPI.getVersion();
     window.NEARSEC_VERSION = version;
     vEl.innerHTML = `v${version} <span style="opacity:0.5; margin-left:4px;">${commit}</span>`;
     if (typeof checkForUpdates === 'function') checkForUpdates(version);
+    setTimeout(checkClientVersion, 1500);
 
     window.electronAPI.onUpdateReady((latestVersion) => {
       document.getElementById('updateVersion').textContent = latestVersion;
@@ -25,8 +43,50 @@ document.addEventListener('DOMContentLoaded', async () => {
   } else {
     if (window.NEARSEC_VERSION && vEl) vEl.textContent = 'v' + window.NEARSEC_VERSION;
     if (window.NEARSEC_COMMIT && cEl) cEl.textContent = window.NEARSEC_COMMIT;
+    setTimeout(checkClientVersion, 1500);
   }
 });
+
+function compareVersions(a, b) {
+  const pa = a.split('.').map(Number);
+  const pb = b.split('.').map(Number);
+  for (let i = 0; i < 3; i++) {
+    const na = pa[i] || 0,
+      nb = pb[i] || 0;
+    if (na > nb) return 1;
+    if (na < nb) return -1;
+  }
+  return 0;
+}
+
+async function checkClientVersion() {
+  try {
+    const res = await fetch('https://nearcade.cutefame.net/api/client-version');
+    if (!res.ok) return;
+    const data = await res.json();
+    const minVer = data.minimum || '0.0.0';
+    if (compareVersions(window.NEARSEC_VERSION, minVer) < 0) {
+      const overlay = document.createElement('div');
+      overlay.id = 'clientVersionOverlay';
+      overlay.style.cssText =
+        'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;';
+      overlay.innerHTML =
+        '<div style="background:#121518;border:1px solid #ff5d3d;border-radius:12px;padding:40px;max-width:420px;text-align:center;box-shadow:0 16px 48px rgba(0,0,0,0.8);font-family:sans-serif;">' +
+        '<h2 style="color:#ff5d3d;margin:0 0 12px 0;text-transform:uppercase;letter-spacing:1px;">Client Outdated</h2>' +
+        '<p style="color:#949ba4;font-size:14px;line-height:1.6;margin:0 0 16px 0;">' +
+        'You are running <strong style="color:#f0f3f5;">Nearcade v' +
+        window.NEARSEC_VERSION +
+        '</strong>.<br>' +
+        'The arcade directory requires at least <strong style="color:#f0f3f5;">v' +
+        minVer +
+        '</strong>.<br><br>' +
+        'Please update to the latest version to continue hosting arcade sessions.</p>' +
+        '<a href="https://github.com/TheRealFame/Nearcade/releases/latest" target="_blank" style="display:inline-block;background:#ff5d3d;color:#fff;padding:10px 24px;border-radius:6px;text-decoration:none;font-weight:600;">Download Update</a>' +
+        '</div>';
+      document.body.appendChild(overlay);
+    }
+  } catch (_) {}
+}
 
 async function checkForUpdates(currentVersion) {
   let cfg = appConfig;
@@ -38,7 +98,7 @@ async function checkForUpdates(currentVersion) {
   if (cfg.checkForUpdates === false) return;
 
   try {
-    const res = await fetch('https://api.github.com/repos/TheRealFame/NearsecTogether/releases/latest');
+    const res = await fetch('https://api.github.com/repos/TheRealFame/Nearcade/releases/latest');
     if (!res.ok) return;
     const data = await res.json();
     const latest = data.tag_name;
@@ -103,17 +163,117 @@ function switchTab(name) {
   if (versionDisplay) {
     versionDisplay.style.display = name === 'arcade' ? 'none' : 'block';
   }
-
-  const setupBtn = document.getElementById('floating-setup-btn');
-  if (setupBtn && !window.IS_CLIENT_ONLY) {
-    setupBtn.style.display = name === 'connect' ? 'flex' : 'none';
-  }
 }
 
 let appConfig = {};
 
+const DEFAULT_ACCENT = '#c084fc';
+
+async function applySystemAccent() {
+  const useAccent = appConfig.useSystemAccent === true;
+  localStorage.setItem('ns_use_system_accent', useAccent ? 'true' : 'false');
+  const indicator = document.getElementById('sysAccentIndicator');
+  const root = document.documentElement;
+  const clear = () => {
+    root.style.removeProperty('--accent');
+    root.style.removeProperty('--accent2');
+    root.style.removeProperty('--accent-dim');
+    root.style.removeProperty('--accent-glow');
+    if (indicator) indicator.style.display = 'none';
+  };
+  if (!window.electronAPI || !useAccent) {
+    clear();
+    return;
+  }
+  try {
+    const accent = await window.electronAPI.getAccentColor();
+    if (!accent || accent === '#8b5cf6') {
+      clear();
+      return;
+    }
+    const r = parseInt(accent.slice(1, 3), 16);
+    const g = parseInt(accent.slice(3, 5), 16);
+    const b = parseInt(accent.slice(5, 7), 16);
+    root.style.setProperty('--accent', accent);
+    root.style.setProperty('--accent2', accent);
+    root.style.setProperty('--accent-dim', `rgba(${r},${g},${b},0.15)`);
+    root.style.setProperty('--accent-glow', `rgba(${r},${g},${b},0.35)`);
+    if (indicator) indicator.style.display = 'inline-flex';
+  } catch (_) {
+    clear();
+  }
+}
+
 function _getServerPort() {
   return new URLSearchParams(window.location.search).get('port') || '3000';
+}
+
+function toggleHidMaestro() {
+  const was = appConfig.hidmaestro;
+  const turningOn = !was;
+
+  if (turningOn) {
+    // Check if HmBridge.exe exists before enabling
+    (async () => {
+      let bridgeOk = false;
+      if (window.electronAPI && window.electronAPI.checkHmBridge) {
+        const result = await window.electronAPI.checkHmBridge();
+        bridgeOk = result.exists;
+      }
+      showHidMaestroDisclaimer(bridgeOk);
+    })();
+  } else {
+    appConfig.hidmaestro = false;
+    syncSettingsUI();
+    if (window.electronAPI) window.electronAPI.saveSettings(appConfig);
+    syncToNode();
+  }
+}
+
+function showHidMaestroDisclaimer(bridgeFound) {
+  const overlay = document.createElement('div');
+  overlay.id = 'hidmaestroDisclaimer';
+  overlay.style.cssText =
+    'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;';
+
+  let bridgeWarning = '';
+  if (!bridgeFound) {
+    bridgeWarning = `<p style="color:var(--danger);font-size:13px;line-height:1.6;margin:0 0 16px 0;">
+      ⚠ HmBridge.exe not found. The HIDMaestro backend will not work until you
+      <a href="https://github.com/cutefame/Nearcade/releases" target="_blank" style="color:var(--accent);">download the latest release</a>
+      or build it from source:
+      <code style="display:block;background:#000;padding:8px;margin:8px 0;border-radius:4px;font-size:11px;">cd app/src/sidecar/input_backends/HmBridge && dotnet publish -c Release -r win-x64 --self-contained false</code>
+    </p>`;
+  }
+
+  overlay.innerHTML = `<div style="background:#121518;border:1px solid var(--warn);border-radius:12px;padding:32px;max-width:480px;text-align:center;box-shadow:0 16px 48px rgba(0,0,0,0.8);font-family:sans-serif;">
+    <h2 style="color:var(--warn);margin:0 0 12px 0;font-size:16px;">HIDMaestro Integration Notice</h2>
+    <p style="color:#949ba4;font-size:13px;line-height:1.6;margin:0 0 16px 0;">
+      Nearcade includes support for HIDMaestro as an <strong>experimental</strong> virtual controller backend.
+      This feature uses the
+      <a href="https://github.com/hifihedgehog/HIDMaestro" target="_blank" style="color:var(--accent);">HIDMaestro</a>
+      open-source project.
+    </p>
+    <p style="color:#949ba4;font-size:13px;line-height:1.6;margin:0 0 16px 0;">
+      I (Nearcade) do not actively support the HIDMaestro developers or their project beyond
+      integrating it as an optional backend. I have no plans to provide financial or promotional
+      support to them. This is purely a technical integration of their open-source work.
+    </p>
+    ${bridgeWarning}
+    <p style="color:var(--warn);font-size:12px;line-height:1.5;margin:0 0 20px 0;">
+      ⚠ Experimental: Not compatible with Arcade mode. May cause instability. Use at your own risk.
+    </p>
+    <button onclick="enableHidMaestro()" style="padding:10px 28px;border-radius:6px;border:none;background:var(--accent);color:#000;font-weight:600;cursor:pointer;">${bridgeFound ? 'I Understand, Enable' : 'Enable Anyway'}</button>
+  </div>`;
+  document.body.appendChild(overlay);
+}
+
+function enableHidMaestro() {
+  appConfig.hidmaestro = true;
+  syncSettingsUI();
+  if (window.electronAPI) window.electronAPI.saveSettings(appConfig);
+  syncToNode();
+  document.getElementById('hidmaestroDisclaimer')?.remove();
 }
 
 function syncToNode() {
@@ -129,6 +289,7 @@ async function loadAndSyncSettings() {
   if (!window.electronAPI) return;
   appConfig = await window.electronAPI.getSettings();
   syncSettingsUI();
+  await applySystemAccent();
 }
 
 function syncSettingsUI() {
@@ -145,6 +306,8 @@ function syncSettingsUI() {
   }
 
   document.getElementById('settingTrackRumble')?.classList.toggle('on', appConfig.rumble !== false);
+  document.getElementById('settingTrackHidMaestro')?.classList.toggle('on', !!appConfig.hidmaestro);
+  document.getElementById('settingTrackSystemAccent')?.classList.toggle('on', appConfig.useSystemAccent === true);
   document.getElementById('settingTrackTray')?.classList.toggle('on', appConfig.tray !== false);
   document.getElementById('settingTrackCheckForUpdates')?.classList.toggle('on', appConfig.checkForUpdates !== false);
   document.getElementById('settingTrackAlwaysOnTop')?.classList.toggle('on', !!appConfig.alwaysOnTop);
@@ -155,6 +318,210 @@ function syncSettingsUI() {
   document.getElementById('settingTrackVsyncOff')?.classList.toggle('on', !!appConfig.vsyncOff);
   document.getElementById('settingTrackZeroCopy')?.classList.toggle('on', !!appConfig.zeroCopy);
   renderAutoHosts();
+
+  if (document.getElementById('settingModEndpoint')) {
+    document.getElementById('settingModEndpoint').value = appConfig.modEndpoint || '';
+  }
+  if (document.getElementById('settingModSecret')) {
+    document.getElementById('settingModSecret').value = appConfig.modSecret || '';
+  }
+  if (document.getElementById('settingArcadeWebhook')) {
+    document.getElementById('settingArcadeWebhook').value = appConfig.arcadeWebhook || '';
+  }
+  if (document.getElementById('settingArcadeRoleId')) {
+    document.getElementById('settingArcadeRoleId').value = appConfig.arcadeRoleId || '';
+  }
+  if (document.getElementById('settingNameBlacklist')) {
+    document.getElementById('settingNameBlacklist').value = appConfig.nameBlacklist || '';
+  }
+}
+
+function saveModSettings() {
+  appConfig.modEndpoint = document.getElementById('settingModEndpoint').value.trim() || undefined;
+  appConfig.modSecret = document.getElementById('settingModSecret').value.trim() || undefined;
+  appConfig.arcadeWebhook = document.getElementById('settingArcadeWebhook').value.trim() || undefined;
+  appConfig.arcadeRoleId = document.getElementById('settingArcadeRoleId').value.trim() || undefined;
+  appConfig.nameBlacklist = document.getElementById('settingNameBlacklist').value.trim() || undefined;
+  document.getElementById('modConnectionStatus').textContent = '';
+  if (window.electronAPI) window.electronAPI.saveSettings(appConfig);
+  syncToNode();
+}
+
+function getModCreds() {
+  let endpoint = document.getElementById('settingModEndpoint').value.trim();
+  const secret = document.getElementById('settingModSecret').value.trim();
+  if (!endpoint || !secret) return null;
+  if (!endpoint.startsWith('http://') && !endpoint.startsWith('https://')) endpoint = 'https://' + endpoint;
+  endpoint =
+    endpoint
+      .replace(/\/+$/, '')
+      .replace(/\/arcade\/?$/, '')
+      .replace(/\/api\/mod\/?$/, '') + '/api/mod';
+  return { endpoint, secret };
+}
+
+async function verifyModConnection() {
+  const statusEl = document.getElementById('modConnectionStatus');
+  const creds = getModCreds();
+  if (!creds) {
+    statusEl.textContent = 'Please fill in both fields first.';
+    statusEl.style.color = 'var(--warn)';
+    return;
+  }
+  statusEl.textContent = 'Verifying...';
+  statusEl.style.color = 'var(--muted2)';
+  try {
+    const res = await fetch(creds.endpoint, { headers: { Authorization: 'Bearer ' + creds.secret } });
+    if (res.ok) {
+      statusEl.textContent = 'Connected — API is live';
+      statusEl.style.color = 'var(--green)';
+      document.getElementById('banManagementArea').style.display = 'block';
+      fetchBanList();
+    } else if (res.status === 401) {
+      statusEl.textContent = 'Unauthorized — check your token';
+      statusEl.style.color = 'var(--danger)';
+    } else {
+      statusEl.textContent = 'Error ' + res.status + ' — check your endpoint URL';
+      statusEl.style.color = 'var(--danger)';
+    }
+  } catch (e) {
+    if (e.message?.includes('Failed to fetch') || e instanceof TypeError) {
+      statusEl.textContent =
+        'CORS blocked — disable Browser Integrity Check in Cloudflare dashboard, or add WAF bypass rule for OPTIONS /api/*';
+    } else {
+      statusEl.textContent = 'Could not reach endpoint — ' + e.message;
+    }
+    statusEl.style.color = 'var(--danger)';
+  }
+}
+
+async function fetchBanList() {
+  const creds = getModCreds();
+  const statusEl = document.getElementById('banStatus');
+  const container = document.getElementById('banListContainer');
+  if (!creds) {
+    statusEl.textContent = 'Configure endpoint and secret first.';
+    return;
+  }
+  statusEl.textContent = 'Loading...';
+  try {
+    const res = await fetch(creds.endpoint, { headers: { Authorization: 'Bearer ' + creds.secret } });
+    if (!res.ok) {
+      statusEl.textContent = 'Error ' + res.status;
+      return;
+    }
+    const list = await res.json();
+    if (!Array.isArray(list) || list.length === 0) {
+      container.innerHTML = '<div style="padding:12px;color:var(--muted);font-size:13px;">No banned IPs.</div>';
+      statusEl.textContent = list.length + ' bans';
+      return;
+    }
+    container.innerHTML = list
+      .map(
+        (ip) =>
+          '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 12px;border-bottom:1px solid var(--border);font-size:13px;">' +
+          '<span style="color:var(--text);font-family:monospace;">' +
+          ip +
+          '</span>' +
+          '<button onclick="executeUnban(\'' +
+          ip +
+          '\')" style="padding:4px 10px;border-radius:4px;cursor:pointer;font-weight:600;border:1px solid var(--danger);background:transparent;color:var(--danger);font-size:11px;font-family:inherit;">Unban</button>' +
+          '</div>'
+      )
+      .join('');
+    statusEl.textContent = list.length + ' ban' + (list.length !== 1 ? 's' : '');
+  } catch {
+    statusEl.textContent = 'Failed to fetch ban list';
+    container.innerHTML = '';
+  }
+}
+
+async function executeBan() {
+  const creds = getModCreds();
+  const ip = document.getElementById('banIPInput').value.trim();
+  const statusEl = document.getElementById('banStatus');
+  if (!creds) {
+    statusEl.textContent = 'Configure endpoint and secret first.';
+    return;
+  }
+  if (!ip) {
+    statusEl.textContent = 'Enter an IP address.';
+    return;
+  }
+  statusEl.textContent = 'Banning ' + ip + '...';
+  try {
+    const res = await fetch(creds.endpoint, {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + creds.secret, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'ban', ipToBan: ip }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+      statusEl.textContent = 'Banned ' + ip;
+      statusEl.style.color = 'var(--green)';
+      document.getElementById('banIPInput').value = '';
+      fetchBanList();
+      showBanPopup(ip);
+      fetch(`http://localhost:${_getServerPort()}/api/system-chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ msg: '⚠ A viewer was banned from the session.' }),
+      }).catch(() => {});
+    } else {
+      statusEl.textContent = data.message || 'Ban failed';
+      statusEl.style.color = 'var(--danger)';
+    }
+  } catch {
+    statusEl.textContent = 'Request failed';
+    statusEl.style.color = 'var(--danger)';
+  }
+}
+
+function showBanPopup(ip) {
+  const existing = document.getElementById('banPopup');
+  if (existing) existing.remove();
+  const popup = document.createElement('div');
+  popup.id = 'banPopup';
+  popup.style.cssText =
+    'position:fixed;bottom:20px;right:20px;z-index:9999;background:#1a1a1a;border:1px solid var(--danger);border-radius:10px;padding:16px 20px;max-width:340px;box-shadow:0 8px 32px rgba(0,0,0,0.6);animation:fadeIn 0.3s;font-family:inherit;';
+  popup.innerHTML =
+    '<div style="color:var(--danger);font-weight:700;font-size:14px;margin-bottom:4px;">⚠ IP Banned</div>' +
+    '<div style="color:var(--text);font-size:13px;margin-bottom:8px;font-family:monospace;">' +
+    ip +
+    '</div>' +
+    '<div style="color:var(--muted);font-size:12px;">A chat warning has been sent to all viewers.</div>' +
+    '<button onclick="this.parentElement.remove()" style="margin-top:8px;padding:4px 12px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer;font-family:inherit;">Dismiss</button>';
+  document.body.appendChild(popup);
+  setTimeout(() => {
+    const pop = document.getElementById('banPopup');
+    if (pop) pop.remove();
+  }, 8000);
+}
+
+async function executeUnban(ip) {
+  const creds = getModCreds();
+  const statusEl = document.getElementById('banStatus');
+  if (!creds) return;
+  statusEl.textContent = 'Unbanning ' + ip + '...';
+  try {
+    const res = await fetch(creds.endpoint, {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + creds.secret, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'unban', ipToUnban: ip }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+      statusEl.textContent = 'Unbanned ' + ip;
+      statusEl.style.color = 'var(--green)';
+      fetchBanList();
+    } else {
+      statusEl.textContent = data.message || 'Unban failed';
+      statusEl.style.color = 'var(--danger)';
+    }
+  } catch {
+    statusEl.textContent = 'Request failed';
+    statusEl.style.color = 'var(--danger)';
+  }
 }
 
 function saveLangAndReload(val) {
@@ -173,7 +540,7 @@ function saveHostName(val) {
 }
 
 function toggleAppSetting(key) {
-  if (['tray', 'hwDecode', 'discordRPC', 'rumble', 'checkForUpdates'].includes(key)) {
+  if (['tray', 'hwDecode', 'discordRPC', 'rumble', 'checkForUpdates', 'useSystemAccent'].includes(key)) {
     appConfig[key] = appConfig[key] === false ? true : false;
   } else {
     appConfig[key] = !appConfig[key];
@@ -182,6 +549,7 @@ function toggleAppSetting(key) {
   if (window.electronAPI) {
     window.electronAPI.saveSettings(appConfig);
     if (key === 'alwaysOnTop') window.electronAPI.toggleAlwaysOnTop();
+    if (key === 'useSystemAccent') applySystemAccent();
   }
   syncToNode();
 }
@@ -243,7 +611,7 @@ async function joinDirectLink() {
 }
 
 window.addEventListener('message', (event) => {
-  if (event.origin.includes('nearsec.cutefame.net') && event.data?.type === 'JOIN_SESSION') {
+  if (event.origin.includes('nearcade.cutefame.net') && event.data?.type === 'JOIN_SESSION') {
     if (window.electronAPI) window.electronAPI.joinSession(event.data.url, { game: event.data.game });
   }
 });
@@ -280,60 +648,17 @@ function updateGamepad() {
 window.addEventListener('gamepadconnected', () => requestAnimationFrame(updateGamepad));
 
 async function checkFirstRun() {
-  // NEW: Client-only flag strips the driver button entirely
-  if (window.IS_CLIENT_ONLY || window.Capacitor) {
-    const btn = document.getElementById('floating-setup-btn');
-    if (btn) btn.style.display = 'none';
-    document.body.classList.add('client-only'); // Also hide other host UI
+  if (window.Capacitor || window.IS_CLIENT_ONLY) {
+    document.body.classList.add('client-only');
     return;
   }
 
   if (!window.electronAPI) return;
-  const cfg = await window.electronAPI.getSettings();
-  const btn = document.getElementById('floating-setup-btn');
-  const txt = document.getElementById('setup-btn-text');
 
-  if (cfg.firstRunComplete === true && btn) {
-    btn.classList.add('done');
-    txt.textContent = 'Drivers Installed';
+  const result = await window.electronAPI.checkSystemSetup();
+  if (!result || result.needsSetup) {
+    window.location.href = '/setup';
   }
-}
-
-function showSetupToast(msg, isError = false) {
-  const toast = document.getElementById('setup-toast');
-  toast.textContent = msg;
-  toast.className = isError ? 'error show' : 'show';
-  setTimeout(() => toast.classList.remove('show'), 4000);
-}
-
-async function runInAppSetup() {
-  const btn = document.getElementById('floating-setup-btn');
-  const txt = document.getElementById('setup-btn-text');
-  if (!window.electronAPI) return;
-
-  txt.textContent = 'Installing...';
-  btn.style.pointerEvents = 'none';
-  btn.style.opacity = '0.7';
-
-  window.electronAPI.runSetup();
-
-  window.electronAPI.onSetupSuccess(() => {
-    showSetupToast('✓ Finished! Drivers installed.');
-    txt.textContent = 'Drivers Installed';
-    btn.classList.add('done');
-    btn.style.pointerEvents = 'auto';
-    btn.style.opacity = '1';
-
-    appConfig.firstRunComplete = true;
-    window.electronAPI.saveSettings(appConfig);
-  });
-
-  window.electronAPI.onSetupFailed(() => {
-    showSetupToast('✗ Setup failed or was cancelled.', true);
-    txt.textContent = 'Install Drivers';
-    btn.style.pointerEvents = 'auto';
-    btn.style.opacity = '1';
-  });
 }
 
 window.addEventListener('DOMContentLoaded', () => {
@@ -365,7 +690,7 @@ window.addEventListener('DOMContentLoaded', () => {
   const port = _getServerPort();
   const arcadeFrame = document.querySelector('#panel-arcade iframe');
   if (arcadeFrame) {
-    arcadeFrame.src = `https://nearsec.cutefame.net/arcade?electron=1&lang=${savedLang}`;
+    arcadeFrame.src = `https://nearcade.cutefame.net/arcade?electron=1&lang=${savedLang}`;
   }
 
   loadAndSyncSettings();
@@ -493,10 +818,16 @@ document.addEventListener('DOMContentLoaded', () => {
   // 1. Hide PC-only elements if running on Android / Capacitor
   const isMobile = window.Capacitor || navigator.userAgent.includes('Android');
   if (isMobile) {
-    ['floating-setup-btn', 'docsFloatBtn'].forEach((id) => {
+    ['docsFloatBtn', 'settingRowSetupWizard'].forEach((id) => {
       const el = document.getElementById(id);
       if (el) el.style.setProperty('display', 'none', 'important');
     });
+  }
+
+  // Show HIDMaestro setting only on Windows (desktop Electron)
+  const hmRow = document.getElementById('settingRowHidMaestro');
+  if (hmRow) {
+    hmRow.style.display = window.electronAPI && navigator.platform.includes('Win') ? 'flex' : 'none';
   }
 
   if (!window.electronAPI) {
@@ -539,7 +870,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const port = _getServerPort();
   const arcadeFrame = document.querySelector('#panel-arcade iframe');
   if (arcadeFrame) {
-    arcadeFrame.src = `https://nearsec.cutefame.net/arcade?electron=1&lang=${savedLang}`;
+    arcadeFrame.src = `https://nearcade.cutefame.net/arcade?electron=1&lang=${savedLang}`;
   }
 
   loadAndSyncSettings();

@@ -115,6 +115,7 @@ function getViewerForSlot(slot) {
 
 module.exports = {
   init: backendInit.init,
+  setHidMaestroEnabled: backendInit.setHidMaestroEnabled,
   send,
   destroy,
   events: state.events,

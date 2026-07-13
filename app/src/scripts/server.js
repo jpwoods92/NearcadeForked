@@ -28,6 +28,7 @@ const {
 // this module's exports moved into ws.js/http.js along with the routes and
 // WS handlers that used them.
 const { stopArcadeHeartbeatWorker } = require('./server/arcade-signaling.js');
+const { wivrnEnsureRunning, wivrnShutdown } = require('./server/wivrn-lifecycle.js');
 
 // --- STREAMER PRIVACY SCRUBBER ---
 const _origLog = console.log;
@@ -126,7 +127,10 @@ const { getLanIP, findFreePort, openBrowser, getPublicIP } = serverNetwork;
 // ./server/tunnel.js now.
 function sanitize(str) {
   return String(str)
-    .replace(/[<>&"']/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&#39;' })[c])
+    .replace(
+      /[<>&"'`]/g,
+      (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&#39;', '`': '&#96;' })[c]
+    )
     .slice(0, 300);
 }
 function makePin() {
@@ -173,7 +177,7 @@ async function main() {
   state.session.pin = state.session.sessionPassword ? state.session.sessionPassword : makePin();
   state.session.pinEnabled = true;
 
-  console.log('\n  \x1b[1mNearsecTogether\x1b[0m');
+  console.log('\n  \x1b[1mNearcade\x1b[0m');
   console.log('  Host page : http://localhost:' + state.runtime.activePort + '/host');
   console.log('  LAN URL   : http://***.***.***.***:' + state.runtime.activePort + '/');
   if (state.serverInfo.publicIp)
@@ -182,7 +186,28 @@ async function main() {
 
   const app = express();
   const server = http.createServer(app);
-  const wss = new WebSocket.Server({ server, perMessageDeflate: false });
+  const wss = new WebSocket.Server({
+    server,
+    perMessageDeflate: false,
+    maxPayload: 1048576,
+    verifyClient: (info, cb) => {
+      const origin = info.origin || info.req.headers['origin'] || '';
+      if (!origin || origin === 'null') {
+        cb(true);
+        return;
+      }
+      try {
+        const u = new URL(origin);
+        if (u.protocol === 'http:' || u.protocol === 'https:') {
+          cb(true);
+        } else {
+          cb(false, 403, 'Origin not allowed');
+        }
+      } catch {
+        cb(false, 403, 'Origin not allowed');
+      }
+    },
+  });
 
   const _versionInfo = getAppVersionInfo();
   state.serverInfo.appVersion = _versionInfo.version;
@@ -254,6 +279,39 @@ async function main() {
     } else {
       console.log('  ~ Tunnel: waiting for host to choose provider...');
     }
+
+    // Auto-start WiVRn server on boot (no-op if the binary isn't installed)
+    console.log('[WiVRn] Auto-starting WiVRn server...');
+    wivrnEnsureRunning().then((running) => {
+      if (running) console.log('[WiVRn] WiVRn server ready');
+    });
+
+    // Periodically fetch the global ban list from the arcade directory
+    if (cfg.modEndpoint) {
+      const syncBans = async () => {
+        try {
+          const modCfg = loadConfig();
+          if (!modCfg.modEndpoint || !modCfg.modSecret) return;
+          let endpoint = modCfg.modEndpoint;
+          if (!endpoint.startsWith('http://') && !endpoint.startsWith('https://')) endpoint = 'https://' + endpoint;
+          const res = await fetch(endpoint, { headers: { Authorization: `Bearer ${modCfg.modSecret}` } });
+          if (!res.ok) return;
+          const list = await res.json();
+          if (!Array.isArray(list)) return;
+          state.bannedIps.clear();
+          const now = Date.now();
+          for (const ip of list) {
+            const hash = crypto.createHash('sha256').update(ip).digest('hex');
+            state.bannedIps.set(hash, { bannedAt: now, expiresAt: now + 86400000, reason: 'remote-ban' });
+          }
+          console.log(`[bans] Synced ${list.length} banned IP(s) from directory`);
+        } catch (_) {
+          /* directory unreachable — retry next interval */
+        }
+      };
+      syncBans();
+      setInterval(syncBans, 300000).unref(); // every 5 minutes
+    }
   });
 }
 
@@ -274,6 +332,9 @@ function cleanup(isElectron = false) {
 
   // Arcade heartbeat worker: clean shutdown
   stopArcadeHeartbeatWorker();
+
+  // Stop WiVRn (clears the inactivity timer too)
+  wivrnShutdown();
 
   if (state.runtime.activeTunnelProc) {
     try {

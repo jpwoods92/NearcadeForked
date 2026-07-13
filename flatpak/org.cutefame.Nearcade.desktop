@@ -1,8 +1,8 @@
 [Desktop Entry]
-Name=NearsecTogether
-Exec=nearsec-together
+Name=Nearcade
+Exec=nearcade
 Terminal=false
 Type=Application
-Icon=org.cutefame.NearsecTogether
+Icon=org.cutefame.Nearcade
 Categories=Network;Game;
 Comment=Browser-based low-latency game streaming host.

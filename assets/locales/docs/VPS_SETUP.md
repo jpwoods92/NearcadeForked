@@ -1,11 +1,11 @@
 # VPS Setup
 
-If you cannot open ports (due to CGNAT or strict firewalls), you can route your NearsecTogether traffic through a cheap cloud VPS.
+If you cannot open ports (due to CGNAT or strict firewalls), you can route your Nearcade traffic through a cheap cloud VPS.
 
 ### 1. Prerequisites
 - A cloud VPS running Linux (Ubuntu, Debian, or Oracle Cloud Linux)
 - SSH access to the VPS
-- NearsecTogether installed on your local host PC
+- Nearcade installed on your local host PC
 
 ### 2. Configure VPS Router
 The Nearsec VPS Router (`/vps` directory) handles WebSocket signaling and proxying WebRTC handshake traffic.

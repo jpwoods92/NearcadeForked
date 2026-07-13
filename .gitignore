@@ -1,5 +1,7 @@
 nearsectogether.config.json
 config/nearsectogether.config.json
+nearcade.config.json
+config/nearcade.config.json
 *.log
 node_modules/
 .env
@@ -23,3 +25,29 @@ vps/target/
 app/src/sidecar/input_backends/build/
 app/src/sidecar/input_backends/experimental/**/build/
 drafts/
+
+# WiVRn compiled binaries (produced by bin/build_wivrn.sh)
+bin/wivrn-server
+bin/wivrnctl
+bin/wivrnctl.new
+
+# WiVRn build output directories (produced by bin/build_wivrn.sh)
+bin/bin/
+bin/lib/
+bin/share/
+lib/
+
+# WiVRn / Monado source build directories (submodule lives under app/ here)
+app/src/tools/wivrn-src/build/
+app/src/tools/wivrn-src/build-*/
+
+# Stale Docker-generated output (root-owned, clean up with sudo)
+share/
+
+# Personal session / user-specific data
+latest.log
+/home/
+*.rgba
+frame.rgba
+nearsec_layer.log
+

@@ -578,12 +578,13 @@ if (window.electronAPI && window.electronAPI.onNativeGamepadEvent) {
   window.electronAPI.startNativeGamepadCapture();
 }
 
-window.currentInputMode = 'gamepad';
+window.currentInputMode = localStorage.getItem('ns_input_mode') || 'gamepad';
 let eyeTrackerCam = null;
 let eyeTrackerFaceMesh = null;
 
 window.updateInputMode = function (val) {
   window.currentInputMode = val;
+  localStorage.setItem('ns_input_mode', val);
   console.log('[InputMode] Switched to:', val);
 
   if (val === 'eyetracking') {
@@ -893,6 +894,13 @@ window.addEventListener('message', (e) => {
 // ── WEBXR (VR) INPUT POLLING ──────────────────────────────────────────────────
 let xrSession = null;
 let xrRefSpace = null;
+// VR lobby renderer state (upstream v3.0.2). NOTE: upstream references
+// lobbyInit/lobbyRender/lobbyDestroy/xrRenderVideoPanel here but never ships
+// them (lobby.js is an ES module with different exports) — all calls below
+// are typeof-guarded so VR works with or without a lobby renderer present.
+let lobbyGL = null;
+let lobbyLayer = null;
+let lobbyActive = false;
 let lastVrSend = 0;
 
 function maybeShowVRButton() {
@@ -922,7 +930,7 @@ function maybeShowVRButton() {
 function startVRSession() {
   if (!navigator.xr) return;
   navigator.xr
-    .requestSession('immersive-vr')
+    .requestSession('immersive-vr', { requiredFeatures: ['local-floor'] })
     .then((session) => {
       xrSession = session;
       const btn = document.getElementById('btnEnterVR');
@@ -931,16 +939,28 @@ function startVRSession() {
       if (ws?.readyState === 1) ws.send(JSON.stringify({ type: 'viewer-vr-active', viewerId: myId }));
 
       const canvas = document.createElement('canvas');
-      const gl = canvas.getContext('webgl', { xrCompatible: true });
-      session.updateRenderState({ baseLayer: new XRWebGLLayer(session, gl) });
+      const gl = canvas.getContext('webgl2', { xrCompatible: true });
+      const layer = new XRWebGLLayer(session, gl);
+      session.updateRenderState({ baseLayer: layer });
 
-      session.requestReferenceSpace('local').then((refSpace) => {
+      // Initialize lobby renderer when one is available (see note above)
+      if (typeof lobbyInit === 'function' && lobbyInit(gl)) {
+        lobbyActive = true;
+        lobbyGL = gl;
+        lobbyLayer = layer;
+      }
+
+      session.requestReferenceSpace('local-floor').then((refSpace) => {
         xrRefSpace = refSpace;
         session.requestAnimationFrame(onXRFrame);
       });
 
       session.addEventListener('end', () => {
         xrSession = null;
+        lobbyActive = false;
+        lobbyGL = null;
+        lobbyLayer = null;
+        if (typeof lobbyDestroy === 'function') lobbyDestroy();
         if (window.hostAllowVR) maybeShowVRButton();
       });
     })
@@ -954,11 +974,18 @@ function onXRFrame(time, frame) {
   if (!xrSession) return;
   xrSession.requestAnimationFrame(onXRFrame);
 
-  const now = Date.now();
-  if (now - lastVrSend < 16) return;
-
   const pose = frame.getViewerPose(xrRefSpace);
   if (!pose) return;
+
+  // Render the lobby scene while waiting for the host stream (upstream
+  // v3.0.2, typeof-guarded — see note at the xr state block above).
+  if (lobbyGL && lobbyLayer && lobbyActive && typeof lobbyRender === 'function') {
+    lobbyGL.bindFramebuffer(lobbyGL.FRAMEBUFFER, lobbyLayer.framebuffer);
+    lobbyRender(lobbyGL, frame, xrRefSpace);
+  }
+
+  const now = Date.now();
+  if (now - lastVrSend < 16) return;
 
   let changed = false;
   const vrState = {

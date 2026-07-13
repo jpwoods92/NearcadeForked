@@ -3,6 +3,7 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
+const crypto = require('crypto');
 const si = require('systeminformation');
 
 const state = require('./state.js');
@@ -39,6 +40,31 @@ const pagesDir = path.join(__dirname, '..', '..', 'pages');
 function registerHttpRoutes(app, deps) {
   const { makePin } = deps;
 
+  // ── Simple in-memory rate limiter (upstream v3.0.2) ──────────────────────
+  const rateLimitStore = new Map();
+  function rateLimit(key, maxRequests, windowMs) {
+    const now = Date.now();
+    let entry = rateLimitStore.get(key);
+    if (!entry || now - entry.windowStart > windowMs) {
+      entry = { count: 0, windowStart: now };
+      rateLimitStore.set(key, entry);
+    }
+    entry.count++;
+    return entry.count <= maxRequests;
+  }
+  setInterval(() => {
+    const cutoff = Date.now() - 60000;
+    for (const [key, entry] of rateLimitStore) {
+      if (entry.windowStart < cutoff) rateLimitStore.delete(key);
+    }
+  }, 60000).unref();
+
+  // Privileged endpoints (shell/file access) only answer the local machine.
+  function isLocalRequest(req) {
+    const remoteAddr = req.socket.remoteAddress || '';
+    return remoteAddr === '127.0.0.1' || remoteAddr === '::1' || remoteAddr === '::ffff:127.0.0.1';
+  }
+
   app.use((req, res, next) => {
     res.setHeader('Permissions-Policy', 'gamepad=*, display-capture=(self)');
     res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -57,7 +83,7 @@ function registerHttpRoutes(app, deps) {
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');
     res.send(
-      `window.NEARSEC_VERSION = "${state.serverInfo.appVersion}";\nwindow.NEARSEC_COMMIT = "${state.serverInfo.commitHash}";\nconsole.log("[Nearsec] Version loaded:", window.NEARSEC_VERSION, window.NEARSEC_COMMIT ? "("+window.NEARSEC_COMMIT+")" : "");`
+      `window.NEARSEC_VERSION = "${state.serverInfo.appVersion}";\nwindow.NEARSEC_COMMIT = "${state.serverInfo.commitHash}";\nconsole.log("[Nearcade] Version loaded:", window.NEARSEC_VERSION + (window.NEARSEC_COMMIT ? " ("+window.NEARSEC_COMMIT+")" : ""));`
     );
   });
 
@@ -92,10 +118,9 @@ function registerHttpRoutes(app, deps) {
     // Inject the host name dynamically into the Discord tags
     const ogTitle = sess ? sess.game : `${hostName} is looking to play!`;
     const ogDesc = sess
-      ? `Join the live ${sess.game} session on Nearsec.`
-      : `${hostName} is hosting a peer-to-peer gaming session on Nearsec.`;
-    const ogImage =
-      sess && sess.thumbnail ? sess.thumbnail : 'https://nearsec.cutefame.net/assets/NearsecTogetherLogo.png';
+      ? `Join the live ${sess.game} session on Nearcade.`
+      : `${hostName} is hosting a peer-to-peer gaming session on Nearcade.`;
+    const ogImage = sess && sess.thumbnail ? sess.thumbnail : 'https://nearcade.cutefame.net/assets/NearcadeLogo.png';
 
     html = html
       .replace(/(<meta property="og:title"\s+content=")[^"]*"/, `$1${ogTitle}"`)
@@ -106,6 +131,10 @@ function registerHttpRoutes(app, deps) {
   app.get('/dashboard', (req, res) => {
     res.setHeader('Content-Type', 'text/html');
     res.sendFile('dashboard.html', { root: pagesDir });
+  });
+  app.get('/setup', (req, res) => {
+    res.setHeader('Content-Type', 'text/html');
+    res.sendFile('setup.html', { root: pagesDir });
   });
   app.get('/host', (req, res) => {
     res.setHeader('Content-Type', 'text/html');
@@ -132,8 +161,10 @@ function registerHttpRoutes(app, deps) {
   app.use('/pages', express.static(pagesDir));
 
   app.post('/api/save-custom-host', express.json({ limit: '10mb' }), (req, res) => {
+    if (!isLocalRequest(req)) return res.status(403).json({ error: 'localhost only' });
     const htmlContent = req.body.html;
     if (typeof htmlContent !== 'string') return res.status(400).json({ error: 'Invalid content' });
+    if (htmlContent.length > 10485760) return res.status(400).json({ error: 'Content too large' });
     try {
       fs.writeFileSync(path.join(pagesDir, 'host-custom.html'), htmlContent);
       res.json({ ok: true });
@@ -146,26 +177,67 @@ function registerHttpRoutes(app, deps) {
     res.json({
       lanIP: state.serverInfo.lanIp,
       port: state.runtime.activePort,
-      pin: state.session.pin,
+      // The PIN is a secret — only the local host UI gets it.
+      pin: isLocalRequest(req) ? state.session.pin : undefined,
+      hasPin: !!state.session.pin,
       publicIP: state.serverInfo.publicIp || null,
       tunnelUrl: state.runtime.tunnelUrl || null,
       version: state.serverInfo.appVersion,
     })
   );
   app.post('/api/fe-log', express.json(), (req, res) => {
+    const clientIp = req.socket.remoteAddress || 'unknown';
+    if (!rateLimit('fe-log:' + clientIp, 30, 10000)) return res.status(429).json({ error: 'rate limited' });
     const { msg, src, line } = req.body || {};
-    console.error(`[renderer] ${msg} @ ${src}:${line}`);
+    if (
+      typeof msg !== 'string' ||
+      typeof src !== 'string' ||
+      (line !== undefined && typeof line !== 'string' && typeof line !== 'number')
+    ) {
+      return res.status(400).json({ error: 'invalid payload' });
+    }
+    console.error(`[renderer] ${msg.slice(0, 500)} @ ${src.slice(0, 200)}:${String(line).slice(0, 20)}`);
     res.json({ ok: true });
   });
 
   app.get('/api/pin-required', (req, res) => {
-    const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
-    const hasTunnelHeader = !!req.headers['x-forwarded-for'] || !!req.headers['cf-connecting-ip'];
+    const clientIp = req.headers['cf-connecting-ip'] || req.socket.remoteAddress || 'unknown';
+    const hasTunnelHeader = !!req.headers['cf-connecting-ip'] || !!req.headers['x-forwarded-for'];
     res.json({ required: state.session.pinEnabled && shouldRequirePin(clientIp, hasTunnelHeader) });
   });
   app.get('/api/config', (req, res) => res.json(loadConfig()));
   app.post('/api/config', express.json(), (req, res) => {
     res.json(saveConfig(req.body || {}));
+  });
+  app.post('/api/system-chat', express.json(), (req, res) => {
+    const msg = (req.body?.msg || '').trim();
+    if (!msg) return res.status(400).json({ ok: false });
+    const payload = JSON.stringify({ type: 'chat', from: 'Nearcade', msg });
+    state.viewers.forEach((vws) => {
+      if (vws && vws.readyState === 1) vws.send(payload);
+    });
+    if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1) state.runtime.hostWS.send(payload);
+    res.json({ ok: true });
+  });
+
+  app.post('/api/report', express.json(), (req, res) => {
+    const clientIp = req.socket.remoteAddress || 'unknown';
+    if (!rateLimit('report:' + clientIp, 5, 60000)) return res.status(429).json({ error: 'rate limited' });
+    const { viewerId, reason, sessionId } = req.body || {};
+    const anonHash = crypto.createHash('sha256').update(clientIp).digest('hex');
+    const list = state.reports.get(anonHash) || [];
+    list.push({
+      timestamp: Date.now(),
+      sessionId: sessionId || '?',
+      viewerId: viewerId || null,
+      reason: reason || 'unspecified',
+    });
+    if (list.length > 100) list.splice(0, list.length - 100);
+    state.reports.set(anonHash, list);
+    console.log(
+      `[report] Session ${sessionId || '?'} reported from ${anonHash.slice(0, 8)} reason: ${reason || 'unspecified'} (${list.length} total reports for this IP)`
+    );
+    res.json({ ok: true });
   });
 
   app.post('/api/set-session-password', express.json(), (req, res) => {
@@ -180,7 +252,7 @@ function registerHttpRoutes(app, deps) {
   });
 
   app.get('/api/session-password-status', (req, res) => {
-    res.json({ hasPassword: !!state.session.sessionPassword, password: state.session.sessionPassword });
+    res.json({ hasPassword: !!state.session.sessionPassword });
   });
 
   app.get('/api/sysinfo', async (req, res) => {
@@ -290,22 +362,31 @@ function registerHttpRoutes(app, deps) {
     res.json([...arcadeSessions.values()]);
   });
   app.post('/api/open-terminal', express.json(), (req, res) => {
+    if (!isLocalRequest(req)) return res.status(403).json({ ok: false, reason: 'localhost only' });
     if (process.platform !== 'linux') return res.status(400).json({ ok: false, reason: 'Linux only' });
     const { cmd, name } = req.body || {};
-    if (!cmd) return res.status(400).json({ ok: false });
-    const title = (name || 'Auto-Host').replace(/"/g, "'");
+    if (!cmd || typeof cmd !== 'string') return res.status(400).json({ ok: false });
+    if (cmd.length > 2000) return res.status(400).json({ ok: false, reason: 'command too long' });
+    // spawn() with an argv array (upstream v3.0.2): no shell string
+    // interpolation, plus a character allowlist on what does reach bash -c.
+    const title = String(name || 'Auto-Host')
+      .replace(/[^a-zA-Z0-9 _-]/g, '')
+      .slice(0, 100);
+    const safeCmd = String(cmd).replace(/[^a-zA-Z0-9 _=\/.:@%~#+$(){}[\]!^,|-]/g, '');
     const terms = [
-      `gnome-terminal --title="${title}" -- bash -c "${cmd}; exec bash"`,
-      `xterm -title "${title}" -e bash -c "${cmd}; exec bash"`,
-      `konsole --title "${title}" -e bash -c "${cmd}; exec bash"`,
+      { cmd: 'gnome-terminal', args: ['--title', title, '--', 'bash', '-c', `${safeCmd}; exec bash`] },
+      { cmd: 'xterm', args: ['-title', title, '-e', 'bash', '-c', `${safeCmd}; exec bash`] },
+      { cmd: 'konsole', args: ['--title', title, '-e', 'bash', '-c', `${safeCmd}; exec bash`] },
     ];
-    const { exec: _exec } = require('child_process');
     let i = 0;
     (function t() {
       if (i >= terms.length) return res.json({ ok: false, reason: 'no terminal found' });
-      _exec(terms[i++], (err) => {
-        if (err) t();
-        else res.json({ ok: true });
+      const term = terms[i++];
+      const proc = spawn(term.cmd, term.args, { stdio: 'ignore', detached: true });
+      proc.on('error', () => t());
+      proc.on('spawn', () => {
+        proc.unref();
+        res.json({ ok: true });
       });
     })();
   });
@@ -313,6 +394,7 @@ function registerHttpRoutes(app, deps) {
   let activeGameProc = null;
 
   app.post('/api/force-route', express.json(), (req, res) => {
+    if (!isLocalRequest(req)) return res.status(403).json({ ok: false, reason: 'localhost only' });
     // NOTE: `pb` was already an undefined global reference before this file
     // was extracted from server.js — pre-existing bug (this handler has
     // presumably always thrown ReferenceError when hit), left exactly as-is
@@ -355,6 +437,7 @@ function registerHttpRoutes(app, deps) {
   });
 
   app.post('/api/restart-game', express.json(), (req, res) => {
+    if (!isLocalRequest(req)) return res.status(403).json({ ok: false, reason: 'localhost only' });
     if (activeGameProc) {
       try {
         process.kill(-activeGameProc.pid);
@@ -368,6 +451,50 @@ function registerHttpRoutes(app, deps) {
     if (req.body && req.body.command && req.body.command !== 'KILL_ONLY') {
       const parts = req.body.command.split(' ');
       const cmd = parts.shift();
+      if (!cmd || typeof cmd !== 'string') return res.status(400).json({ ok: false, reason: 'invalid command' });
+
+      // Launcher allowlist (upstream v3.0.2): this endpoint spawns arbitrary
+      // processes — restrict to known game launchers/emulators.
+      const ALLOWED_GAMES = [
+        'steam',
+        'Heroic',
+        'lutris',
+        'wine',
+        'mangohud',
+        'cs2',
+        'xenia',
+        'yuzu',
+        'ryujinx',
+        'pcsx2',
+        'dolphin-emu',
+        'rpcs3',
+        'ppsspp',
+        'duckstation',
+        'melonds',
+        'citra',
+        'flycast',
+        'redream',
+        'ares',
+        'bigpemu',
+        'cemu',
+        'mame',
+        'scummvm',
+        'vrchat',
+        'firefox',
+        'chromium',
+        'google-chrome',
+        'flatpak',
+        '.exe',
+        '.AppImage',
+        'bash',
+        'sh',
+      ];
+      const allowMatch = (c) => ALLOWED_GAMES.some((a) => c.includes(a) || c.endsWith(a));
+      if (!allowMatch(cmd)) {
+        console.warn(`[security] BLOCKED restart-game: "${cmd}" not in allowlist`);
+        return res.status(403).json({ ok: false, reason: 'game not in allowlist' });
+      }
+
       console.log('  \x1b[35m~\x1b[0m Launching game process:', req.body.command);
 
       // ── CRITICAL AUDIO ROUTING: Force game audio into the virtual sink ──

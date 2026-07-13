@@ -56,6 +56,7 @@
 .pill-easy   { background: #1a3d2a; color: #4ade80; font-size:8px; padding:1px 6px; border-radius:6px; font-weight:600; }
 .pill-medium { background: #3a2e00; color: #fbbf24; font-size:8px; padding:1px 6px; border-radius:6px; font-weight:600; }
 .pill-hard   { background: #3a1a1a; color: #f87171; font-size:8px; padding:1px 6px; border-radius:6px; font-weight:600; }
+.pill-warn   { background: #5a4300; color: var(--warn); font-size:8px; padding:1px 6px; border-radius:6px; font-weight:600; }
 .pill-lat    { background: rgba(255,255,255,0.06); color: var(--muted); font-size:8px; padding:1px 6px; border-radius:6px; border:1px solid var(--border); }
 .pill-star   { background: var(--accent-dim); color: var(--accent2); font-size:8px; padding:1px 6px; border-radius:6px; border:1px solid rgba(139,92,246,0.4); font-weight:600; }
 

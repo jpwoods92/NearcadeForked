@@ -6,12 +6,40 @@ const fs = require('fs');
 function getConfigDir() {
   const home = require('os').homedir();
   if (process.platform === 'win32')
+    return path.join(process.env.APPDATA || path.join(home, 'AppData', 'Roaming'), 'Nearcade');
+  if (process.platform === 'darwin') return path.join(home, 'Library', 'Application Support', 'Nearcade');
+  return path.join(home, '.config', 'Nearcade');
+}
+function _legacyConfigDir() {
+  const home = require('os').homedir();
+  if (process.platform === 'win32')
     return path.join(process.env.APPDATA || path.join(home, 'AppData', 'Roaming'), 'NearsecTogether');
   if (process.platform === 'darwin') return path.join(home, 'Library', 'Application Support', 'NearsecTogether');
   return path.join(home, '.config', 'NearsecTogether');
 }
 const CONFIG_DIR = getConfigDir();
-const CONFIG_FILE = path.join(CONFIG_DIR, 'nearsectogether.config.json');
+const CONFIG_FILE = path.join(CONFIG_DIR, 'nearcade.config.json');
+
+// Nearsec→Nearcade rebrand migration: copy this fork's users' live settings
+// into the new dir once. Same logic as server/env.js getSafeDataDir() — this
+// module can run first depending on boot order, so both migrate defensively.
+try {
+  const oldCfg = path.join(_legacyConfigDir(), 'nearsectogether.config.json');
+  if (!fs.existsSync(CONFIG_FILE) && fs.existsSync(oldCfg)) {
+    if (!fs.existsSync(CONFIG_DIR)) fs.mkdirSync(CONFIG_DIR, { recursive: true });
+    fs.copyFileSync(oldCfg, CONFIG_FILE);
+    console.log('[settings] Migrated settings from', oldCfg);
+  }
+  const oldControllers = path.join(_legacyConfigDir(), 'controllers.json');
+  const newControllers = path.join(CONFIG_DIR, 'controllers.json');
+  if (!fs.existsSync(newControllers) && fs.existsSync(oldControllers)) {
+    if (!fs.existsSync(CONFIG_DIR)) fs.mkdirSync(CONFIG_DIR, { recursive: true });
+    fs.copyFileSync(oldControllers, newControllers);
+    console.log('[settings] Migrated controllers.json from', oldControllers);
+  }
+} catch (e) {
+  console.warn('[settings] Legacy settings migration failed:', e.message);
+}
 // This module lives at app/electron/settings.js — two levels below the repo
 // root that these paths were originally written relative to (electron-main.js
 // used to sit directly at app/, one level below root).
@@ -88,6 +116,10 @@ const DEFAULTS = {
   discordClientId: '1522864642953711776', // Fallback default ID
   // First run
   firstRunComplete: false,
+  neverBotherSetup: false,
+  // Appearance / updates (upstream v3.0.2)
+  useSystemAccent: false,
+  checkForUpdates: true,
 };
 
 function loadSettings() {

@@ -24,7 +24,9 @@ const FALLBACK_PATHS = {
     path.join(os.homedir(), 'bin', 'zrok.exe'),
     path.join(os.homedir(), 'zrok', 'zrok'),
     path.join(os.homedir(), 'bin', 'zrok'),
+    path.join(os.homedir(), 'bin', 'zrok2'),
   ],
+  zrok2: [path.join(os.homedir(), 'zrok', 'zrok2'), path.join(os.homedir(), 'bin', 'zrok2')],
   playit: [
     path.join(os.homedir(), 'playit.exe'),
     path.join(os.homedir(), 'bin', 'playit.exe'),
@@ -395,7 +397,10 @@ function startTunnelZrok(port, retries = 3) {
         .then((p) => p)
         .catch(() => null)) ||
       (function () {
+        const cfgBin = path.join(os.homedir(), '.config', 'Nearcade', 'bin');
         const candidates = [
+          path.join(cfgBin, 'zrok2'),
+          path.join(cfgBin, 'zrok'),
           '/usr/bin/zrok2',
           '/usr/bin/zrok',
           '/usr/local/bin/zrok',

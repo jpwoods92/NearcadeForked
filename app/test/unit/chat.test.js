@@ -22,11 +22,22 @@ describe('host.js chat functions', () => {
     expect(document.getElementById('lastLogLine').textContent).toBe('Stream started');
   });
 
-  it('appendChat() has no dedup guard — an identical message repeated immediately appends twice', () => {
+  it('appendChat() dedups an identical message repeated within the fingerprint window (upstream v3.0.2)', () => {
     host.appendChat('Host', 'hello', true);
     host.appendChat('Host', 'hello', true);
     const messages = document.getElementById('chatLog').querySelectorAll('.cmsg');
-    expect(messages).toHaveLength(2);
+    // Server-side no-echo + local echo means the same line can arrive twice
+    // through different paths — chatAppendMessage now drops exact repeats
+    // landing within 1.2s regardless of sender.
+    expect(messages).toHaveLength(1);
+  });
+
+  it('appendChat() renders viewer-controlled text as text, never markup', () => {
+    host.appendChat('<img src=x onerror=alert(1)>', '<b>bold?</b>', false);
+    const msg = document.querySelector('#chatLog .cmsg');
+    expect(msg.querySelector('img')).toBeNull();
+    expect(msg.querySelector('b')).toBeNull();
+    expect(msg.textContent).toContain('<b>bold?</b>');
   });
 
   it('appendChat() marks the sender\'s own messages with the "me" class', () => {

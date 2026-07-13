@@ -1,5 +1,6 @@
     /* ─── DESIGN TOKENS (matches host) ─────────────────────────────────── */
     :root {
+      accent-color: #8b5cf6;
       --bg: #090a0e;
       --surface: #0f111a;
       --card: rgba(15, 17, 26, 0.92);
@@ -176,12 +177,14 @@
       font-size: 14px;
       padding: 10px 14px;
       width: 100%;
-      outline: none;
       transition: border-color 0.15s;
     }
 
     .pin-input:focus {
       border-color: var(--accent);
+      outline: 2px auto Highlight;
+      outline: 2px auto -webkit-focus-ring-color;
+      outline-offset: 0;
     }
 
     .pin-input::placeholder {

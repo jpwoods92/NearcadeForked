@@ -1,12 +1,12 @@
 # Comenzando juntos con Nearsec
 
-Nearsec Together te permite compartir juegos locales con amigos a través de Internet mediante WebRTC.
+Nearcade te permite compartir juegos locales con amigos a través de Internet mediante WebRTC.
 
 ## Opciones de alojamiento
 Tienes dos formas de organizar una sesión.
 
 1. Túneles privados: puedes configurar un túnel personalizado a través de Cloudflare o Zrok para crear un enlace permanente para tus amigos. Esto funciona mejor para grupos privados.
-2. Nearsec Arcade: Arcade es un directorio público para buscar juegos cooperativos locales. Las sesiones están restringidas a 80 minutos para mantener activo el lobby. Debe utilizar un proveedor de túnel verificado como Cloudflared o Zrok para enumerar una sesión. Puedes ver el lobby público en https://nearsec.cutefame.net/arcade y unirte a juegos activos.
+2. Nearsec Arcade: Arcade es un directorio público para buscar juegos cooperativos locales. Las sesiones están restringidas a 80 minutos para mantener activo el lobby. Debe utilizar un proveedor de túnel verificado como Cloudflared o Zrok para enumerar una sesión. Puedes ver el lobby público en https://nearcade.cutefame.net/arcade y unirte a juegos activos.
 
 ## Iniciar una sesión
 Siga estos pasos para comenzar a alojar.

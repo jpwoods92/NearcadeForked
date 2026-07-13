@@ -166,6 +166,64 @@ function _elText(id, val) {
   const e = document.getElementById(id);
   if (e) e.textContent = val;
 }
+function updatePlaygroundToolbarState(isLive) {
+  if (!document.body.dataset.playgroundHost) return;
+  const startBtn = document.getElementById('btnStart');
+  const stopBtn = document.getElementById('btnStop');
+  if (startBtn) {
+    startBtn.style.display = isLive ? 'none' : '';
+    const title = startBtn.querySelector('.tile-title');
+    const subtitle = startBtn.querySelector('.tile-subtitle');
+    if (title) title.textContent = isLive ? 'Streaming' : 'Start Stream';
+    if (subtitle) subtitle.textContent = isLive ? 'Live broadcast active' : 'Broadcast your gameplay';
+  }
+  if (stopBtn) {
+    stopBtn.style.display = isLive ? '' : 'none';
+  }
+}
+
+// ── Version check (upstream v3.0.2) ──────────────────────────────────────────
+function compareVersions(a, b) {
+  const pa = a.split('.').map(Number);
+  const pb = b.split('.').map(Number);
+  for (let i = 0; i < 3; i++) {
+    const na = pa[i] || 0,
+      nb = pb[i] || 0;
+    if (na > nb) return 1;
+    if (na < nb) return -1;
+  }
+  return 0;
+}
+
+async function _checkClientVersion() {
+  try {
+    const res = await fetch('https://nearcade.cutefame.net/api/client-version');
+    if (!res.ok) return;
+    const data = await res.json();
+    const minVer = data.minimum || '0.0.0';
+    if (compareVersions(window.NEARSEC_VERSION, minVer) < 0) {
+      const overlay = document.createElement('div');
+      overlay.id = 'versionCheckOverlay';
+      overlay.style.cssText =
+        'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;';
+      overlay.innerHTML =
+        '<div style="background:#121518;border:1px solid #ff5d3d;border-radius:12px;padding:40px;max-width:420px;text-align:center;box-shadow:0 16px 48px rgba(0,0,0,0.8);font-family:sans-serif;">' +
+        '<h2 style="color:#ff5d3d;margin:0 0 12px 0;text-transform:uppercase;letter-spacing:1px;">Client Outdated</h2>' +
+        '<p style="color:#949ba4;font-size:14px;line-height:1.6;margin:0 0 16px 0;">' +
+        'You are running <strong style="color:#f0f3f5;">Nearcade v' +
+        window.NEARSEC_VERSION +
+        '</strong>.<br>' +
+        'The arcade directory requires at least <strong style="color:#f0f3f5;">v' +
+        minVer +
+        '</strong>.<br><br>' +
+        'Please update to the latest version to continue hosting arcade sessions.</p>' +
+        '<a href="https://github.com/TheRealFame/Nearcade/releases/latest" target="_blank" style="display:inline-block;background:#ff5d3d;color:#fff;padding:10px 24px;border-radius:6px;text-decoration:none;font-weight:600;">Download Update</a>' +
+        '</div>';
+      document.body.appendChild(overlay);
+    }
+  } catch (_) {}
+}
+
 function _elClass(id, cls, add) {
   const e = document.getElementById(id);
   if (e) e.classList[add ? 'add' : 'remove'](cls);
@@ -219,7 +277,7 @@ function toggleStreamState() {
 
 async function fetchGameThumbnail(gameTitle) {
   try {
-    const res = await fetch(`https://nearsec.cutefame.net/api/game-art?title=${encodeURIComponent(gameTitle)}`);
+    const res = await fetch(`https://nearcade.cutefame.net/api/game-art?title=${encodeURIComponent(gameTitle)}`);
     const data = await res.json();
     return data.thumbnail || '';
   } catch (e) {
@@ -355,6 +413,8 @@ async function renderUrls(d) {
           : '';
 
   const rows = [];
+  const isPlaygroundHost =
+    document.body?.dataset.playgroundHost === '1' || document.body?.dataset.playgroundHost === 'true';
 
   // Check if we are running in P2P mode!
   if (window._isP2P && window._p2pCode) {
@@ -365,7 +425,7 @@ async function renderUrls(d) {
     rows.push({ url: 'Waiting for tunnel...', label: 'tunnel starting up', color: '#444', noclick: true });
   }
 
-  if (!window._isP2P) {
+  if (!window._isP2P && !isPlaygroundHost) {
     rows.push({
       url: `http://${d.lanIP}:${d.port}/?v3&host=${encodedName}${pipeArg}`,
       label: 'LAN (v3) — same network only',
@@ -373,7 +433,7 @@ async function renderUrls(d) {
     });
   }
 
-  if (!finalTunnelUrl && d.publicIP)
+  if (!finalTunnelUrl && d.publicIP && !isPlaygroundHost)
     rows.splice(1, 0, {
       url: `http://${d.publicIP}:${d.port}/?v3&host=${encodedName}${pipeArg}`,
       label: 'Public IP (v3) (needs port forward)',
@@ -388,6 +448,8 @@ async function renderUrls(d) {
       const div = document.createElement('div');
       div.className = 'url-row';
       div.style.color = r.color;
+      div.style.display = 'block';
+      div.style.width = '100%';
       div.textContent = r.url;
       if (!r.noclick)
         div.onclick = () => {
@@ -405,7 +467,7 @@ async function renderUrls(d) {
   }
 
   // Always show LAN IP as a secondary row — useful even in VPS mode for local testing
-  if (d.lanIP) {
+  if (d.lanIP && !isPlaygroundHost) {
     const lanUrl = `http://${d.lanIP}:${d.port}/?v3&host=${encodedName}`;
     const existing = [...(el?.querySelectorAll('.url-row') || [])].find((e) => e.textContent.includes(d.lanIP));
     if (!existing && el) {
@@ -492,10 +554,10 @@ function connectWS() {
     fetch('/api/info')
       .then((r) => r.json())
       .then((d) => {
-        currentPin = d.pin;
+        if (d.pin) currentPin = d.pin;
         if (!window._isP2P) {
           const pVal = document.getElementById('pinVal');
-          if (pVal) pVal.textContent = d.pin;
+          if (pVal) pVal.textContent = currentPin;
         }
         renderUrls(d);
         ws.send(JSON.stringify({ type: 'sync-pin', pin: currentPin, enabled: pinEnabled }));
@@ -621,13 +683,17 @@ function connectWS() {
         return;
       }
       log(I18N.t('Tunnel ready:') + ' ' + msg.url, 'ok');
+      // Set _globalTunnelUrl synchronously so _updateDiscordRPC picks it up
+      // even if the async fetch below hasn't resolved yet.
+      window._globalTunnelUrl = msg.url;
       fetch('/api/info')
         .then((r) => r.json())
-        .then((d) => {
+        .then(async (d) => {
           d.tunnelUrl = msg.url;
-          renderUrls(d);
+          await renderUrls(d);
+          if (typeof _updateDiscordRPC === 'function') _updateDiscordRPC();
         });
-      closeTunnelModal();
+      if (!_tunnelModalManual) closeTunnelModal();
     }
     if (msg.type === 'tunnel-error') {
       log(I18N.t('Tunnel failed:') + ' ' + msg.provider, 'err');
@@ -676,9 +742,12 @@ function connectWS() {
       audio.play().catch((err) => console.warn('[Audio] Could not play UI sound:', err));
       return;
     }
-    if (msg.type === 'chat') appendChat(msg.from, msg.msg, false);
+    if (msg.type === 'chat') {
+      const isMe = msg.from === 'Host';
+      appendChat(msg.from, msg.msg, isMe);
+    }
     if (msg.type === 'viewer-gpid') log(I18N.t('Controller:') + ' ' + msg.id, 'ok');
-    if (msg.type === 'arcade-session-active') log(I18N.t('Arcade session is LIVE on Nearsec Arcade!'), 'ok');
+    if (msg.type === 'arcade-session-active') log(I18N.t('Arcade session is LIVE on Nearcade Arcade!'), 'ok');
     if (msg.type === 'arcade-session-error') log(I18N.t('Arcade error:') + ' ' + (msg.reason || 'unknown'), 'err');
     if (msg.type === 'input-error') {
       // Backend driver failure (e.g. ViGEmBus missing on Windows)
@@ -1054,8 +1123,8 @@ window.saveCodecUI = async function (val) {
       if (selectEl && ws && ws.readyState === 1) {
         const codecName = selectEl.options[selectEl.selectedIndex].text;
         const chatMsg = `Host dynamically swapped the stream codec to ${codecName}.`;
-        ws.send(JSON.stringify({ type: 'chat', from: 'Nearsec', msg: chatMsg }));
-        if (typeof appendChat === 'function') appendChat('Nearsec', chatMsg, false);
+        ws.send(JSON.stringify({ type: 'chat', from: 'Nearcade', msg: chatMsg }));
+        if (typeof appendChat === 'function') appendChat('Nearcade', chatMsg, false);
       }
 
       for (const vid in peerConnections) {
@@ -1100,7 +1169,7 @@ function saveCaptureMethod(method) {
     const confirmMsg =
       'Capture pipeline changed to ' +
       method.toUpperCase() +
-      '. You must restart NearsecTogether for this to take effect. Close the app now?';
+      '. You must restart Nearcade for this to take effect. Close the app now?';
     if (confirm(confirmMsg)) {
       window.electronAPI.saveSettings({ captureMethod: method });
       console.log(`[Host] Capture pipeline saved as: ${method}. Closing app...`);
@@ -1483,7 +1552,7 @@ async function enumerateAudioDevices() {
 }
 
 function sysChat(text) {
-  chatSendSystemMessage(ws, 'Nearsec', text);
+  chatSendSystemMessage(ws, 'Nearcade', text);
 }
 
 function createVirtualAudioCable() {
@@ -1658,11 +1727,13 @@ if (document.readyState === 'loading') {
     setInterval(fetchSysInfo, 3000);
     fetchSysInfo();
     setTimeout(loadExpDevices, 500);
+    setTimeout(_checkClientVersion, 1000);
   });
 } else {
   setInterval(fetchSysInfo, 3000);
   fetchSysInfo();
   setTimeout(loadExpDevices, 500);
+  setTimeout(_checkClientVersion, 1000);
 }
 
 let _discordStartTime = null;
@@ -1683,20 +1754,20 @@ function _updateDiscordRPC() {
     _discordStartTime = Date.now();
   }
 
-  if (typeof isArcade !== 'undefined' && isArcade && typeof arcadeConfig !== 'undefined' && arcadeConfig.title) {
-    const lang = window.I18N && I18N.targetLang ? I18N.targetLang : 'en';
-    const supportedLogos = ['de', 'es', 'fr', 'ja', 'pt'];
-    const imageKey = supportedLogos.includes(lang) ? `nearsec_logo_${lang}` : 'nearsec_logo';
+  const lang = window.I18N && I18N.targetLang ? I18N.targetLang : 'en';
+  const supportedLogos = ['de', 'es', 'fr', 'ja', 'pt'];
+  const imageKey = supportedLogos.includes(lang) ? `nearcade_logo_${lang}` : 'nearcade_logo';
 
+  if (typeof isArcade !== 'undefined' && isArcade && typeof arcadeConfig !== 'undefined' && arcadeConfig.title) {
     const payload = {
       details: `Playing ${arcadeConfig.title}`,
       state: `Arcade Mode (${arcadeConfig.requirePin ? 'Private' : 'Public'})`,
       startTimestamp: _discordStartTime,
       largeImageKey: imageKey,
-      largeImageText: 'NearsecTogether',
+      largeImageText: 'Nearcade',
     };
 
-    if (window.hostSessionId) payload.partyId = window.hostSessionId;
+    if (hostSessionId) payload.partyId = hostSessionId;
     if (typeof knownViewers !== 'undefined') {
       payload.partySize = knownViewers.size + 1;
       payload.partyMax = parseInt(arcadeConfig.maxPlayers || 4);
@@ -1706,34 +1777,55 @@ function _updateDiscordRPC() {
 
     console.log('[DEBUG] Sending Discord Arcade Activity:', payload);
     window.electronAPI.discordSetActivity(payload);
-  } else if (typeof streamActive !== 'undefined' && streamActive) {
-    const lang = window.I18N && I18N.targetLang ? I18N.targetLang : 'en';
-    const supportedLogos = ['de', 'es', 'fr', 'ja', 'pt'];
-    const imageKey = supportedLogos.includes(lang) ? `nearsec_logo_${lang}` : 'nearsec_logo';
+    return;
+  }
 
+  const secret = window._isP2P ? window._p2pCode : window._globalTunnelUrl;
+
+  if (typeof streamActive !== 'undefined' && streamActive) {
     const payload = {
       details: 'Hosting a session',
       state: `${knownViewers.size} viewer(s) connected`,
       startTimestamp: _discordStartTime,
       largeImageKey: imageKey,
-      largeImageText: 'NearsecTogether',
+      largeImageText: 'Nearcade',
     };
 
-    if (window.hostSessionId) payload.partyId = window.hostSessionId;
+    if (hostSessionId) payload.partyId = hostSessionId;
     if (typeof knownViewers !== 'undefined') {
       payload.partySize = knownViewers.size + 1;
       payload.partyMax = 10;
     }
-    const secret = window._isP2P ? window._p2pCode : window._globalTunnelUrl;
     if (secret && secret !== 'none') payload.joinSecret = secret;
 
     console.log('[DEBUG] Sending Discord Private Activity:', payload);
     window.electronAPI.discordSetActivity(payload);
-  } else {
-    console.log('[DEBUG] Clearing Discord Activity');
-    _discordStartTime = null;
-    window.electronAPI.discordClear();
+    return;
   }
+
+  // Tunnel/P2P ready but not yet streaming — set a basic activity so
+  // Discord "Invite to Play" works before the host starts capturing.
+  if (secret && secret !== 'none') {
+    const payload = {
+      details: 'Session ready',
+      state: 'Waiting to start stream',
+      startTimestamp: _discordStartTime,
+      largeImageKey: imageKey,
+      largeImageText: 'Nearcade',
+    };
+    if (hostSessionId) payload.partyId = hostSessionId;
+    payload.partySize = 1;
+    payload.partyMax = 10;
+    payload.joinSecret = secret;
+
+    console.log('[DEBUG] Sending Discord Ready Activity:', payload);
+    window.electronAPI.discordSetActivity(payload);
+    return;
+  }
+
+  console.log('[DEBUG] Clearing Discord Activity');
+  _discordStartTime = null;
+  window.electronAPI.discordClear();
 }
 
 // ── Experimental Devices UI ──────────────────────────────────────────────────
@@ -1797,7 +1889,7 @@ function addExpDevice(inVal, inText, inEnabled = true) {
   if (list.querySelector(`[data-exp-val="${val}"]`)) return;
 
   // Determine status text based on device type
-  const isImplemented = val === 'tablet' || val === 'guitar' || val === 'eye' || val === 'hotas' || val === 'vr';
+  const isImplemented = val === 'tablet' || val === 'guitar' || val === 'eye' || val === 'hotas';
   const statusText = isImplemented
     ? '<span style="color:var(--green);">Status: Active</span>'
     : '<span style="color:var(--muted2);">0 Users (Coming Soon)</span>';

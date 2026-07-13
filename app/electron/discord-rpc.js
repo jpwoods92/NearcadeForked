@@ -1,5 +1,7 @@
 'use strict';
 const fs = require('fs');
+const os = require('os');
+const path = require('path');
 const { ipcMain } = require('electron');
 const { flags } = require('./cli-flags.js');
 const { CONFIG_FILE } = require('./settings.js');
@@ -7,15 +9,66 @@ const { appendLog } = require('./logger.js');
 const state = require('./state.js');
 
 // ── DISCORD PROTOCOL REGISTRATION (Linux fix) ────────────────────────────────
-// DiscordRPC.register() creates the ~/.local/share/applications/discord-<id>.desktop
-// file that XDG uses to route "Ask to Join" deep links to our app.
-// This MUST run at startup (not lazily) or the protocol handler never exists.
-//
-// Deliberately reads its own minimal config snapshot instead of going through
-// electron/settings.js's loadSettings() — this runs before the rest of the
-// boot sequence and historically used its own independent fallback client ID
-// ('1241907722765324391', not DEFAULTS.discordClientId's
-// '1522864642953711776'). Preserved verbatim rather than "fixed" here.
+// Creates the ~/.local/share/applications/discord-<id>.desktop file that XDG
+// uses to route "Ask to Join" deep links to our app, and registers the
+// x-scheme-handler in mimeapps.list. Upstream v3.0.2 replaced discord-rpc's
+// register() (which silently no-ops when Discord's own desktop integration
+// files are missing) with this manual implementation.
+// MUST run at startup (not lazily) or the protocol handler never exists.
+function _writeProtocolFiles(clientId) {
+  const protocol = 'discord-' + clientId;
+  const home = os.homedir();
+  const appsDir = path.join(home, '.local', 'share', 'applications');
+  const desktopFile = path.join(appsDir, protocol + '.desktop');
+  const mimeType = 'x-scheme-handler/' + protocol;
+
+  const args = process.argv.slice(1).join(' ');
+  const execLine = process.execPath + ' ' + args + ' %u';
+
+  if (!fs.existsSync(appsDir)) fs.mkdirSync(appsDir, { recursive: true });
+
+  fs.writeFileSync(
+    desktopFile,
+    [
+      '[Desktop Entry]',
+      'Type=Application',
+      'Name=Nearcade (Discord Join)',
+      'Exec=' + execLine,
+      'MimeType=' + mimeType + ';',
+      'StartupNotify=true',
+      'Categories=Network;',
+      'NoDisplay=true',
+    ].join('\n'),
+    'utf-8'
+  );
+
+  const mimeAppsPath = path.join(home, '.config', 'mimeapps.list');
+  let mimeContent = '';
+  if (fs.existsSync(mimeAppsPath)) {
+    mimeContent = fs
+      .readFileSync(mimeAppsPath, 'latin1')
+      .replace(/\r\n?/g, '\n')
+      .split('\n')
+      .filter((l) => {
+        if (l.startsWith(mimeType + '=')) return false;
+        if (l.includes(mimeType) && !l.startsWith('[') && !l.startsWith('#')) return false;
+        return true;
+      })
+      .join('\n');
+  }
+
+  const marker = '[Default Applications]';
+  const newLine = mimeType + '=' + protocol + '.desktop';
+  if (mimeContent.includes(marker)) {
+    mimeContent = mimeContent.replace(marker, marker + '\n' + newLine);
+  } else {
+    mimeContent += (mimeContent ? '\n' : '') + marker + '\n' + newLine + '\n';
+  }
+
+  fs.writeFileSync(mimeAppsPath, mimeContent, 'utf-8');
+  console.log('[Discord] Protocol ' + protocol + ' registered (desktop file + mimeapps.list)');
+}
+
 function registerDiscordProtocol() {
   try {
     const _earlySettings = (() => {
@@ -25,9 +78,11 @@ function registerDiscordProtocol() {
         return {};
       }
     })();
-    const _discordClientId = _earlySettings.discordClientId || '1241907722765324391';
-    if (!flags.isArcadeWorker) require('discord-rpc').register(_discordClientId);
-  } catch (_) {}
+    const _discordClientId = _earlySettings.discordClientId || '1522864642953711776';
+    if (!flags.isArcadeWorker && process.platform === 'linux') _writeProtocolFiles(_discordClientId);
+  } catch (e) {
+    console.log('[Discord] Protocol registration failed:', e.message);
+  }
 }
 
 // ── Discord RPC client (activity updates) ──

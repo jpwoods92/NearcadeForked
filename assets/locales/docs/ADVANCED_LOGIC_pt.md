@@ -1,4 +1,4 @@
-Este documento fornece uma visão aprofundada dos sistemas subjacentes que alimentam o NearsecTogether. Ele é destinado a desenvolvedores, colaboradores e usuários avançados que precisam entender o fluxo de dados exato do WebRTC, virtualização de áudio Linux e injeção de entrada em nível de kernel.
+Este documento fornece uma visão aprofundada dos sistemas subjacentes que alimentam o Nearcade. Ele é destinado a desenvolvedores, colaboradores e usuários avançados que precisam entender o fluxo de dados exato do WebRTC, virtualização de áudio Linux e injeção de entrada em nível de kernel.
 
 ## Índice
 1. [Arquitetura de injeção de entrada](#1-arquitetura de injeção de entrada)

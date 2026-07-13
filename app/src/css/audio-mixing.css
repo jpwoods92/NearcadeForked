@@ -42,14 +42,16 @@
 /* ── DOCK AUDIO SLIDERS ──────────────────────────────────────────── */
 .dock-slider-row {
     display: flex; align-items: center; gap: 6px;
+    min-width: 0;
 }
 .dock-slider-label {
     font-size: 10px; letter-spacing: 0.1em;
     text-transform: uppercase; color: var(--muted2);
     width: 48px; flex-shrink: 0; font-weight: 600;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .dock-slider {
-    flex: 1; -webkit-appearance: none; appearance: none;
+    flex: 1; min-width: 30px; -webkit-appearance: none; appearance: none;
     height: 3px; background: rgba(255,255,255,0.1);
     border-radius: 2px; outline: none; cursor: pointer;
 }
@@ -65,3 +67,10 @@
     color: var(--muted2); width: 28px; text-align: right; flex-shrink: 0;
 }
 
+
+@media (max-width: 580px) {
+    .dock-slider-row { flex-wrap: wrap; gap: 2px 6px; }
+    .dock-slider-label { width: auto; min-width: 0; }
+    .dock-slider { min-width: 40px; order: 3; flex-basis: 100%; }
+    .dock-slider-val { width: auto; min-width: 20px; }
+}

@@ -8,14 +8,14 @@ Linux requiere privilegios de root para inyectar controladores virtuales directa
 
 Terminal 1 para el controlador de entrada:
 ```bash
-cd NearsecTogether
+cd Nearcade
 pip3 install -r bin/requirements-linux.txt
 sudo python3 src/sidecar/input_driver.py
 ```
 
 Terminal 2 para el Servidor Web:
 ```bash
-cd NearsecTogether
+cd Nearcade
 npm install
 npm run electron
 ```
@@ -27,14 +27,14 @@ Windows requiere el controlador ViGEmBus para emular controladores.
 
 Terminal 1 para el controlador de entrada:
 ```powershell
-cd NearsecTogether
+cd Nearcade
 pip install -r bin/requirements-windows.txt
 python src/sidecar/input_driver.py
 ```
 
 Terminal 2 para el Servidor Web:
 ```powershell
-cd NearsecTogether
+cd Nearcade
 npm install
 npm run electron
 ```

@@ -34,7 +34,7 @@ const I18N = {
       this.swapLogos(cachedLangs);
     } else {
       this.populateDropdown({
-        en: { name: 'English', logo: 'NearsecTogetherLogo.png', title: 'NearsecTogetherTitle.png' },
+        en: { name: 'English', logo: 'NearcadeLogo.png', title: 'NearcadeTitle.png' },
       });
     }
 
@@ -105,23 +105,17 @@ const I18N = {
   },
 
   swapLogos(langs) {
-    const langInfo = langs[this.targetLang] || langs['en'];
-    if (!langInfo || typeof langInfo === 'string') return;
-
-    const logoPath = langInfo.logo || 'NearsecTogetherLogo.png';
-    const titlePath = langInfo.title || 'NearsecTogetherTitle.png';
-
     document.querySelectorAll('img').forEach((img) => {
       const src = img.getAttribute('src');
-      if (src && src.includes('NearsecTogetherLogo.png')) {
-        img.setAttribute('src', src.replace('NearsecTogetherLogo.png', logoPath));
-      } else if (src && src.includes('NearsecTogetherTitle.png')) {
-        img.setAttribute('src', src.replace('NearsecTogetherTitle.png', titlePath));
+      if (src && src.includes('NearcadeLogo.png')) {
+        img.setAttribute('src', src.replace(/[^/]*$/, 'NearcadeLogo.png'));
+      } else if (src && src.includes('NearcadeTitle.png')) {
+        img.setAttribute('src', src.replace(/[^/]*$/, 'NearcadeTitle.png'));
       }
     });
 
     if (window.electronAPI && window.electronAPI.updateTrayIcon) {
-      window.electronAPI.updateTrayIcon(logoPath);
+      window.electronAPI.updateTrayIcon('NearcadeLogo.png');
     }
   },
 

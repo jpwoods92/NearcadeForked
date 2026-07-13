@@ -12,13 +12,41 @@ const projectRoot = path.join(__dirname, '..', '..', '..', '..');
 // ── Safe App Data Pathing for Production ASAR ──
 function getSafeDataDir() {
   const home = os.homedir();
-  let p;
-  if (process.platform === 'win32')
-    p = path.join(process.env.APPDATA || path.join(home, 'AppData', 'Roaming'), 'NearsecTogether');
-  else if (process.platform === 'darwin') p = path.join(home, 'Library', 'Application Support', 'NearsecTogether');
-  else p = path.join(home, '.config', 'NearsecTogether');
+  let p, legacy;
+  if (process.platform === 'win32') {
+    const roaming = process.env.APPDATA || path.join(home, 'AppData', 'Roaming');
+    p = path.join(roaming, 'Nearcade');
+    legacy = path.join(roaming, 'NearsecTogether');
+  } else if (process.platform === 'darwin') {
+    p = path.join(home, 'Library', 'Application Support', 'Nearcade');
+    legacy = path.join(home, 'Library', 'Application Support', 'NearsecTogether');
+  } else {
+    p = path.join(home, '.config', 'Nearcade');
+    legacy = path.join(home, '.config', 'NearsecTogether');
+  }
 
   if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true });
+
+  // Nearsec→Nearcade rebrand migration: users of this fork have live settings
+  // under the old NearsecTogether dir. Copy them over once (never overwrite
+  // anything already in the new dir; the old dir is left untouched).
+  try {
+    const newCfg = path.join(p, 'nearcade.config.json');
+    const oldCfg = path.join(legacy, 'nearsectogether.config.json');
+    if (!fs.existsSync(newCfg) && fs.existsSync(oldCfg)) {
+      fs.copyFileSync(oldCfg, newCfg);
+      console.log('[config] Migrated settings from', oldCfg);
+    }
+    const newEnv = path.join(p, '.env');
+    const oldEnv = path.join(legacy, '.env');
+    if (!fs.existsSync(newEnv) && fs.existsSync(oldEnv)) {
+      fs.copyFileSync(oldEnv, newEnv);
+      console.log('[config] Migrated .env from', oldEnv);
+    }
+  } catch (e) {
+    console.warn('[config] Legacy settings migration failed:', e.message);
+  }
+
   return p;
 }
 
@@ -26,15 +54,15 @@ const dataDir = getSafeDataDir();
 const envFile = path.join(dataDir, '.env');
 
 // ── Convenience symlink for source-code devs ──────────────────────────────────
-// Creates config/nearsectogether.config.json → ~/.config/NearsecTogether/…
+// Creates config/nearcade.config.json → ~/.config/Nearcade/…
 // so you can always find/edit the live config right inside the project tree.
 // Windows symlinks require elevated privilege — skip on win32.
 (function ensureConfigSymlink() {
   if (process.platform === 'win32' || isPackaged) return;
   try {
     const configDir = path.join(projectRoot, 'config');
-    const symlinkPath = path.join(configDir, 'nearsectogether.config.json');
-    const realTarget = path.join(dataDir, 'nearsectogether.config.json');
+    const symlinkPath = path.join(configDir, 'nearcade.config.json');
+    const realTarget = path.join(dataDir, 'nearcade.config.json');
     if (!fs.existsSync(configDir)) fs.mkdirSync(configDir, { recursive: true });
     try {
       const existing = fs.lstatSync(symlinkPath);
@@ -50,7 +78,7 @@ const envFile = path.join(dataDir, '.env');
       /* doesn't exist yet — fall through to create */
     }
     fs.symlinkSync(realTarget, symlinkPath);
-    console.log('[config] Symlink: config/nearsectogether.config.json → ' + realTarget);
+    console.log('[config] Symlink: config/nearcade.config.json → ' + realTarget);
   } catch (e) {
     // Non-fatal — just a convenience helper
     console.warn('[config] Could not create config symlink:', e.message);
@@ -97,22 +125,38 @@ function readEnv(key) {
 }
 
 // ── Persistent config ────────────────────────────────────────────────────────
-const CONFIG_FILE = path.join(dataDir, 'nearsectogether.config.json');
+const CONFIG_VERSION = 1;
+const CONFIG_FILE = path.join(dataDir, 'nearcade.config.json');
+
+function migrateConfig(cfg) {
+  let v = cfg.configVersion || 0;
+  if (v >= CONFIG_VERSION) return cfg;
+  // v0 → v1: rename legacy keys if present
+  if (v < 1) {
+    if (cfg.discordRPC === undefined && cfg.discord_rpc !== undefined) cfg.discordRPC = cfg.discord_rpc;
+    if (cfg.hostName === undefined && cfg.host_name !== undefined) cfg.hostName = cfg.host_name;
+    if (cfg.checkForUpdates === undefined && cfg.autoUpdate !== undefined) cfg.checkForUpdates = cfg.autoUpdate;
+    v = 1;
+  }
+  cfg.configVersion = CONFIG_VERSION;
+  return cfg;
+}
+
 function loadConfig() {
   try {
     const data = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
-    return data && typeof data === 'object' ? data : {};
+    return data && typeof data === 'object' ? migrateConfig(data) : {};
   } catch (e) {
     return {};
   }
 }
 function saveConfig(updates) {
   try {
-    const cfg = { ...loadConfig(), ...updates };
+    const cfg = { ...loadConfig(), ...updates, configVersion: CONFIG_VERSION };
     const configDir = path.dirname(CONFIG_FILE);
     if (!fs.existsSync(configDir)) fs.mkdirSync(configDir, { recursive: true });
     fs.writeFileSync(CONFIG_FILE, JSON.stringify(cfg, null, 2), { encoding: 'utf8', flag: 'w' });
-    console.log('[config] Saved tunnel preference:', cfg);
+    console.log('[config] Saved:', cfg);
     return cfg;
   } catch (e) {
     console.error('[config] Error saving config:', e.message);

@@ -22,7 +22,7 @@ function appendLog(msg) {
 function installSessionLogger() {
   try {
     if (!fs.existsSync(CONFIG_DIR)) fs.mkdirSync(CONFIG_DIR, { recursive: true });
-    fs.writeFileSync(LOG_FILE, `--- Nearsec Session Log (${new Date().toISOString()}) ---\n`);
+    fs.writeFileSync(LOG_FILE, `--- Nearcade Session Log (${new Date().toISOString()}) ---\n`);
   } catch (e) {}
 
   const _nativeLog = console.log.bind(console);

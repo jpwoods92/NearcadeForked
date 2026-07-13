@@ -1,6 +1,6 @@
 'use strict';
 /**
- * NearsecTogether — Audio Blacklist Ejection Daemon
+ * Nearcade — Audio Blacklist Ejection Daemon
  *
  * TOPOLOGY:
  *   NearsecVirtual (virtual null-sink)

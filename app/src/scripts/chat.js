@@ -20,6 +20,13 @@
  * this refactor — the two files' prior behaviors, expressed without copying
  * the DOM-manipulation code twice.
  */
+// Fingerprint dedup (upstream v3.0.2): with server-side no-echo plus local
+// echo, the same line can still arrive twice through different paths — drop
+// exact repeats landing within a short window regardless of sender flag.
+let _lastChatFingerprint = '';
+let _lastChatTimestamp = 0;
+const CHAT_DEDUP_WINDOW_MS = 1200;
+
 function chatAppendMessage(name, text, isMe, dedupState) {
   if (isMe && dedupState) {
     const now = Date.now();
@@ -27,12 +34,28 @@ function chatAppendMessage(name, text, isMe, dedupState) {
     dedupState.msg = text;
     dedupState.time = now;
   }
+  const fingerprint = `${String(name).trim()}|${String(text).trim()}`;
+  const fpNow = Date.now();
+  if (fingerprint === _lastChatFingerprint && fpNow - _lastChatTimestamp < CHAT_DEDUP_WINDOW_MS) {
+    return;
+  }
+  _lastChatFingerprint = fingerprint;
+  _lastChatTimestamp = fpNow;
+
   const el = document.getElementById('chatLog');
   const d = document.createElement('div');
   d.className = 'cmsg';
-  d.innerHTML = '<span class="cname' + (isMe ? ' me' : '') + '">' + name + '</span>' + text;
-  el.appendChild(d);
-  el.scrollTop = el.scrollHeight;
+  // textContent, not innerHTML (upstream v3.0.2): names/messages are
+  // viewer-controlled and must never be parsed as markup.
+  const nameSpan = document.createElement('span');
+  nameSpan.className = 'cname' + (isMe ? ' me' : '');
+  nameSpan.textContent = name;
+  d.appendChild(nameSpan);
+  d.appendChild(document.createTextNode(text));
+  if (el) {
+    el.appendChild(d);
+    el.scrollTop = el.scrollHeight;
+  }
 }
 
 /** Reads #chatMsg, sends it as `fromName` over `ws`, and echoes it locally. */

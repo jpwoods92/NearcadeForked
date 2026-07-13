@@ -144,7 +144,7 @@ export default [
   },
   {
     // Loaded via <script type="module"> — real ESM, unlike the plain globals above.
-    files: ['app/src/scripts/p2p-signaler.js'],
+    files: ['app/src/scripts/p2p-signaler.js', 'app/src/scripts/lobby.js'],
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: 'module',

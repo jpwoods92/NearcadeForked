@@ -1,3 +1,6 @@
-[submodule "app/src/sidecar/input_backends/experimental/steamvr_driver/openvr"]
-	path = app/src/sidecar/input_backends/experimental/steamvr_driver/openvr
-	url = https://github.com/ValveSoftware/openvr.git
+[submodule "app/src/sidecar/hidmaestro"]
+	path = app/src/sidecar/hidmaestro
+	url = https://github.com/hifihedgehog/HIDMaestro.git
+[submodule "app/src/tools/wivrn-src"]
+	path = app/src/tools/wivrn-src
+	url = https://github.com/WiVRn/WiVRn.git

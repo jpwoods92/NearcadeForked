@@ -70,6 +70,26 @@ standbyWs.onmessage = (e) => {
 };
 standbyWs.onerror = () => {};
 
+// ?preview=1 opens a standalone lobby preview window (upstream v3.0.2 —
+// lobby.js is an ES module, loaded here via dynamic import only)
+if (urlParamsGlobal.has('preview')) {
+  import('./lobby.js').then((m) => {
+    const w = window.open('', 'lobbyPreview', 'width=960,height=540,left=100,top=100,resizable=yes');
+    if (w) {
+      w.document.title = 'Nearcade Lobby Preview';
+      w.document.body.style.margin = '0';
+      w.document.body.style.background = '#000';
+      w.document.body.style.overflow = 'hidden';
+      const c = w.document.createElement('canvas');
+      c.width = 960;
+      c.height = 540;
+      c.style.cssText = 'width:100%;height:100%;display:block;';
+      w.document.body.appendChild(c);
+      m.runDesktopPreview(c);
+    }
+  });
+}
+
 async function safeApiJson(url, fallback) {
   try {
     const r = await fetch(url);
@@ -178,10 +198,22 @@ function _wcHandleDcVideo(buf) {
 let sysAudioCtx = null;
 let nextAudioTime = 0;
 // Note: stopReconnect and vpsConnected are declared below near connect()
-let myName =
-  urlParamsGlobal.get('name') || localStorage.getItem('ns_name') || 'Guest' + Math.floor(Math.random() * 9000 + 1000);
-document.getElementById('nameInput').value = myName;
+let myName = urlParamsGlobal.get('name') || localStorage.getItem('ns_name') || '';
+document.getElementById('nameInput').value = myName || 'Guest' + Math.floor(Math.random() * 9000 + 1000);
 if (urlParamsGlobal.get('name')) localStorage.setItem('ns_name', myName);
+// Fall back to server config name so arcade/in-app viewers see their dashboard name
+if (!localStorage.getItem('ns_name')) {
+  fetch('/api/config')
+    .then((r) => r.json())
+    .then((cfg) => {
+      if (cfg && cfg.hostName) {
+        myName = cfg.hostName;
+        document.getElementById('nameInput').value = myName;
+        localStorage.setItem('ns_name', myName);
+      }
+    })
+    .catch(() => {});
+}
 let enteredPin = '',
   enteredPassword = '',
   audioMuted = false;
@@ -589,7 +621,7 @@ function connectInputWS() {
   if (inputWs && inputWs.readyState <= 1) return;
 
   const urlParams = new URLSearchParams(window.location.search);
-  const useVps = location.hostname === 'publicnearsec.cutefame.net' || urlParams.has('v3') || urlParams.has('vps');
+  const useVps = location.hostname === 'publicnearcade.cutefame.net' || urlParams.has('v3') || urlParams.has('vps');
   if (useVps) return; // In VPS mode, all inputs flow cleanly over the main /vps WebSocket
 
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
@@ -648,7 +680,7 @@ async function connect() {
     ws = createP2PConnection(hostParam.replace('p2p://', ''));
   } else {
     // Always use /vps for the public domain or if v3 is forced
-    const useVps = location.hostname === 'publicnearsec.cutefame.net' || urlParams.has('v3') || urlParams.has('vps');
+    const useVps = location.hostname === 'publicnearcade.cutefame.net' || urlParams.has('v3') || urlParams.has('vps');
     let wsUrl = useVps ? `${proto}://${host}/vps` : `${proto}://${host}/ws/viewer`;
 
     if (enteredPin) wsUrl += (wsUrl.includes('?') ? '&' : '?') + `pin=${encodeURIComponent(enteredPin)}`;
@@ -858,11 +890,14 @@ async function connect() {
           overlayEl.style.display = 'block';
         }
         const topEl = document.getElementById('topHostName');
-        const flagHtml = msg.hostRegion ? `<span class="fi fi-${msg.hostRegion}"></span> ` : '';
-        if (topEl) topEl.innerHTML = flagHtml + msg.hostName;
+        const safeHostName = String(msg.hostName).replace(/[<>"'&]/g, '');
+        if (topEl)
+          topEl.innerHTML =
+            (msg.hostRegion ? `<span class="fi fi-${msg.hostRegion.replace(/[^a-z]/gi, '')}"></span> ` : '') +
+            safeHostName;
         const pillEl = document.getElementById('hostNamePill');
         if (pillEl) pillEl.style.display = '';
-        document.title = 'Nearsec — ' + msg.hostName;
+        document.title = 'Nearcade — ' + msg.hostName.replace(/[<>"'&]/g, '');
       }
       // CRITICAL FIX: Do NOT send request-offer unconditionally here.
       // The Host already automatically sends an offer when 'viewer-joined' is received.
@@ -1124,7 +1159,7 @@ async function connect() {
       if (msg.expDevices) {
         const select = document.getElementById('inputModeSelect');
         if (select) {
-          const currentVal = select.value;
+          const currentVal = select.value || window.currentInputMode;
           let html = '<option value="gamepad">Standard Gamepad</option>';
           const enabledExp = msg.expDevices.filter((d) => d.enabled).map((d) => d.val);
           if (enabledExp.includes('guitar')) html += '<option value="guitar">Guitar Hero Controller</option>';
@@ -1205,11 +1240,11 @@ async function connect() {
         forceMutedByHost = true;
         disableMic();
         updateMicButton();
-        appendChat('Nearsec', 'The host has muted your microphone.', false);
+        appendChat('Nearcade', 'The host has muted your microphone.', false);
       } else {
         forceMutedByHost = false;
         updateMicButton();
-        appendChat('Nearsec', 'The host unmuted you.', false);
+        appendChat('Nearcade', 'The host unmuted you.', false);
       }
       return;
     }
@@ -1229,11 +1264,18 @@ async function connect() {
           if (!seen.has(baseId)) {
             seen.add(baseId);
             if (!hostAdded) {
-              listEl.innerHTML += `<div class="roster-item"><span> Host</span><span class="roster-badge">Streaming</span></div>`;
+              const hostItem = document.createElement('div');
+              hostItem.className = 'roster-item';
+              hostItem.innerHTML = '<span> Host</span><span class="roster-badge">Streaming</span>';
+              listEl.appendChild(hostItem);
               hostAdded = true;
             }
             const isMe = baseId === myId;
-            listEl.innerHTML += `<div class="roster-item${isMe ? ' roster-me' : ''}">${v.name.replace(/ \d+$/, '')} ${isMe ? '(You)' : ''}</div>`;
+            // textContent (upstream v3.0.2): viewer names must never be markup
+            const viewerItem = document.createElement('div');
+            viewerItem.className = 'roster-item' + (isMe ? ' roster-me' : '');
+            viewerItem.textContent = (v.name || '').replace(/ \d+$/, '') + (isMe ? ' (You)' : '');
+            listEl.appendChild(viewerItem);
           }
         });
       }
@@ -1281,7 +1323,7 @@ async function connect() {
 // For local (non-VPS) servers, check the HTTP API on load.
 (function checkLocalPinRequirement() {
   const urlParams = new URLSearchParams(window.location.search);
-  const useVps = location.hostname === 'publicnearsec.cutefame.net' || urlParams.has('v3') || urlParams.has('vps');
+  const useVps = location.hostname === 'publicnearcade.cutefame.net' || urlParams.has('v3') || urlParams.has('vps');
   if (!useVps) {
     safeApiJson('/api/pin-required', { required: true }).then((d) => {
       pinRequired = d.required !== false;
@@ -1310,8 +1352,13 @@ function submitPin() {
   document.getElementById('pinScreen').classList.add('gone');
   safeApiJson('/api/info', {})
     .then((d) => {
-      if (d.version && d.version !== CLIENT_VERSION)
-        alert(`Version mismatch: Host v${d.version}, You v${CLIENT_VERSION}`);
+      if (d.version) {
+        const vA = String(CLIENT_VERSION).split('.')[0];
+        const vB = String(d.version).split('.')[0];
+        if (vA !== vB) {
+          alert(`Version mismatch: Host v${d.version}, You v${CLIENT_VERSION}. Please update to match.`);
+        }
+      }
     })
     .finally(() => {
       connect();
@@ -1485,7 +1532,7 @@ document.addEventListener('DOMContentLoaded', () => {
       screen.height === 800);
 
   if (isSteamDeck) {
-    console.log('[Nearsec] Steam Deck detected — auto-entering immersive mode');
+    console.log('[Nearcade] Steam Deck detected — auto-entering immersive mode');
     document.documentElement
       .requestFullscreen()
       .then(landscape)

@@ -18,6 +18,7 @@ const ipcModules = [
   require('./electron/ipc/clipboard.js'),
   require('./electron/ipc/app-info.js'),
   require('./electron/ipc/log-viewing.js'),
+  require('./electron/ipc/setup-checks.js'),
 ];
 
 powerSaveBlocker.start('prevent-app-suspension');
@@ -71,7 +72,7 @@ process.on('SIGTERM', () => _electronSignalCleanup('SIGTERM'));
 // ── REQ 3: Startup purge ─────────────────────────────────────────────────────
 require('./src/scripts/server/audio-routing.js').purgeStaleModules();
 
-if (process.platform === 'darwin') app.dock.setIcon(path.join(__dirname, '..', 'assets/NearsecTogetherLogo.png'));
+if (process.platform === 'darwin') app.dock.setIcon(path.join(__dirname, '..', 'assets/NearcadeLogo.png'));
 
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 

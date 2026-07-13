@@ -8,7 +8,10 @@
       --text: #e8e8e8;
       --muted: #888;
       --border: #222;
+      --muted2: #666;
       --danger: #ff4444;
+      --green: #44cc44;
+      --warn: #ffaa00;
       --sidebar-width: 280px;
     }
 
@@ -26,6 +29,8 @@
         margin: 0 !important;
     }
 }
+
+    :root { accent-color: var(--accent); }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -69,33 +74,6 @@
       user-select: auto;
       -webkit-user-select: auto;
     }
-
-    #floating-setup-btn {
-      position: fixed; bottom: 24px; right: 24px; z-index: 9999;
-      background: #eab308; color: #000; border: none; border-radius: 6px;
-      padding: 8px 14px;
-      font-family: 'IBM Plex Mono', monospace; font-weight: 700; font-size: 11px;
-      display: flex; align-items: center; gap: 6px; cursor: pointer;
-      box-shadow: 0 4px 15px rgba(234, 179, 8, 0.3); transition: all 0.2s;
-    }
-    #floating-setup-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(234, 179, 8, 0.5); }
-    #floating-setup-btn:active { transform: translateY(0); }
-
-    #floating-setup-btn.done {
-      background: #1a1e22; color: #666; box-shadow: none; border: 1px solid #333;
-    }
-    #floating-setup-btn.done:hover { color: #aaa; border-color: #555; background: #222; }
-    #floating-setup-btn svg { width: 14px; height: 14px; }
-
-    #setup-toast {
-      position: fixed; bottom: 85px; right: 24px; z-index: 9999;
-      background: #4ade80; color: #000; padding: 12px 24px; border-radius: 8px;
-      font-family: inherit; font-weight: 700; font-size: 13px; box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-      opacity: 0; pointer-events: none; transition: opacity 0.3s, transform 0.3s;
-      transform: translateY(10px);
-    }
-    #setup-toast.show { opacity: 1; transform: translateY(0); }
-    #setup-toast.error { background: #f87171; color: #fff; }
 
     #titlebar {
       position: fixed; top: 0; left: 0; right: 0; height: 36px;
@@ -168,7 +146,7 @@
     .brand-wrap { display: flex; align-items: center; gap: 12px; opacity: 1; transition: opacity 0.2s; }
     #sidebar.collapsed .brand-wrap { opacity: 0; pointer-events: none; }
     .brand-logo { height: 32px; filter: drop-shadow(0 0 10px rgba(192, 132, 252, 0.4)); }
-    .brand-text { font-size: 13px; font-weight: 700; color: var(--accent); letter-spacing: 0.1em; text-transform: uppercase; }
+    .brand-text { font-size: 13px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; }
 
     .nav-btn {
       width: 100%; text-align: left; background: transparent; border: 1px solid transparent;

@@ -3,7 +3,7 @@
   <div class="modal-content">
     <h2>Update Available</h2>
     <p>
-      A new version of NearsecTogether (<span id="updateVersion"></span>) is available! You are currently on v<span
+      A new version of Nearcade (<span id="updateVersion"></span>) is available! You are currently on v<span
         id="currentVersionModal"
       ></span
       >.
@@ -16,7 +16,7 @@
         class="btn-primary"
         onclick="
           if (window.electronAPI)
-            window.electronAPI.openBrowser('https://github.com/TheRealFame/NearsecTogether/releases/latest');
+            window.electronAPI.openBrowser('https://github.com/TheRealFame/Nearcade/releases/latest');
           document.getElementById('updateModal').style.display = 'none';
         "
       >
@@ -41,9 +41,9 @@
     <div class="ns-about-bg">
       <div class="ns-about-header">
         <button class="ns-about-close" onclick="closeAbout()">×</button>
-        <img src="../../assets/NearsecTogetherLogo.png" alt="Logo" />
+        <img src="../../assets/NearcadeLogo.png" alt="Logo" />
         <div class="ns-about-header-text">
-          <h2>NEARSEC <span>Together</span></h2>
+          <h2>NEARCADE</h2>
           <p>© 2026 TheRealFame.</p>
           <p>Powered by WebRTC & Electron.</p>
         </div>
@@ -76,9 +76,9 @@
           <div class="ns-about-category">
             <h4>Software License</h4>
             <div class="ns-about-box" style="white-space: pre-wrap">
-              Nearsec Together is provided "as-is", without any express or implied warranty. In no event will the
-              authors be held liable for any damages arising from the use of this software. Permission is granted to
-              anyone to use this software for any purpose, subject to the enclosed license agreements.
+              Nearcade is provided "as-is", without any express or implied warranty. In no event will the authors be
+              held liable for any damages arising from the use of this software. Permission is granted to anyone to use
+              this software for any purpose, subject to the enclosed license agreements.
             </div>
           </div>
         </div>
@@ -124,7 +124,7 @@
           align-items: center;
         "
       >
-        <h3 style="margin: 0; color: var(--accent)">Nearsec Documentation</h3>
+        <h3 style="margin: 0; color: var(--accent)">Nearcade Documentation</h3>
         <button class="ns-about-close" onclick="closeDocs()" style="position: relative; top: auto; right: auto">
           ×
         </button>
@@ -223,7 +223,7 @@
             onmouseover="this.style.color = 'var(--accent)'"
             onmouseout="this.style.color = 'var(--text)'"
           >
-            Nearsec Arcade
+            Nearcade
           </button>
           <button
             onclick="loadDoc('ERROR_CODES.md')"

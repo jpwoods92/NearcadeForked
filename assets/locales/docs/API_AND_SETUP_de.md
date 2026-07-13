@@ -8,14 +8,14 @@ Linux benötigt Root-Rechte, um virtuelle Controller über uinput direkt in den 
 
 Anschluss 1 für den Eingangstreiber:
 ```bash
-cd NearsecTogether
+cd Nearcade
 pip3 install -r bin/requirements-linux.txt
 sudo python3 src/sidecar/input_driver.py
 ```
 
 Terminal 2 für den Webserver:
 ```bash
-cd NearsecTogether
+cd Nearcade
 npm install
 npm run electron
 ```
@@ -27,14 +27,14 @@ Windows benötigt den ViGEmBus-Treiber, um Controller zu emulieren.
 
 Anschluss 1 für den Eingangstreiber:
 ```powershell
-cd NearsecTogether
+cd Nearcade
 pip install -r bin/requirements-windows.txt
 python src/sidecar/input_driver.py
 ```
 
 Terminal 2 für den Webserver:
 ```powershell
-cd NearsecTogether
+cd Nearcade
 npm install
 npm run electron
 ```

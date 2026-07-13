@@ -12,6 +12,14 @@ const profileLoader = require('./profile-loader.js');
 const isWin = process.platform === 'win32';
 const isMac = process.platform === 'darwin';
 
+// HIDMaestro backend toggle (upstream v3.0.2) — set before init() via
+// InputOrchestrator.setHidMaestroEnabled(); selects the HIDMaestro Windows
+// sidecar instead of ViGEmBus.
+let _hidmaestroEnabled = false;
+function setHidMaestroEnabled(enabled) {
+  _hidmaestroEnabled = !!enabled;
+}
+
 function init(screenWidth, screenHeight) {
   profileLoader._loadProfiles();
 
@@ -32,14 +40,18 @@ function init(screenWidth, screenHeight) {
       state.bridge = null;
     }
   } else if (isWin) {
-    console.log('[input] Windows detected — skipping uinputBridge, using Python/ViGEmBus sidecar.');
+    console.log(
+      '[input] Windows detected — skipping uinputBridge, using Python/' +
+        (_hidmaestroEnabled ? 'HIDMaestro' : 'ViGEmBus') +
+        ' sidecar.'
+    );
   } else {
     console.log('[input] macOS detected — skipping uinputBridge, using Python/pynput sidecar.');
   }
 
   // 2. Python Sidecar — platform-aware script selection
   let scriptName;
-  if (isWin) scriptName = 'windows_vigem.py';
+  if (isWin) scriptName = _hidmaestroEnabled ? 'windows_hidmaestro.py' : 'windows_vigem.py';
   else if (isMac) scriptName = 'mac_gamepad_bridge.py';
   else scriptName = 'linux_uinput.py';
   // __dirname is already .../input_backends
@@ -119,4 +131,4 @@ function init(screenWidth, screenHeight) {
   return true;
 }
 
-module.exports = { init };
+module.exports = { init, setHidMaestroEnabled };

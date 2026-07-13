@@ -38,7 +38,6 @@ const runtime = {
   tunnelUrl: null,
   activeTunnelProc: null,
   audioProc: null,
-  vidCount: 0,
 };
 
 // ── Viewer/session registries — Maps/Sets are shared mutable references,
@@ -52,6 +51,11 @@ const viewerGamepads = new Map();
 const viewerHasController = new Set();
 const hwIdToViewer = new Map();
 
+// ── Moderation registries (upstream v3.0.2: ban management / URL-spam) ──
+const urlSpam = new Map(); // anonHash -> { count, lockedUntil }
+const reports = new Map(); // anonHash -> Array<{ timestamp, sessionId, viewerId?, reason? }>
+const bannedIps = new Map(); // anonHash -> { bannedAt, expiresAt, reason }
+
 module.exports = {
   serverInfo,
   session,
@@ -63,4 +67,7 @@ module.exports = {
   viewerGamepads,
   viewerHasController,
   hwIdToViewer,
+  urlSpam,
+  reports,
+  bannedIps,
 };

@@ -17,10 +17,13 @@ function setTunnelBusy(busy) {
   });
 }
 
-function showTunnelModal() {
+let _tunnelModalManual = false; // set when the user manually opens the tunnel modal
+
+function showTunnelModal(isManual) {
   closeAllModals();
   resetTunnelModal();
   document.getElementById('tunnelModal').classList.remove('gone');
+  if (isManual) _tunnelModalManual = true;
 
   loadAppConfig()
     .then((cfg) => {
@@ -71,6 +74,7 @@ function resetTunnelModal() {
   document.getElementById('tunnelRetryBtn').classList.add('gone');
 }
 function closeTunnelModal() {
+  _tunnelModalManual = false;
   document.getElementById('tunnelModal').classList.add('gone');
   setTunnelBusy(false);
   resetTunnelModal();
@@ -261,10 +265,14 @@ function proceedP2POnly() {
   // Immediately trigger a UI refresh so the Room Code is displayed
   fetch('/api/info')
     .then((r) => r.json())
-    .then((d) => renderUrls(d))
+    .then((d) => {
+      renderUrls(d);
+      if (typeof _updateDiscordRPC === 'function') _updateDiscordRPC();
+    })
     .catch(() => {
       // Fallback if local Express server is unreachable
       renderUrls({ lanIP: '127.0.0.1', port: '4266' });
+      if (typeof _updateDiscordRPC === 'function') _updateDiscordRPC();
     });
 
   log(I18N.t('Starting P2P tunnel') + (remember ? ' (saved)' : '') + '...', 'ok');
