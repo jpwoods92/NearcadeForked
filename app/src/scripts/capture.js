@@ -606,6 +606,11 @@ function stopCapture() {
     clearInterval(arcadePingInterval);
     arcadePingInterval = null;
     arcadeChannel.trigger('client-session-stop', { id: hostSessionId });
+    fetch('https://nearcade.cutefame.net/api/arcade/stop', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: hostSessionId }),
+    }).catch(() => {});
     log(I18N.t('Arcade Mode: Session ended on Arcade'), 'warn');
 
     // Restore the Arcade button SVG icon
@@ -615,13 +620,20 @@ function stopCapture() {
     }
   }
 
+  // Re-enable PIN toggle after arcade
+  const pinToggle = document.getElementById('pinToggle');
+  if (pinToggle) {
+    pinToggle.disabled = false;
+    pinToggle.style.opacity = '';
+    pinToggle.style.cursor = '';
+  }
+
   if (arcadeOverrodePin) {
     arcadeOverrodePin = false;
     pinEnabled = true;
-    const btn = document.getElementById('pinToggle');
-    if (btn) {
-      btn.textContent = 'ON';
-      btn.className = 'pin-toggle-btn on';
+    if (pinToggle) {
+      pinToggle.textContent = 'ON';
+      pinToggle.className = 'pin-toggle-btn on';
     }
     if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'set-pin', enabled: true }));
     log(I18N.t('PIN re-enabled after Arcade session'), 'ok');

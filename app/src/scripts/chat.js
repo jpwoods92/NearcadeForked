@@ -65,8 +65,30 @@ function chatSendMessage(ws, fromName, dedupState) {
   if (!msg || !ws || ws.readyState !== 1) return;
   ws.send(JSON.stringify({ type: 'chat', from: fromName, msg }));
   chatAppendMessage(fromName, msg, true, dedupState);
+  _chatHistory.push(msg);
+  _chatHistoryIndex = _chatHistory.length;
   inp.value = '';
 }
+
+// ── CHAT HISTORY (up/down arrow recall, shell-style) ───────────────────────
+// Shared across host.js/viewer.js since #chatMsg/#chatLog have the same ids
+// on both pages and neither page loads the other.
+const _chatHistory = [];
+let _chatHistoryIndex = -1;
+document.addEventListener('keydown', (e) => {
+  if (e.target.id !== 'chatMsg') return;
+  const inp = e.target;
+  if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    if (_chatHistory.length === 0) return;
+    _chatHistoryIndex = Math.max(0, _chatHistoryIndex - 1);
+    inp.value = _chatHistory[_chatHistoryIndex];
+  } else if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    _chatHistoryIndex = Math.min(_chatHistory.length, _chatHistoryIndex + 1);
+    inp.value = _chatHistoryIndex < _chatHistory.length ? _chatHistory[_chatHistoryIndex] : '';
+  }
+});
 
 /** Sends a system/announcement chat line (not tied to the #chatMsg input). */
 function chatSendSystemMessage(ws, fromName, text) {

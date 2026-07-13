@@ -437,6 +437,7 @@ function buildCard(s, index) {
     card.innerHTML = thumbHtml + `
     <div class="card-body">
     <div class="card-title">${escHtml(s.game)}</div>
+    ${s.hostName ? `<div class="card-host">by ${escHtml(s.hostName)}</div>` : ''}
     <div class="card-info">
     ${s.hostRegion ? `<span class="tag"><span class="fi fi-${s.hostRegion.toLowerCase()}"></span> ${escHtml(s.hostRegion.toUpperCase())}</span>` : (s.region ? `<span class="tag"><span class="fi fi-${s.region.toLowerCase()}"></span> ${escHtml(s.region)}</span>` : '')}
     <span class="tag">${s.hasPin ? I18N.t('PIN Required') : I18N.t('Public')}</span>

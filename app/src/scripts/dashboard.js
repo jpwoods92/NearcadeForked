@@ -655,9 +655,13 @@ async function checkFirstRun() {
 
   if (!window.electronAPI) return;
 
-  const result = await window.electronAPI.checkSystemSetup();
-  if (!result || result.needsSetup) {
-    window.location.href = '/setup';
+  try {
+    const result = await window.electronAPI.checkSystemSetup();
+    if (!result || result.needsSetup) {
+      window.location.href = '/setup';
+    }
+  } catch (e) {
+    console.warn('[checkFirstRun] error:', e);
   }
 }
 

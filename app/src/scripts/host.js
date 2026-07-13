@@ -1135,7 +1135,7 @@ window.saveCodecUI = async function (val) {
           const cb = document.getElementById('codecBadge');
           if (codec && cb) cb.textContent = codec.split('/')[1];
 
-          pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: false })
+          pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: false, iceRestart: true })
             .then((offer) => pc.setLocalDescription(offer))
             .then(() => {
               const msg = { type: 'offer', sdp: pc.localDescription, _viewerId: vid, codec: rawCodecName };
@@ -1218,7 +1218,11 @@ function applyCtrlSettingsUI() {
   const trackHybrid = document.getElementById('ctrlTrackHybrid');
   if (trackHybrid) trackHybrid.classList.toggle('on', !!ctrlSettings.hybridInput);
   const ctrlTypeSelect = document.getElementById('ctrlTypeSelect');
-  if (ctrlTypeSelect) ctrlTypeSelect.value = ctrlSettings.ctrlType || 'xbox360';
+  if (ctrlTypeSelect) {
+    ctrlTypeSelect.value = ctrlSettings.forceXboxOne ? 'xboxone' : ctrlSettings.ctrlType || 'xbox360';
+    const opt360 = ctrlTypeSelect.querySelector('option[value="xbox360"]');
+    if (opt360) opt360.disabled = ctrlSettings.forceXboxOne;
+  }
 
   const btn = document.getElementById('ctrlSettingsBtn');
 
@@ -1316,6 +1320,8 @@ function sendCtrlSettings() {
     else expDevices = JSON.parse(localStorage.getItem('ns_exp_devices') || '[]');
   } catch (e) {}
 
+  const effectiveCtrlType = ctrlSettings.forceXboxOne ? 'xboxone' : ctrlSettings.ctrlType;
+
   const payload = JSON.stringify({
     type: 'ctrl-settings',
     forceXboxOne: ctrlSettings.forceXboxOne,
@@ -1323,7 +1329,7 @@ function sendCtrlSettings() {
     enableMotion: ctrlSettings.enableMotion,
     defaultInputMode: ctrlSettings.defaultInputMode,
     hybridInput: ctrlSettings.hybridInput,
-    ctrlType: ctrlSettings.ctrlType,
+    ctrlType: effectiveCtrlType,
     touchLayout: ctrlSettings.touchLayout,
     expDevices: expDevices,
   });

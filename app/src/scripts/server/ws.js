@@ -912,6 +912,10 @@ function attachWebSocketServer(wss, deps) {
             state.viewerNames.set(id, joinName);
             console.log('[viewer]', id, 'name resolved to:', joinName);
 
+            // Always acknowledge the viewer immediately so it can transition
+            // past the "Connecting" state, regardless of host connection status.
+            ws.send(JSON.stringify({ type: 'join-ack', id, name: joinName, viewerCount: state.viewers.size }));
+
             if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1) {
               state.runtime.hostWS.send(
                 JSON.stringify({
@@ -922,25 +926,28 @@ function attachWebSocketServer(wss, deps) {
                   isDesktopApp: !!msg.isDesktopApp,
                 })
               );
-              // Join announcement in lobby chat (upstream v3.0.2)
-              const chatMsg = JSON.stringify({ type: 'chat', from: 'Nearcade', msg: joinName + ' joined' });
-              broadcast(chatMsg);
-              state.runtime.hostWS.send(chatMsg);
-              // Include the saved host name so the viewer can display "HOST SESSION — Name"
-              const hCfg = loadConfig();
-              ws.send(JSON.stringify({ type: 'host-connected', hostName: hCfg.hostName || 'Host' }));
-              ws.send(
-                JSON.stringify({
-                  type: 'ctrl-settings',
-                  enableMotion: !!global.enableMotion,
-                  touchLayout: global.touchLayout || 'default',
-                  expDevices: global.expDevices || [],
-                })
-              );
-              if (state.session.hostStreaming) {
-                ws.send(JSON.stringify({ type: 'host-stream-ready' }));
-              }
             }
+
+            // Send host info to viewer unconditionally — it's needed for the UI
+            // even if the host reconnects moments later.
+            // Include the saved host name so the viewer can display "HOST SESSION — Name"
+            const hCfg = loadConfig();
+            ws.send(JSON.stringify({ type: 'host-connected', hostName: hCfg.hostName || 'Host' }));
+            ws.send(
+              JSON.stringify({
+                type: 'ctrl-settings',
+                enableMotion: !!global.enableMotion,
+                touchLayout: global.touchLayout || 'default',
+                expDevices: global.expDevices || [],
+              })
+            );
+            if (state.session.hostStreaming) {
+              ws.send(JSON.stringify({ type: 'host-stream-ready' }));
+            }
+
+            // Join announcement in lobby chat (upstream v3.0.2) — broadcast() covers all viewers + hostWS
+            const chatMsg = JSON.stringify({ type: 'chat', from: 'Nearcade', msg: joinName + ' joined' });
+            broadcast(chatMsg);
 
             broadcastRoster();
             return;
@@ -1285,10 +1292,10 @@ function attachWebSocketServer(wss, deps) {
           broadcastRoster();
           if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1)
             state.runtime.hostWS.send(JSON.stringify({ type: 'viewer-left', viewerId: id, name: leftName }));
+          // broadcast() already sends to hostWS — no need for a second send
           // Leave announcement in lobby chat (upstream v3.0.2)
           const leaveMsg = JSON.stringify({ type: 'chat', from: 'Nearcade', msg: leftName + ' left' });
           broadcast(leaveMsg);
-          if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1) state.runtime.hostWS.send(leaveMsg);
         }
         console.log(
           '[viewer]',

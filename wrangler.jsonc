@@ -1,6 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "nearcade",
+  "main": "website/_worker.js",
   "compatibility_date": "2026-05-09",
   "workers_dev": true,
   "observability": {

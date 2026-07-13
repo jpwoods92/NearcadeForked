@@ -80,6 +80,10 @@
         "filter": [
           "**/*"
         ]
+      },
+      {
+        "from": "app/src/sidecar/hidmaestro/LICENSE",
+        "to": "HIDMaestro-LICENSE"
       }
     ],
     "files": [
@@ -90,6 +94,7 @@
       "!app/src/docs",
       "!**/*.md",
       "!.github",
+      "!flatpak-build",
       "!.flatpak-builder",
       "!**/build/Release/.deps",
       "!**/build/Release/obj.target",

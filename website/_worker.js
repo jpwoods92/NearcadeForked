@@ -59,6 +59,15 @@ export default {
           if (!session?.id) return new Response("Missing session ID", { status: 400, headers: CORS });
 
           if (env.BANS_KV) {
+            // Dedup old sessions from same host (tunnel URL)
+            if (session.url) {
+              const oldId = await env.BANS_KV.get(`host_sess_${session.url}`);
+              if (oldId && oldId !== session.id) {
+                await env.BANS_KV.delete(`sess_${oldId}`);
+                await env.BANS_KV.delete(`webhook_rep_${oldId}`);
+              }
+              await env.BANS_KV.put(`host_sess_${session.url}`, session.id, { expirationTtl: 86400 });
+            }
             await env.BANS_KV.put(`sess_${session.id}`, JSON.stringify(session), { expirationTtl: 120 });
 
             // Deduplicate webhook (only send once per session)
@@ -66,8 +75,9 @@ export default {
             if (!already && env.ARCADE_WEBHOOK) {
               const roleId = env.ARCADE_ROLE_ID || "";
               const thumbnail = isUrl(session.thumbnail) ? { url: session.thumbnail } : undefined;
+              const gameTitle = (session.game && !session.game.match(/^(Unknown Game|Arcade Game|Game)$/i)) ? session.game : "🎮 Game";
               const embed = {
-                title: session.game || "🎮 Game",
+                title: gameTitle,
                 url: session.url,
                 color: 0x00ff00,
                 description: `**Host:** ${session.hostName || "Unknown"}\n**Region:** ${session.hostRegion || "?"}\n**Players:** ${session.region || "?"}`,
@@ -107,6 +117,28 @@ export default {
           }
         }
         return json(sessions);
+      }
+
+      // Arcade Stop (session end from host)
+      if (url.pathname === "/api/arcade/stop") {
+        if (request.method !== "POST") return new Response("Method Not Allowed", { status: 405, headers: CORS });
+        try {
+          const { id } = await request.json();
+          if (!id) return new Response("Missing session ID", { status: 400, headers: CORS });
+          if (env.BANS_KV) {
+            // Clean up host mapping too
+            const existing = await env.BANS_KV.get(`sess_${id}`);
+            if (existing) {
+              const old = JSON.parse(existing);
+              if (old.url) await env.BANS_KV.delete(`host_sess_${old.url}`);
+            }
+            await env.BANS_KV.delete(`sess_${id}`);
+            await env.BANS_KV.delete(`webhook_rep_${id}`);
+          }
+          return json({ success: true });
+        } catch (e) {
+          return json({ error: e.message }, 500);
+        }
       }
 
       // Mod API (ban/unban/list with auth)

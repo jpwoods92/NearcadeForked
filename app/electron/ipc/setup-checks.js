@@ -120,7 +120,7 @@ function register() {
             'string:org.freedesktop.appearance',
             'string:accent-color',
           ],
-          { timeout: 3000, encoding: 'utf-8' }
+          { timeout: 3000, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] }
         );
         const doubles = [...out.matchAll(/double\s+([\d.]+)/g)];
         if (doubles.length >= 3) {

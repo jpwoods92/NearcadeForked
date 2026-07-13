@@ -156,13 +156,20 @@ function _doArcadeRegister() {
         const _sep = info.tunnelUrl.includes('?') ? '&' : '?';
         info.tunnelUrl += _sep + 'voiceMode=' + (arcadeConfig.captureMic ? 'push-to-talk' : 'off');
       }
+      // Disable PIN toggle while arcade is active
+      const pinToggle = document.getElementById('pinToggle');
+      if (pinToggle) {
+        pinToggle.disabled = true;
+        pinToggle.style.opacity = '0.4';
+        pinToggle.style.cursor = 'not-allowed';
+      }
+
       if (!arcadeConfig.requirePin && pinEnabled) {
         pinEnabled = false;
         arcadeOverrodePin = true;
-        const btn = document.getElementById('pinToggle');
-        if (btn) {
-          btn.textContent = 'OFF';
-          btn.className = 'pin-toggle-btn';
+        if (pinToggle) {
+          pinToggle.textContent = 'OFF';
+          pinToggle.className = 'pin-toggle-btn';
         }
         if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'set-pin', enabled: false }));
         if (typeof _vpsWs !== 'undefined' && _vpsWs && _vpsWs.readyState === 1)
@@ -180,6 +187,7 @@ function _doArcadeRegister() {
         return {
           id: hostSessionId,
           game: arcadeConfig.title,
+          hostName: localStorage.getItem('ns_name') || '',
           thumbnail: arcadeConfig.thumbnail,
           hasPin: arcadeConfig.requirePin,
           url: info.tunnelUrl,
