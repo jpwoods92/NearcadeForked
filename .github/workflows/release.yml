@@ -172,18 +172,17 @@ jobs:
           gh release download ${{ github.ref_name }} --dir release-assets --clobber
 
       - name: Rename Assets for Itch.io
-        shell: bash
         run: |
           cd release-assets
-          safe_mv() { [ -f "$1" ] && [ "$1" != "$2" ] && mv "$1" "$2"; }
-          safe_mv Nearcade-Setup-*.exe      Nearcade-Windows.exe
-          safe_mv Nearcade-Portable.exe      Nearcade-Portable.exe
-          safe_mv Nearcade-*-universal.dmg   Nearcade-Mac.dmg
-          for f in Nearcade-*.AppImage; do [ -f "$f" ] && [[ "$f" != *latest* ]] && safe_mv "$f" Nearcade-Linux.AppImage; done
-          safe_mv Nearcade_*.deb             Nearcade-Debian.deb
-          safe_mv Nearcade-*.rpm             Nearcade-RedHat.rpm
-          safe_mv Nearcade-*.apk             Nearcade-Android.apk
-          true
+          # skip mv when source and dest are the same, or when glob matches nothing
+          rename() { local s="$1" d="$2"; [ -f "$s" ] && [ "$s" != "$d" ] && mv "$s" "$d" || true; }
+          for f in Nearcade-Setup-*.exe;     do rename "$f" Nearcade-Windows.exe;    done
+          for f in Nearcade-Portable.exe;    do rename "$f" Nearcade-Portable.exe;   done
+          for f in Nearcade-*-universal.dmg; do rename "$f" Nearcade-Mac.dmg;        done
+          for f in Nearcade-*.AppImage;      do [[ "$f" != *latest* ]] && rename "$f" Nearcade-Linux.AppImage; done
+          for f in Nearcade_*.deb;           do rename "$f" Nearcade-Debian.deb;      done
+          for f in Nearcade-*.rpm;           do rename "$f" Nearcade-RedHat.rpm;      done
+          for f in Nearcade-*.apk;           do rename "$f" Nearcade-Android.apk;     done
 
       - name: Wait for previous Itch.io processing (Rate Limit Bypass)
         run: sleep 45
