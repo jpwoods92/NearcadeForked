@@ -73,6 +73,15 @@ the precedent.
 | Virtual audio (PulseAudio/PipeWire routing) | `app/src/scripts/server/audio-routing.js` (main thread) + `app/src/sidecar/audio_worker.js` (worker thread) + `app/src/sidecar/audio_blacklist_daemon.js` (ejection safety net) + `app/src/sidecar/audio-module-utils.js` (shared stale-module parsing, used by both threads) |
 | HTML pages | `app/src/pages/*.html`, with deferred/modal content split into `app/src/pages/partials/*.html` and injected via a synchronous XHR fetch-and-inject (see `host-modals.html`/`dashboard-modals.html`) |
 
+## Fork-specific deviations from upstream
+
+This fork does **not** have itch.io deployment set up (no `BUTLER_CREDENTIALS`
+secret configured). The `publish-itchio` job and its `Rename Assets for
+Itch.io` step were removed from `.github/workflows/release.yml`. When merging
+from upstream, do not reintroduce the itch.io publishing job/steps —
+re-check `release.yml` after any upstream merge and strip it back out if it
+comes back.
+
 ## Conventions
 
 - **File size**: no hard limit, but if a new/edited file mixes more than one
