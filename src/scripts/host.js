@@ -3176,49 +3176,82 @@ window.saveCodecUI = async function(val) {
     const pipelineVal = document.getElementById('pipelineSelect')?.value;
     const forceWc = (new URLSearchParams(window.location.search)).get('wc') === '1' || pipelineVal === 'webcodecs' || pipelineVal === 'custom_webcodecs';
     
+    const cb = document.getElementById('codecBadge');
+    if (cb) { cb.textContent = '⏳ switching...'; cb.style.background = 'var(--warning)'; }
+
     if (forceWc) {
         if (currentStream && window._webcodecsReader) {
-            log(I18N.t('Applying new WebCodecs encoder...'), 'warn');
-            await startWebCodecsCapture(currentStream);
-            log(I18N.t('Encoder restarted successfully!'), 'ok');
+            log(I18N.t('Restarting WebCodecs pipeline for new codec...'), 'warn');
+            try {
+                window._webcodecsReader.cancel();
+                window._webcodecsReader = null;
+                const vTrack = currentStream.getVideoTracks()[0];
+                if (vTrack) await startWebCodecsNetworkPipeline(vTrack);
+                log(I18N.t('WebCodecs encoder restarted'), 'ok');
+            } catch (e) {
+                log(I18N.t('WebCodecs restart failed: ') + e.message, 'err');
+            }
         }
-    } else {
-        if (Object.keys(peerConnections).length > 0) {
-            log(I18N.t('Applying new codec to active viewers (seamless renegotiation)...'), 'warn');
-            
-            // Broadcast the codec change to all viewers in chat
-            const selectEl = document.getElementById('codecSelect');
-            if (selectEl && ws && ws.readyState === 1) {
-                const codecName = selectEl.options[selectEl.selectedIndex].text;
-                const chatMsg = `Host dynamically swapped the stream codec to ${codecName}.`;
-                ws.send(JSON.stringify({ type: 'chat', from: 'Nearcade', msg: chatMsg }));
-                if (typeof appendChat === 'function') appendChat('Nearcade', chatMsg, false);
-            }
+        if (cb) { cb.textContent = val.toUpperCase(); cb.style.background = ''; }
+        return;
+    }
 
-            for (const vid in peerConnections) {
-                const pc = peerConnections[vid];
-                if (pc.connectionState === 'connected' || pc.connectionState === 'connecting') {
-                    const codec = preferVideoCodec(pc);
-                    const rawCodecName = codec ? codec.split('/')[1].toLowerCase() : null;
-                    const cb = document.getElementById('codecBadge');
-                    if (codec && cb) cb.textContent = codec.split('/')[1];
+    if (Object.keys(peerConnections).length === 0) {
+        if (cb) { cb.textContent = val.toUpperCase(); cb.style.background = ''; }
+        return;
+    }
 
-                    pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: false, iceRestart: true })
-                        .then(offer => pc.setLocalDescription(offer))
-                        .then(() => {
-                            const msg = { type: 'offer', sdp: pc.localDescription, _viewerId: vid, codec: rawCodecName };
-                            if (window.P2PManager && window.P2PManager.isPeer(vid)) {
-                                window.P2PManager.sendToPeer(vid, msg);
-                            } else {
-                                ws.send(JSON.stringify(msg));
-                            }
-                            log(I18N.t('Codec renegotiated for viewer') + ' ' + vid, 'ok');
-                        })
-                        .catch(err => console.error('[WebRTC] Renegotiation failed:', err));
-                }
+    log(I18N.t('Applying new codec to active viewers...'), 'warn');
+
+    const selectEl = document.getElementById('codecSelect');
+    if (selectEl && ws && ws.readyState === 1) {
+        const codecName = selectEl.options[selectEl.selectedIndex].text;
+        ws.send(JSON.stringify({ type: 'chat', from: 'Nearcade', msg: `Host swapped stream codec to ${codecName}.` }));
+        if (typeof appendChat === 'function') appendChat('Nearcade', `Host swapped stream codec to ${codecName}.`, false);
+    }
+
+    let renegotiated = 0;
+    for (const vid in peerConnections) {
+        const pc = peerConnections[vid];
+        if (pc.connectionState !== 'connected' && pc.connectionState !== 'connecting') continue;
+
+        const transceiver = pc.getTransceivers().find(t => t.receiver?.track?.kind === 'video');
+        if (!transceiver) continue;
+
+        const codec = preferVideoCodec(pc);
+        if (!codec) continue;
+
+        const mimeType = codec.toLowerCase();
+        const caps = RTCRtpReceiver.getCapabilities('video');
+        const preferredCodecs = caps.codecs.filter(c => c.mimeType.toLowerCase() === mimeType);
+        if (preferredCodecs.length === 0) continue;
+
+        transceiver.setCodecPreferences(preferredCodecs);
+        console.log('[codec] Set preference for viewer', vid, codec);
+
+        try {
+            const offer = await pc.createOffer({ iceRestart: false });
+            await pc.setLocalDescription(offer);
+            const rawName = codec.split('/')[1].toLowerCase();
+            const msg = { type: 'offer', sdp: pc.localDescription, _viewerId: vid, codec: rawName };
+            if (window.P2PManager && window.P2PManager.isPeer(vid)) {
+                window.P2PManager.sendToPeer(vid, msg);
+            } else if (ws && ws.readyState === 1) {
+                ws.send(JSON.stringify(msg));
             }
+            renegotiated++;
+        } catch (e) {
+            console.warn('[codec] Renegotiation failed for', vid, e.message);
         }
     }
+
+    if (cb) {
+        const selectEl = document.getElementById('codecSelect');
+        const codecName = selectEl ? selectEl.value.toUpperCase() : val.toUpperCase();
+        cb.textContent = codecName;
+        cb.style.background = '';
+    }
+    if (renegotiated > 0) log(I18N.t('Codec changed, renegotiated') + ' ' + renegotiated + ' ' + I18N.t('viewer(s)'), 'ok');
 };
 
 function saveCaptureMethod(method) {

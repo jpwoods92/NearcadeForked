@@ -1637,8 +1637,9 @@ function connectInputWS() {
     if (inputWs && inputWs.readyState <= 1) return;
 
     const urlParams = new URLSearchParams(window.location.search);
-    const useVps = location.hostname === 'publicnearcade.cutefame.net' || urlParams.has('v3') || urlParams.has('vps');
-    if (useVps) return; // In VPS mode, all inputs flow cleanly over the main /vps WebSocket
+    // VPS mode (v3/vps param) was designed for the Rust SFU router's /vps endpoint.
+    // The Node.js server has no /vps handler, so we always use /ws/input here.
+    // The main WebSocket handles inputs as well.
 
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
     inputWs = new WebSocket(proto + '://' + location.host + '/ws/input');
@@ -1726,11 +1727,10 @@ async function connect() {
         }
         stopReconnect = false;
     } else {
-        // Always use /vps for the public domain or if v3 is forced
+        // Always use /ws/viewer — the Node.js server has no /vps handler.
+        // The ?v3 param is kept for backward compat (doesn't affect routing).
         const useVps = location.hostname === 'publicnearcade.cutefame.net' || urlParams.has('v3') || urlParams.has('vps');
-        let wsUrl = useVps
-            ? `${proto}://${host}/vps`
-            : `${proto}://${host}/ws/viewer`;
+        let wsUrl = `${proto}://${host}/ws/viewer`;
 
         if (enteredPin) wsUrl += (wsUrl.includes('?') ? '&' : '?') + `pin=${encodeURIComponent(enteredPin)}`;
         if (enteredPassword) wsUrl += (wsUrl.includes('?') ? '&' : '?') + `password=${encodeURIComponent(enteredPassword)}`;

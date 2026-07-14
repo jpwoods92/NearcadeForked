@@ -203,13 +203,51 @@ def _load_csv():
     except Exception as e:
         print(f"[input] CSV load error: {e}", flush=True)
 
+# Fragments that identify emulators (used to gate game-specific matches)
+_EMULATOR_FRAGS = frozenset({
+    'ryujinx', 'yuzu', 'eden', 'ryubang', 'ryujinx-avalonia',
+    'dolphin', 'pcsx2', 'rpcs3', 'ppsspp', 'duckstation',
+    'retroarch', 'mame', 'mame64', 'final burn', 'fbneo',
+    'steam', 'citra', 'cemu', 'vita3k', 'xenia', 'melonds', 'mgba',
+    'project64', 'mupen64plus', 'simple64',
+})
+
+# Game fragments that ONLY match when an emulator keyword is also in the title
+_GAME_FRAGS_REQUIRE_EMU = frozenset({
+    'super smash',
+    'super smash bros melee',
+    'super smash bros brawl',
+    'for nintendo 3ds',
+    'for wii u',
+})
+
 def resolve_csv(title: str):
     if not title:
         return None
     tl = title.lower()
+
+    emu_match   = None  # (frag, binds) of an emulator match
+    emu_game_match = None  # (frag, binds) of a game fragment that requires an emulator
+
     for frag, binds in _csv_entries:
-        if frag in tl:
+        if frag not in tl:
+            continue
+        if frag in _EMULATOR_FRAGS:
+            emu_match = (frag, binds)
+        elif frag in _GAME_FRAGS_REQUIRE_EMU:
+            emu_game_match = (frag, binds)
+        else:
+            # Normal (non-emulator, non-gated) match — return immediately
             return binds
+
+    # Gated game match: only return if an emulator is also present
+    if emu_game_match and emu_match:
+        return emu_game_match[1]
+
+    # Emulator-only fallback
+    if emu_match:
+        return emu_match[1]
+
     return None
 
 _load_csv()

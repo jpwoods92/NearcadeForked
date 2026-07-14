@@ -107,6 +107,106 @@ let KBM_BINDINGS = { keys: {}, mouse: { sensitivity: 1.5, deadzone: 0.1 } };
 let _defaultProfileKey = 'xbox360';
 let _hybridInputEnabled = false;
 
+// ── Window-title CSV detection (cross-platform) ────────────────────────────────
+let _csvKbmEntries = [];        // [{frag, binds}] — loaded from game_profiles.csv 17-col format
+let _activeWindowBinds = null;  // current CSV binds (or null)
+let _lastWindowTitle = '';
+
+const _EMULATOR_FRAGS = new Set([
+    'ryujinx', 'yuzu', 'eden', 'ryubang', 'ryujinx-avalonia',
+    'dolphin', 'pcsx2', 'rpcs3', 'ppsspp', 'duckstation',
+    'retroarch', 'mame', 'mame64', 'final burn', 'fbneo',
+    'steam', 'citra', 'cemu', 'vita3k', 'xenia', 'melonds', 'mgba',
+    'project64', 'mupen64plus', 'simple64',
+]);
+
+const _GAME_FRAGS_REQUIRE_EMU = new Set([
+    'super smash',
+    'super smash bros melee',
+    'super smash bros brawl',
+    'for nintendo 3ds',
+    'for wii u',
+]);
+
+const CSV_KEYS = [
+    'KEY_W', 'KEY_A', 'KEY_S', 'KEY_D',
+    'KEY_SPACE', 'KEY_J', 'KEY_K', 'KEY_L',
+    'KEY_U', 'KEY_I', 'KEY_O', 'KEY_P',
+    'KEY_M', 'KEY_N', 'KEY_ENTER', 'KEY_TAB', 'KEY_ESCAPE',
+];
+
+function _loadKbmCSV() {
+    try {
+        const pth = path.join(__dirname, '..', '..', '..', 'config', 'game_profiles.csv');
+        if (!fs.existsSync(pth)) return;
+        const data = fs.readFileSync(pth, 'utf8');
+        const entries = [];
+        for (const line of data.split('\n')) {
+            const trimmed = line.trim();
+            if (!trimmed || trimmed.startsWith('#')) continue;
+            const cols = trimmed.split(',');
+            const frag = cols[0]?.trim().toLowerCase();
+            if (!frag) continue;
+            const binds = {};
+            for (let i = 0; i < CSV_KEYS.length; i++) {
+                const col = i + 1;
+                if (col < cols.length) {
+                    const val = cols[col]?.trim();
+                    if (val && (val.startsWith('BTN_') || val.startsWith('ABS_') || val.startsWith('KEY_'))) {
+                        binds[CSV_KEYS[i]] = val;
+                    }
+                }
+            }
+            if (Object.keys(binds).length) entries.push({ frag, binds });
+        }
+        _csvKbmEntries = entries;
+        console.log(`[input] CSV KBM bindings loaded: ${entries.length} profiles`);
+    } catch (e) {
+        console.warn('[input] Failed to load CSV KBM bindings:', e.message);
+    }
+}
+
+function _resolveWindowTitle(title) {
+    if (!title) return null;
+    const tl = title.toLowerCase();
+    let emuMatch = null;
+    let gameMatch = null;
+
+    for (const entry of _csvKbmEntries) {
+        if (!tl.includes(entry.frag)) continue;
+        if (_EMULATOR_FRAGS.has(entry.frag)) {
+            emuMatch = entry.binds;
+        } else if (_GAME_FRAGS_REQUIRE_EMU.has(entry.frag)) {
+            gameMatch = entry.binds;
+        } else {
+            return entry.binds;
+        }
+    }
+
+    if (gameMatch && emuMatch) return gameMatch;
+    if (emuMatch) return emuMatch;
+    return null;
+}
+
+function _handleWindowFocus(title) {
+    if (title === _lastWindowTitle) return;
+    _lastWindowTitle = title;
+    const binds = _resolveWindowTitle(title);
+    if (binds) {
+        _activeWindowBinds = binds;
+        // Switch all viewers to kbm_emulated mode
+        for (const [vid, mode] of viewerModes) {
+            if (mode !== 'kbm_emulated' && mode !== 'kbm') {
+                viewerModes.set(vid, 'kbm_emulated');
+            }
+        }
+        console.log(`[input] CSV match '${title}' → kbm_emulated (${Object.keys(binds).length} binds)`);
+    } else if (_activeWindowBinds) {
+        _activeWindowBinds = null;
+        console.log(`[input] No CSV match for '${title}' — clearing window binds`);
+    }
+}
+
 
 const KBM_BTN_MAP = {
     'A': 0x0001, 'B': 0x0002, 'X': 0x0004, 'Y': 0x0008,
@@ -143,6 +243,7 @@ const isMac = process.platform === 'darwin';
 
 function init(screenWidth, screenHeight) {
     _loadProfiles();
+    _loadKbmCSV();
 
     // On Windows and macOS the uinputBridge C++ addon is Linux-only.
     // Skip it entirely and go straight to the Python sidecar.
@@ -501,6 +602,12 @@ function _handleKbm(msg) {
         return;
     }
 
+    // ── CSV window-title bindings take priority ────────────────────────────────
+    if (_activeWindowBinds && (msg.event === 'keydown' || msg.event === 'keyup')) {
+        _emitKbmBinding(viewerId, msg.key, msg.event === 'keydown', _activeWindowBinds);
+        return;
+    }
+
     let state = kbmStates.get(viewerId);
     if (!state) {
         state = { buttons: 0, lt: 0, rt: 0, lx: 0, ly: 0, rx: 0, ry: 0, keys: {} };
@@ -729,6 +836,14 @@ function send(msg) {
     } else if (msg.type === 'kbm' || msg.type === 'keyboard') {
         validated = _validateKbmMsg(msg);
         if (!validated) return; // drop
+    }
+
+    // Handle window-focus / game detection BEFORE routing to any backend
+    if (msg.type === 'window-focus') {
+        if (!_hybridInputEnabled) {
+            _handleWindowFocus(msg.title);
+        }
+        return;
     }
 
     // Drop immediately if both backends are dead
