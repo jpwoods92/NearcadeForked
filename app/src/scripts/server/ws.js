@@ -254,6 +254,15 @@ function attachWebSocketServer(wss, deps) {
       ws.isAlive = true;
     });
 
+    // Without a listener here, any per-connection protocol error (e.g. a
+    // frame exceeding maxPayload) is an unhandled EventEmitter 'error',
+    // which Node rethrows as an uncaught exception and kills the whole
+    // server — every other connection along with it — instead of just this
+    // one socket. `ws` already closes the socket itself once 'error' fires.
+    ws.on('error', (err) => {
+      console.error('[ws] connection error:', err.message);
+    });
+
     const url = new URL(req.url, 'http://x');
     const wsPath = url.pathname;
     const pin = url.searchParams.get('pin') || '';

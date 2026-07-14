@@ -189,7 +189,13 @@ async function main() {
   const wss = new WebSocket.Server({
     server,
     perMessageDeflate: false,
-    maxPayload: 1048576,
+    // WebCodecs keyframes tunnel over this same signaling socket as a
+    // TCP-only fallback when the WebRTC DataChannel can't be established
+    // (see webcodecs-encoder.js broadcastToViewers) and are sent unchunked,
+    // unlike the DataChannel path — a keyframe easily exceeds the old 1MB
+    // cap at real streaming resolutions/bitrates. This is trusted local/
+    // tunnel traffic, not attacker-facing, so size it generously instead.
+    maxPayload: 16 * 1024 * 1024,
     verifyClient: (info, cb) => {
       const origin = info.origin || info.req.headers['origin'] || '';
       if (!origin || origin === 'null') {
