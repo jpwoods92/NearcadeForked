@@ -1440,6 +1440,11 @@ acquireWakeLock();
 // Runs every 500ms. Uses jitterBufferTarget + playoutDelayHint to force the
 // browser's WebRTC stack to minimize the jitter buffer. playbackRate acts as
 // a secondary mechanism when the browser ignores the hints.
+// Threshold for proactively requesting a keyframe as the jitter buffer grows —
+// lower than it sounds worth waiting out, since a keyframe is cheap next to
+// the stall a viewer would otherwise ride out. See webcodecs-encoder.js's
+// KEYFRAME_INTERVAL_MS for the host-side forced-keyframe cadence this backs up.
+const CONGESTION_KEYFRAME_THRESHOLD_MS = 20; // was 40
 let _prevJitterBufMs = 0;
 setInterval(async () => {
   if (!pc || pc.connectionState !== 'connected') return;
@@ -1465,9 +1470,9 @@ setInterval(async () => {
           else if (bufMs < 15) videoEl.playbackRate = 1.02;
           else if (bufMs < 30) videoEl.playbackRate = 1.08;
           else if (bufMs < 50) videoEl.playbackRate = 1.15;
-          else videoEl.playbackRate = 1.25;
+          else videoEl.playbackRate = 1.5;
         }
-        if (bufMs > 40 && bufMs > _prevJitterBufMs + 5) {
+        if (bufMs > CONGESTION_KEYFRAME_THRESHOLD_MS && bufMs > _prevJitterBufMs + 5) {
           requestKeyframeFromHost();
         }
         _prevJitterBufMs = bufMs;
@@ -1475,6 +1480,52 @@ setInterval(async () => {
     }
   } catch (_) {}
 }, 500);
+
+// ── VIEWER-SIDE CURSOR PREDICTION ─────────────────────────────────────────────
+// Purely a local visual aid: draws a dot that tracks raw mouse movement
+// instantly, so KBM viewers get feedback during pointer lock (where the real
+// OS cursor is hidden) instead of only seeing motion once the round trip
+// through host input processing and back over video lands. This does not
+// touch the real input path — gamepad.js's own pointerLockElement-gated
+// mousemove listener still sends the actual KBM events; this only draws.
+let _cursorPredict = { x: 0, y: 0, active: false };
+function initCursorPrediction() {
+  const overlay = document.createElement('div');
+  overlay.id = 'cursor-predict';
+  overlay.style.cssText =
+    'position:fixed;top:0;left:0;width:100%;height:100%;z-index:9999;pointer-events:none;display:none;';
+  document.body.appendChild(overlay);
+  const dot = document.createElement('div');
+  dot.style.cssText =
+    'position:absolute;width:20px;height:20px;border:2px solid rgba(255,255,255,0.8);border-radius:50%;transform:translate(-50%,-50%);background:rgba(255,255,255,0.15);';
+  overlay.appendChild(dot);
+
+  document.addEventListener('mousemove', (e) => {
+    if (!_cursorPredict.active) return;
+    const dx = e.movementX || 0;
+    const dy = e.movementY || 0;
+    _cursorPredict.x += dx;
+    _cursorPredict.y += dy;
+    dot.style.left = _cursorPredict.x + 'px';
+    dot.style.top = _cursorPredict.y + 'px';
+  });
+
+  // Re-center and toggle visibility with pointer lock — this fork gates KBM
+  // mode on document.pointerLockElement (see input/gamepad.js), not a CSS
+  // class, so that's what drives activation here too.
+  document.addEventListener('pointerlockchange', () => {
+    const active = !!document.pointerLockElement;
+    _cursorPredict.active = active;
+    if (active) {
+      _cursorPredict.x = window.innerWidth / 2;
+      _cursorPredict.y = window.innerHeight / 2;
+      dot.style.left = _cursorPredict.x + 'px';
+      dot.style.top = _cursorPredict.y + 'px';
+    }
+    overlay.style.display = active ? 'block' : 'none';
+  });
+}
+document.addEventListener('DOMContentLoaded', initCursorPrediction);
 
 // ── FULLSCREEN ────────────────────────────────────────────────────────────────
 function landscape() {

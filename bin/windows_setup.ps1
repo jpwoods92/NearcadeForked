@@ -15,7 +15,10 @@ if (!$vigemCheck) {
     $vigemInstaller = Join-Path $ScriptPath 'ViGEmBus_Setup.exe'
 
     if (Test-Path $vigemInstaller) {
-        Start-Process $vigemInstaller -Wait
+        $proc = Start-Process $vigemInstaller -Wait -PassThru
+        if ($proc.ExitCode -ne 0) {
+            Write-Host "ViGEmBus installer exited with code $($proc.ExitCode)" -ForegroundColor Red
+        }
         Write-Host 'Please ensure you completed the installer.' -ForegroundColor Cyan
     } else {
         Write-Host "ERROR: Could not find ViGEmBus_Setup.exe at $vigemInstaller" -ForegroundColor Red
@@ -26,25 +29,41 @@ if (!$vigemCheck) {
 }
 
 # 2. Python (Only needed if your gamepad sidecar still relies on Python)
-if (!(Get-Command python -ErrorAction SilentlyContinue)) {
+$pythonPath = (Get-Command python -ErrorAction SilentlyContinue).Source
+if (!$pythonPath -and !(Get-Command python3 -ErrorAction SilentlyContinue)) {
     Write-Host 'Python missing. Downloading...' -ForegroundColor Yellow
-    Invoke-WebRequest -Uri 'https://www.python.org/ftp/python/3.11.8/python-3.11.8-amd64.exe' -OutFile 'p.exe'
-    Start-Process 'p.exe' -ArgumentList '/quiet InstallAllUsers=0 PrependPath=1' -Wait
-    Remove-Item 'p.exe'
-    $env:Path = [System.Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [System.Environment]::GetEnvironmentVariable('Path','User')
+    $pyUrl = 'https://www.python.org/ftp/python/3.11.8/python-3.11.8-amd64.exe'
+    $pyInstaller = "$env:TEMP\python-installer.exe"
+    try {
+        Invoke-WebRequest -Uri $pyUrl -OutFile $pyInstaller
+        $proc = Start-Process $pyInstaller -ArgumentList '/quiet InstallAllUsers=0 PrependPath=1' -Wait -PassThru
+        if ($proc.ExitCode -ne 0) {
+            Write-Host "Python installer exited with code $($proc.ExitCode)" -ForegroundColor Red
+        }
+        Remove-Item $pyInstaller -ErrorAction SilentlyContinue
+        # Refresh PATH in current session
+        $env:Path = [System.Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [System.Environment]::GetEnvironmentVariable('Path','User')
+    } catch {
+        Write-Host "Failed to install Python: $_" -ForegroundColor Red
+    }
+} else {
+    Write-Host '[✓] Python found' -ForegroundColor Green
 }
 
-# 3. Python Requirements
+# 3. Python Requirements - use python -m pip to avoid PATH issues entirely
 Write-Host 'Installing Python dependencies...' -ForegroundColor Yellow
 $reqFile = Join-Path $ScriptPath 'requirements-windows.txt'
 
+# Use python -m pip which works regardless of PATH
+$pipCmd = if (Get-Command python -ErrorAction SilentlyContinue) { 'python -m pip' } elseif (Get-Command python3 -ErrorAction SilentlyContinue) { 'python3 -m pip' } else { 'pip' }
+
 if (Test-Path $reqFile) {
-    pip install -r $reqFile
+    Write-Host "Installing from $reqFile" -ForegroundColor Cyan
+    & $pipCmd install -r $reqFile
 } else {
-    # If the text file gets lost in compilation, fallback to direct installs
     Write-Host "Requirements file not found, installing defaults..." -ForegroundColor Yellow
     try {
-        pip install pyautogui vgamepad pyaudio
+        & $pipCmd install pyautogui vgamepad pyaudio
     } catch {
         Write-Host "[WARN] PyAudio failed to install. The OS-level audio fallback will not work." -ForegroundColor Red
     }

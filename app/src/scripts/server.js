@@ -328,7 +328,7 @@ function cleanup(isElectron = false) {
   _cleanupDone = true;
 
   console.log('\n[server] Shutting down — running cleanup...');
-  console.log(new Error('Cleanup Trace').stack);
+  console.debug('[server] Cleanup stack:', new Error().stack?.split('\n').slice(2).join('\n'));
 
   // ── Terminate worker threads gracefully ──────────────────────────────────
   // Audio worker teardown (postMessage 'destroy' + delayed terminate, plus

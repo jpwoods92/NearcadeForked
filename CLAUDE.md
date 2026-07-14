@@ -72,6 +72,7 @@ the precedent.
 | Native/Python input bridge orchestration | `app/src/sidecar/input_backends/*.js` |
 | Virtual audio (PulseAudio/PipeWire routing) | `app/src/scripts/server/audio-routing.js` (main thread) + `app/src/sidecar/audio_worker.js` (worker thread) + `app/src/sidecar/audio_blacklist_daemon.js` (ejection safety net) + `app/src/sidecar/audio-module-utils.js` (shared stale-module parsing, used by both threads) |
 | HTML pages | `app/src/pages/*.html`, with deferred/modal content split into `app/src/pages/partials/*.html` and injected via a synchronous XHR fetch-and-inject (see `host-modals.html`/`dashboard-modals.html`) |
+| Native Windows addons (N-API, `node-gyp`) | `app/src/sidecar/capture/` (DXGI Desktop Duplication capture), `app/src/sidecar/input_backends/rawinput/` (Raw Input gamepad reader) — each has its own `binding.gyp` and `npm run build:capture-win` / `build:rawinput-win`. **Source-only as of the 2026-07-14 upstream merge**: ported but not build- or runtime-verified (no Windows/MSVC in the dev sandbox that ported them), and not wired into `CaptureManager.js` / `InputOrchestrator.js` yet — see the header comment in each `.cc` file before building on this. |
 
 ## Fork-specific deviations from upstream
 
@@ -81,6 +82,15 @@ Itch.io` step were removed from `.github/workflows/release.yml`. When merging
 from upstream, do not reintroduce the itch.io publishing job/steps —
 re-check `release.yml` after any upstream merge and strip it back out if it
 comes back.
+
+Same deal for `.github/workflows/publish-accent-color.yml` (an npm-publish-via-OIDC
+workflow for upstream's `@nearcade/accent-color` package): this fork has no
+npm org/registry to publish under, so that workflow was never added. This
+fork's accent color detection lives inline in
+`app/electron/ipc/setup-checks.js`'s `get-accent-color` handler (extended
+with upstream's GNOME/KDE Linux fallback tiers) rather than as a separate
+published package — if an upstream merge brings the workflow file back in,
+drop it again unless someone has actually set up a registry to publish to.
 
 ## Conventions
 

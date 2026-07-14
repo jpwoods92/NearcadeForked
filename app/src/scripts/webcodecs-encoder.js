@@ -20,6 +20,12 @@
 // not a static-analysis-only judgment call. Left in place, clearly flagged,
 // for whoever can run that test next.
 
+// Forced-keyframe cadence for startWebCodecsNetworkPipeline's _kfInterval —
+// tighter than the default so a dropped/late keyframe doesn't stall decode
+// for as long. Shared with viewer.js's CONGESTION_KEYFRAME_THRESHOLD_MS,
+// which decides when the viewer proactively asks for one of these early.
+const KEYFRAME_INTERVAL_MS = 500; // was 2000
+
 async function startWebCodecsPipeline(videoTrack, dataChannel) {
   console.log('Initializing WebCodecs VideoEncoder...');
 
@@ -323,7 +329,7 @@ async function startWebCodecsNetworkPipeline(videoTrack) {
       return;
     }
     _wcForceKeyframe = true;
-  }, 2000);
+  }, KEYFRAME_INTERVAL_MS);
 
   // ── ADAPTIVE BITRATE ──────────────────────────────────────────────────────
   // The DataChannel/WS transports have no congestion control of their own

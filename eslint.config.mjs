@@ -129,6 +129,7 @@ export default [
       'app/src/scripts/capture.js',
       'app/src/scripts/webcodecs-encoder.js',
       'app/src/scripts/webcodecs-decoder.js',
+      'app/src/scripts/frame-predictor.js',
       'app/src/scripts/p2p-viewer.js',
       'app/src/scripts/webrtc/**/*.js',
       'app/src/scripts/ui/**/*.js',

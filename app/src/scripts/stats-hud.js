@@ -157,6 +157,8 @@ let prevBytesReceived = 0,
   prevEmitted = 0;
 let prevDecodeTime = 0,
   prevFramesDecoded = 0;
+let _prevPacketsLost = 0;
+let _keyframeCooldown = false;
 
 async function updateStats() {
   // `pc` is viewer.js's peer connection; this file also loads on the host
@@ -188,6 +190,19 @@ async function updateStats() {
         sawInboundVideo = true;
         packetsLost = r.packetsLost || 0;
         packetsReceived = r.packetsReceived || 1;
+
+        // Request a keyframe on any new packet loss, not just once the
+        // jitter buffer has already grown from it — cooldown keeps a burst
+        // of losses from spamming the host with keyframe requests.
+        const deltaLoss = packetsLost - _prevPacketsLost;
+        if (deltaLoss > 0 && !_keyframeCooldown && typeof requestKeyframeFromHost === 'function') {
+          _keyframeCooldown = true;
+          requestKeyframeFromHost();
+          setTimeout(() => {
+            _keyframeCooldown = false;
+          }, 500);
+        }
+        _prevPacketsLost = packetsLost;
 
         if (prevStatsTime) {
           const eDelta = (r.jitterBufferEmittedCount || 1) - prevEmitted;

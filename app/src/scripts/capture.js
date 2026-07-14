@@ -84,6 +84,16 @@ async function hotSwapCapture() {
     oldVideoTrack.stop();
     currentStream.addTrack(newVideoTrack);
 
+    // 5. Restart the WebCodecs pipeline if it's active — stopping the old
+    // track kills the MediaStreamTrackProcessor reader it was feeding from.
+    const swapUrlParams = new URLSearchParams(window.location.search);
+    const swapPipelineVal = document.getElementById('pipelineSelect')?.value;
+    const swapForceWc =
+      swapUrlParams.get('wc') === '1' || swapPipelineVal === 'webcodecs' || swapPipelineVal === 'custom_webcodecs';
+    if (swapForceWc) {
+      startWebCodecsNetworkPipeline(newVideoTrack);
+    }
+
     const prev = document.getElementById('preview');
     if (prev && !previewHidden) prev.srcObject = currentStream;
 

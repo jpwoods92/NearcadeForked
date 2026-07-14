@@ -1108,48 +1108,87 @@ window.saveCodecUI = async function (val) {
     pipelineVal === 'webcodecs' ||
     pipelineVal === 'custom_webcodecs';
 
+  const cb = document.getElementById('codecBadge');
+  if (cb) {
+    cb.textContent = '⏳ switching...';
+    cb.style.background = 'var(--warning)';
+  }
+
   if (forceWc) {
     if (currentStream && window._webcodecsReader) {
-      log(I18N.t('Applying new WebCodecs encoder...'), 'warn');
-      await startWebCodecsCapture(currentStream);
-      log(I18N.t('Encoder restarted successfully!'), 'ok');
-    }
-  } else {
-    if (Object.keys(peerConnections).length > 0) {
-      log(I18N.t('Applying new codec to active viewers (seamless renegotiation)...'), 'warn');
-
-      // Broadcast the codec change to all viewers in chat
-      const selectEl = document.getElementById('codecSelect');
-      if (selectEl && ws && ws.readyState === 1) {
-        const codecName = selectEl.options[selectEl.selectedIndex].text;
-        const chatMsg = `Host dynamically swapped the stream codec to ${codecName}.`;
-        ws.send(JSON.stringify({ type: 'chat', from: 'Nearcade', msg: chatMsg }));
-        if (typeof appendChat === 'function') appendChat('Nearcade', chatMsg, false);
-      }
-
-      for (const vid in peerConnections) {
-        const pc = peerConnections[vid];
-        if (pc.connectionState === 'connected' || pc.connectionState === 'connecting') {
-          const codec = preferVideoCodec(pc);
-          const rawCodecName = codec ? codec.split('/')[1].toLowerCase() : null;
-          const cb = document.getElementById('codecBadge');
-          if (codec && cb) cb.textContent = codec.split('/')[1];
-
-          pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: false, iceRestart: true })
-            .then((offer) => pc.setLocalDescription(offer))
-            .then(() => {
-              const msg = { type: 'offer', sdp: pc.localDescription, _viewerId: vid, codec: rawCodecName };
-              if (window.P2PManager && window.P2PManager.isPeer(vid)) {
-                window.P2PManager.sendToPeer(vid, msg);
-              } else {
-                ws.send(JSON.stringify(msg));
-              }
-              log(I18N.t('Codec renegotiated for viewer') + ' ' + vid, 'ok');
-            })
-            .catch((err) => console.error('[WebRTC] Renegotiation failed:', err));
-        }
+      log(I18N.t('Restarting WebCodecs pipeline for new codec...'), 'warn');
+      try {
+        window._webcodecsReader.cancel();
+        window._webcodecsReader = null;
+        const vTrack = currentStream.getVideoTracks()[0];
+        if (vTrack) await startWebCodecsNetworkPipeline(vTrack);
+        log(I18N.t('WebCodecs encoder restarted'), 'ok');
+      } catch (e) {
+        log(I18N.t('WebCodecs restart failed: ') + e.message, 'err');
       }
     }
+    if (cb) {
+      cb.textContent = val.toUpperCase();
+      cb.style.background = '';
+    }
+    return;
+  }
+
+  if (Object.keys(peerConnections).length === 0) {
+    if (cb) {
+      cb.textContent = val.toUpperCase();
+      cb.style.background = '';
+    }
+    return;
+  }
+
+  log(I18N.t('Applying new codec to active viewers...'), 'warn');
+
+  // Broadcast the codec change to all viewers in chat
+  const selectEl = document.getElementById('codecSelect');
+  if (selectEl && ws && ws.readyState === 1) {
+    const codecName = selectEl.options[selectEl.selectedIndex].text;
+    const chatMsg = `Host swapped stream codec to ${codecName}.`;
+    ws.send(JSON.stringify({ type: 'chat', from: 'Nearcade', msg: chatMsg }));
+    if (typeof appendChat === 'function') appendChat('Nearcade', chatMsg, false);
+  }
+
+  let renegotiated = 0;
+  for (const vid in peerConnections) {
+    const pc = peerConnections[vid];
+    if (pc.connectionState !== 'connected' && pc.connectionState !== 'connecting') continue;
+
+    // preferVideoCodec() (above) already resolves the video transceiver and
+    // calls setCodecPreferences with the H264-profile/RTX-adjacency fixes —
+    // no need to duplicate that here, just use its return value.
+    const codec = preferVideoCodec(pc);
+    if (!codec) continue;
+    const rawCodecName = codec.split('/')[1].toLowerCase();
+
+    try {
+      // iceRestart:false — codec renegotiation doesn't need a fresh ICE
+      // exchange, and requesting one just adds a connection hiccup.
+      const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: false, iceRestart: false });
+      await pc.setLocalDescription(offer);
+      const msg = { type: 'offer', sdp: pc.localDescription, _viewerId: vid, codec: rawCodecName };
+      if (window.P2PManager && window.P2PManager.isPeer(vid)) {
+        window.P2PManager.sendToPeer(vid, msg);
+      } else if (ws && ws.readyState === 1) {
+        ws.send(JSON.stringify(msg));
+      }
+      renegotiated++;
+      log(I18N.t('Codec renegotiated for viewer') + ' ' + vid, 'ok');
+    } catch (err) {
+      console.warn('[WebRTC] Renegotiation failed for', vid, err.message);
+    }
+  }
+
+  if (cb) {
+    cb.textContent = val.toUpperCase();
+    cb.style.background = '';
+  }
+  if (renegotiated > 0) {
+    log(I18N.t('Codec changed, renegotiated') + ' ' + renegotiated + ' ' + I18N.t('viewer(s)'), 'ok');
   }
 };
 
@@ -1160,7 +1199,7 @@ function saveCaptureMethod(method) {
   const urlParams = new URLSearchParams(window.location.search);
   let activeMethod = 'native';
   if (urlParams.get('wc') === '1') activeMethod = 'webcodecs';
-  if (urlParams.get('wc') === '2') activeMethod = 'custom_webcodecs';
+  else if (urlParams.get('wc') === '2') activeMethod = 'custom_webcodecs';
   else if (urlParams.get('ff') === '1' || (typeof process !== 'undefined' && process.argv?.includes('--ffmpeg')))
     activeMethod = 'ffmpeg';
 
@@ -1597,7 +1636,7 @@ if (window.electronAPI?.hydrateSettings) {
     ctrlSetting_ctrlType: localStorage.getItem('ns_ctrl_ctrlType') || 'xbox360',
     // quality / capture
     captureMethod: localStorage.getItem('ns_captureMethod') || undefined,
-    quality_codec: localStorage.getItem('ns_quality_codec') || undefined,
+    quality_codec: localStorage.getItem('ns_codec') || undefined,
     quality_res: localStorage.getItem('ns_quality_res') || undefined,
     quality_fps: localStorage.getItem('ns_quality_fps') || undefined,
     quality_bitrate: localStorage.getItem('ns_quality_bitrate') || undefined,
