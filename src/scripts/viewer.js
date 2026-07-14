@@ -1,3 +1,6 @@
+// ── LATENCY TUNING CONSTANTS ─────────────────────────────────────────────────
+const CONGESTION_KEYFRAME_THRESHOLD_MS = 20; // was 40
+
 // ── BANDWIDTH / QUALITY PROFILES ─────────────────────────────────────────────
 // Auto: unconstrained (let WebRTC CC do its job — best for most users)
 // Low:  cap at 720p / 1.5 Mbps  (mobile data, bad Wi-Fi)
@@ -1535,11 +1538,29 @@ function pollGamepad() {
         return;
     }
 
+    // #6: rAF batching — write to shared buffer instead of sending directly
+    _latestGamepadState = { vIndex, state, changed, now };
+}
+
+// #6: rAF-driven input send — consumes latest state at display refresh rate
+let _latestGamepadState = null;
+let _lastRafSend = 0;
+function _rafInputLoop(timestamp) {
+    requestAnimationFrame(_rafInputLoop);
+    if (!_latestGamepadState) return;
+    const { vIndex, state, changed, now } = _latestGamepadState;
     const forceHb = now - (lastGpSend[vIndex] || 0) > 100;
     if (changed || forceHb) {
         lastGpSend[vIndex] = now;
         sendInputData(_packGamepadBinary(vIndex, state));
     }
+    _latestGamepadState = null;
+}
+// Start rAF loop after DOM is ready
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => requestAnimationFrame(_rafInputLoop));
+} else {
+    requestAnimationFrame(_rafInputLoop);
 }
 
 function _packGamepadBinary(vIndex, state) {
@@ -2372,17 +2393,27 @@ acquireWakeLock();
 // ── STATS HUD ─────────────────────────────────────────────────────────────────
 const statsHud = document.getElementById('statsHud');
 let prevBytesReceived = 0, prevStatsTime = 0, prevJitterDelay = 0, prevEmitted = 0;
+let _prevPacketsLost = 0;
+let _keyframeCooldown = false;
 async function updateStats() {
     if (!pc) return;
     try {
         const stats = await pc.getStats();
-        let rtt = null, jitter = null, kbps = null, packetsLost = 0, packetsReceived = 0;
+            let rtt = null, jitter = null, kbps = null, packetsLost = 0, packetsReceived = 0;
         for (const r of stats.values()) {
             if (r.type === 'candidate-pair' && r.state === 'succeeded' && r.currentRoundTripTime != null)
                 rtt = (r.currentRoundTripTime * 1000).toFixed(0);
             if (r.type === 'inbound-rtp' && r.kind === 'video') {
                 packetsLost = r.packetsLost || 0;
                 packetsReceived = r.packetsReceived || 1;
+                // #4: request keyframe on any new packet loss (with 500ms cooldown)
+                const deltaLoss = packetsLost - _prevPacketsLost;
+                if (deltaLoss > 0 && !_keyframeCooldown) {
+                    _keyframeCooldown = true;
+                    requestKeyframeFromHost();
+                    setTimeout(() => { _keyframeCooldown = false; }, 500);
+                }
+                _prevPacketsLost = packetsLost;
                 if (prevStatsTime) {
                     const eDelta = (r.jitterBufferEmittedCount || 1) - prevEmitted;
                     if (eDelta > 0) jitter = (((r.jitterBufferDelay || 0) - prevJitterDelay) / eDelta * 1000).toFixed(0);
@@ -2451,9 +2482,10 @@ setInterval(async () => {
                     else if (bufMs < 15) videoEl.playbackRate = 1.02;
                     else if (bufMs < 30) videoEl.playbackRate = 1.08;
                     else if (bufMs < 50) videoEl.playbackRate = 1.15;
-                    else videoEl.playbackRate = 1.25;
+                    else videoEl.playbackRate = 1.5;
                 }
-                if (bufMs > 40 && bufMs > _prevJitterBufMs + 5) {
+                // #4: request keyframe on any jitter buffer growth, not just >40ms
+                if (bufMs > CONGESTION_KEYFRAME_THRESHOLD_MS && bufMs > _prevJitterBufMs + 5) {
                     requestKeyframeFromHost();
                 }
                 _prevJitterBufMs = bufMs;
@@ -2461,6 +2493,53 @@ setInterval(async () => {
         }
     } catch (_) {}
 }, 500);
+
+// ── #2: VIEWER-SIDE CURSOR PREDICTION ─────────────────────────────────────────
+// Applies mouse delta to a local overlay instantly, snap-corrects on server echo.
+let _cursorPredict = { x: 0, y: 0, active: false };
+function initCursorPrediction() {
+    const overlay = document.createElement('div');
+    overlay.id = 'cursor-predict';
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;z-index:9999;pointer-events:none;display:none;';
+    document.body.appendChild(overlay);
+    const dot = document.createElement('div');
+    dot.style.cssText = 'position:absolute;width:20px;height:20px;border:2px solid rgba(255,255,255,0.8);border-radius:50%;transform:translate(-50%,-50%);background:rgba(255,255,255,0.15);';
+    overlay.appendChild(dot);
+    
+    // Patch mousemove to predict locally + send
+    const origSend = sendInputData;
+    document.addEventListener('mousemove', (e) => {
+        if (!_cursorPredict.active) return;
+        const dx = e.movementX || 0;
+        const dy = e.movementY || 0;
+        // Apply to overlay immediately
+        _cursorPredict.x += dx;
+        _cursorPredict.y += dy;
+        dot.style.left = _cursorPredict.x + 'px';
+        dot.style.top = _cursorPredict.y + 'px';
+        overlay.style.display = 'block';
+    });
+    
+    // Listen for server position echo to snap-correct
+    const origOnMsg = window.onmessage;
+    window.addEventListener('message', (e) => {
+        if (e.data && e.data.type === 'cursor-sync') {
+            _cursorPredict.x = e.data.x;
+            _cursorPredict.y = e.data.y;
+            dot.style.left = _cursorPredict.x + 'px';
+            dot.style.top = _cursorPredict.y + 'px';
+        }
+    });
+    
+    // Toggle on/off based on input mode
+    const observer = new MutationObserver(() => {
+        const isKbm = document.querySelector('.kbm-mode') !== null;
+        _cursorPredict.active = isKbm;
+        overlay.style.display = isKbm ? 'block' : 'none';
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+}
+document.addEventListener('DOMContentLoaded', initCursorPrediction);
 
 // ── FULLSCREEN ────────────────────────────────────────────────────────────────
 function landscape() { if (screen.orientation?.lock) screen.orientation.lock('landscape').catch(() => { }); }

@@ -48,6 +48,10 @@ const _ppsWindow = {};          // viewerId → window start timestamp (ms)
 const PPS_LIMIT  = 300;
 const PPS_WINDOW = 1000;        // ms
 
+// ── Latency tuning constants ────────────────────────────────────────────────────
+const KEYFRAME_INTERVAL_MS = 500;   // was 2000
+const CONGESTION_KEYFRAME_THRESHOLD_MS = 20; // was 40
+
 function _checkPps(viewerId) {
     const now = Date.now();
     if (!_ppsWindow[viewerId] || now - _ppsWindow[viewerId] >= PPS_WINDOW) {
@@ -1681,41 +1685,48 @@ async function sendOfferToViewer(viewerId) {
     // ── UDP FAST-LANE FOR INPUT ──
     pc.inputChannel = pc.createDataChannel('input', { ordered: false, maxRetransmits: 0 });
     pc.inputChannel.onmessage = (e) => {
-        if (ws && ws.readyState === 1) {
-            if (e.data instanceof ArrayBuffer || e.data instanceof Blob) {
-                const isBlob = e.data instanceof Blob;
-                if (isBlob) {
-                    e.data.arrayBuffer().then(ab => processBinaryInput(ab, viewerId));
-                    return;
-                } else {
-                    processBinaryInput(e.data, viewerId);
-                    return;
-                }
+        if (e.data instanceof ArrayBuffer || e.data instanceof Blob) {
+            const isBlob = e.data instanceof Blob;
+            if (isBlob) {
+                e.data.arrayBuffer().then(ab => forwardBinaryInput(ab, viewerId));
+                return;
+            } else {
+                forwardBinaryInput(e.data, viewerId);
+                return;
             }
+        }
 
-            try {
-                const inner = JSON.parse(e.data);
-                // Fast-lane inputs bypass the VPS router, so we must manually stamp the correct session ID
-                inner.viewerId = viewerId;
-                inner.viewer_id = viewerId;
-                if (inner.type === 'gamepad' && !inner.pad_id) inner.pad_id = viewerId + '_0';
+        try {
+            const inner = JSON.parse(e.data);
+            inner.viewerId = viewerId;
+            inner.viewer_id = viewerId;
+            if (inner.type === 'gamepad' && !inner.pad_id) inner.pad_id = viewerId + '_0';
+            // #1: Direct IPC instead of ws.send relay
+            if (window.electronAPI && window.electronAPI.forwardInput) {
+                window.electronAPI.forwardInput(inner);
+            } else if (ws && ws.readyState === 1) {
                 ws.send(JSON.stringify(inner));
-            } catch (_) {
-                ws.send(e.data);
             }
+        } catch (_) {
+            if (ws && ws.readyState === 1) ws.send(e.data);
         }
     };
     
-    function processBinaryInput(ab, viewerId) {
+    function forwardBinaryInput(ab, viewerId) {
         const original = new Uint8Array(ab);
-        if (original[0] === 0x01) { // PKT::GAMEPAD
-            const vidBytes = new TextEncoder().encode(viewerId);
-            const outBuf = new Uint8Array(2 + vidBytes.length + original.length);
-            outBuf[0] = 0x80; // Custom magic for Host->Server Binary Input
-            outBuf[1] = vidBytes.length;
-            outBuf.set(vidBytes, 2);
-            outBuf.set(original, 2 + vidBytes.length);
-            ws.send(outBuf);
+        if (original[0] === 0x01) {
+            // #8: Direct binary IPC instead of WS relay
+            if (window.electronAPI && window.electronAPI.forwardInputBinary) {
+                window.electronAPI.forwardInputBinary(viewerId, original.buffer);
+            } else {
+                const vidBytes = new TextEncoder().encode(viewerId);
+                const outBuf = new Uint8Array(2 + vidBytes.length + original.length);
+                outBuf[0] = 0x80;
+                outBuf[1] = vidBytes.length;
+                outBuf.set(vidBytes, 2);
+                outBuf.set(original, 2 + vidBytes.length);
+                if (ws && ws.readyState === 1) ws.send(outBuf);
+            }
         }
     }
 
@@ -2858,7 +2869,7 @@ async function startWebCodecsNetworkPipeline(videoTrack) {
             return;
         }
         _wcForceKeyframe = true;
-    }, 2000);
+    }, KEYFRAME_INTERVAL_MS);
 }
 
 function broadcastToViewers(data) {
@@ -3067,7 +3078,10 @@ function connectVps(cfg) {
                     return;
                 }
 
-                if (ws && ws.readyState === 1) {
+                // #1: Direct IPC instead of ws.send relay (VPS path)
+                if (window.electronAPI && window.electronAPI.forwardInput) {
+                    window.electronAPI.forwardInput(inner);
+                } else if (ws && ws.readyState === 1) {
                     ws.send(JSON.stringify(inner));
                 }
                 return;
