@@ -4662,14 +4662,14 @@ function toggleAppSetting(key) {
         if (key === 'tray') window.electronAPI.saveSettings({ tray: appSettings[key] });
         if (key === 'discordRPC') window.electronAPI.saveSettings({ discordRPC: appSettings[key] });
         if (key === 'rumble') window.electronAPI.saveSettings({ rumble: appSettings[key] });
-        if (key === 'tournamentMode') {
-        window.electronAPI.saveSettings({ tournamentMode: appSettings[key] });
-        fetch('/api/config', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ tournamentMode: appSettings[key] })
-        }).catch(() => {});
-    }
+            if (key === 'tournamentMode') {
+            window.electronAPI.saveSettings({ tournamentMode: appSettings[key] });
+            fetch('/api/config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ tournamentMode: appSettings[key] })
+            }).catch(() => {});
+        }
     }
     log(I18N.t('Setting') + ' ' + key + ' = ' + appSettings[key], 'ok');
 }
