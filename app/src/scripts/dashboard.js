@@ -462,6 +462,40 @@ function syncSettingsUI() {
     document.getElementById('settingHostName').value = appConfig.hostName || localStorage.getItem('ns_name') || '';
   }
 
+  let savedHostAvatar =
+    appConfig.hostAvatar || localStorage.getItem('ns_host_avatar') || localStorage.getItem('ns_avatar');
+  let avatarNeedsSave = false;
+  if (!savedHostAvatar) {
+    savedHostAvatar = Math.floor(Math.random() * 100) + 1;
+    localStorage.setItem('ns_host_avatar', savedHostAvatar);
+    localStorage.setItem('ns_avatar', savedHostAvatar);
+    avatarNeedsSave = true;
+  } else if (!appConfig.hostAvatar) {
+    avatarNeedsSave = true;
+  }
+  if (avatarNeedsSave) {
+    fetch(`http://localhost:${_getServerPort()}/api/config`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hostAvatar: String(savedHostAvatar) }),
+    }).catch(() => {});
+  }
+  const hostAvatarPreview = document.getElementById('hostAvatarPreview');
+  if (hostAvatarPreview) hostAvatarPreview.src = `/assets/avatars/avatar-${savedHostAvatar}.svg`;
+
+  window.randomizeHostAvatar = function () {
+    const newAv = Math.floor(Math.random() * 100) + 1;
+    localStorage.setItem('ns_host_avatar', newAv);
+    localStorage.setItem('ns_avatar', newAv);
+    if (hostAvatarPreview) hostAvatarPreview.src = `/assets/avatars/avatar-${newAv}.svg`;
+
+    fetch(`http://localhost:${_getServerPort()}/api/config`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hostAvatar: String(newAv) }),
+    }).catch(() => {});
+  };
+
   const uiSel = document.getElementById('hostUISelect');
   if (uiSel) {
     let savedUI = localStorage.getItem('ns_ui_version') || 'default';

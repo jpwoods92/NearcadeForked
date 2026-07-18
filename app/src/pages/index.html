@@ -26,6 +26,7 @@
     />
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/lipis/flag-icons@7.2.3/css/flag-icons.min.css" />
     <link rel="stylesheet" href="/css/index.css" />
+    <link rel="stylesheet" href="/css/voice-chat.css" />
 
     <script src="/js/client-only-mode.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
@@ -316,6 +317,9 @@
         <div class="ns-bar-section">Session</div>
 
         <button class="ns-bar-btn" id="guideBtn" onclick="openControllerGuide()">Controller Guide</button>
+        <button class="ns-bar-btn" id="voiceToggleBtn" onclick="vcToggleConnection()" style="display: none">
+          Voice
+        </button>
         <div style="position: relative; display: inline-block; width: 100%">
           <button class="ns-bar-btn" id="chatToggleBtn" onclick="toggleChat()">Chat</button>
           <span id="chatBadge"></span>
@@ -340,6 +344,32 @@
     <div id="micToast">
       <span class="toast-icon">!</span>
       <span class="toast-msg">Microphone permission denied.</span>
+    </div>
+
+    <!-- ════ VOICE CHAT OVERLAY ════ -->
+    <div id="vcOverlay" style="display: none">
+      <div class="vc-arrow-tab" id="vcTab" onclick="vcTogglePanel()">
+        <svg viewBox="0 0 1024 1024">
+          <path
+            fill="currentColor"
+            d="M338.752 104.704a64 64 0 000 90.496l316.8 316.8-316.8 316.8a64 64 0 0090.496 90.496l362.048-362.048a64 64 0 000-90.496L429.248 104.704a64 64 0 00-90.496 0z"
+          />
+        </svg>
+        <span class="vc-drag-hint">drag</span>
+      </div>
+      <div class="vc-panel" id="vcPanel">
+        <div class="vc-header">
+          <div class="vc-title">Voice</div>
+          <button class="vc-leave" id="vcLeaveBtn" onclick="vcLeave()">Leave</button>
+        </div>
+        <div id="vcListWrap">
+          <div class="vc-list" id="vcList"></div>
+        </div>
+      </div>
+      <div class="vc-mini" id="vcMini" onclick="vcOpenPanel()">
+        <div class="vc-mini-av" id="vcMiniAv" style="background: #5865f2">F<span class="vc-ring"></span></div>
+        <span class="vc-mini-name" id="vcMiniName">Fame</span>
+      </div>
     </div>
 
     <!-- ════ CHAT ════ -->
@@ -567,5 +597,9 @@
 
     <!-- Post-load patches — run after viewer.js is fully parsed -->
     <script src="/js/viewer-page-bootstrap.js"></script>
+
+    <!-- voice-chat.js patches window.toggleMic, so it must load after
+         viewer.js defines it — see its own init-time monkey-patch. -->
+    <script src="/js/voice-chat.js"></script>
   </body>
 </html>

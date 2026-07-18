@@ -1307,12 +1307,15 @@ async function connect() {
       }
       return;
     }
-    // Stub: handle server-sent VAD feed
+    // Server-sent VAD feed — drives both the simple in-preview talking
+    // overlay (index.css's #talkingOverlay) and the voice-chat.js panel.
     if (msg.type === 'voice-activity') {
       updateTalkingOverlay(msg.activeSpeakers || []);
+      if (typeof window.vcUpdateTalking === 'function') window.vcUpdateTalking(msg.activeSpeakers || []);
       return;
     }
     if (msg.type === 'roster') {
+      if (typeof window.vcSyncRoster === 'function') window.vcSyncRoster(msg.viewers || [], myId);
       const listEl = document.getElementById('lobbyList');
       if (listEl) {
         listEl.innerHTML = '';
@@ -1684,6 +1687,18 @@ document.addEventListener('DOMContentLoaded', () => {
   );
   showBtn();
 })();
+
+// ── Voice: set user volume / mute — called from voice overlay ──
+window.setUserVolume = function (targetId, volume) {
+  if (!ws || ws.readyState !== 1) return;
+  ws.send(
+    JSON.stringify({
+      type: 'set-viewer-volume',
+      targetId: targetId,
+      volume: volume,
+    })
+  );
+};
 
 // ── Test-only export shim ──────────────────────────────────────────────────
 // `module` does not exist in the browser, so this block is inert there and

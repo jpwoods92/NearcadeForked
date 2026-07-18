@@ -10,6 +10,76 @@ let pinEnabled = true,
 let kbmPanicActive = false;
 const viewerAudioStates = {}; // Tracks { volume: 100, state: 0 } per viewer
 
+// ── VOICE ACTIVITY DETECTION (Host-side VAD) ──────────────────────────
+// Analyzes each viewer's incoming mic stream and broadcasts who's currently
+// talking every 500ms via a 'voice-activity' message, which viewer.js's
+// voice-chat.js panel (and the simpler in-preview talking overlay) render.
+const VAD_THRESHOLD = 22; // RMS energy threshold (0-255)
+const VAD_HOLD_MS = 800; // silence before untalking
+const _viewerVADs = {}; // viewerId → { audioCtx, source, analyser, talking, silenceStart }
+let _vadInterval = null;
+
+function _getRMS(analyser) {
+  if (!analyser) return 0;
+  const data = new Uint8Array(analyser.frequencyBinCount);
+  analyser.getByteTimeDomainData(data);
+  let sum = 0;
+  for (let i = 0; i < data.length; i++) {
+    const v = data[i] - 128;
+    sum += v * v;
+  }
+  return Math.sqrt(sum / data.length);
+}
+
+function _startVADBroadcast() {
+  if (_vadInterval) return;
+  _vadInterval = setInterval(() => {
+    const active = [];
+    for (const [vid, vad] of Object.entries(_viewerVADs)) {
+      const level = _getRMS(vad.analyser);
+      const speaking = level > VAD_THRESHOLD;
+      if (speaking && !vad.talking) {
+        vad.talking = true;
+        vad.silenceStart = 0;
+      } else if (!speaking && vad.talking) {
+        if (!vad.silenceStart) vad.silenceStart = Date.now();
+        else if (Date.now() - vad.silenceStart > VAD_HOLD_MS) vad.talking = false;
+      } else if (speaking) {
+        vad.silenceStart = 0;
+      }
+      if (vad.talking) active.push(vid);
+    }
+    if (ws && ws.readyState === 1) {
+      ws.send(JSON.stringify({ type: 'voice-activity', activeSpeakers: active }));
+    }
+  }, 500);
+}
+
+function _setupViewerVAD(viewerId, stream) {
+  try {
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    const source = audioCtx.createMediaStreamSource(stream);
+    const analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 256;
+    source.connect(analyser);
+    _viewerVADs[viewerId] = { audioCtx, source, analyser, talking: false, silenceStart: 0 };
+    _startVADBroadcast();
+  } catch (e) {
+    console.warn('[VAD] Failed to setup for', viewerId, e);
+  }
+}
+
+function _removeViewerVAD(viewerId) {
+  const vad = _viewerVADs[viewerId];
+  if (vad) {
+    try {
+      vad.audioCtx.close();
+    } catch (_) {}
+    delete _viewerVADs[viewerId];
+  }
+}
+
 // Nulls onicecandidate/onconnectionstatechange before closing a peer connection.
 // Required whenever a successor connection for the same viewer ID may be created
 // right after (sendOfferToViewer, startCapture's bulk re-offer) — otherwise a
@@ -662,6 +732,7 @@ function connectWS() {
         closePeerConnection(peerConnections[msg.viewerId]);
         delete peerConnections[msg.viewerId];
       }
+      _removeViewerVAD(msg.viewerId);
       log(I18N.t('Viewer') + ' ' + (msg.name || msg.viewerId) + ' left');
     }
     if (msg.type === 'roster') {
@@ -714,6 +785,17 @@ function connectWS() {
     if (msg.type === 'viewer-mic-ready') {
       log(I18N.t('Viewer') + ' ' + msg._viewerId + ' enabled microphone. Re-syncing tracks...', 'ok');
       sendOfferToViewer(msg._viewerId);
+    }
+
+    // Viewer requests to mute/unmute another viewer (voice chat overlay)
+    if (msg.type === 'set-viewer-volume') {
+      const baseViewerId = (msg.targetId || '').replace(/_\d+$/, '');
+      const vol = parseInt(msg.volume, 10);
+      if (baseViewerId && vol >= 0 && vol <= 100) {
+        setViewerVolume(baseViewerId, vol);
+        log(I18N.t('Volume set:') + ' ' + baseViewerId + ' -> ' + vol, 'ok');
+      }
+      return;
     }
 
     if (msg.type === 'viewer-vr-active') {
@@ -829,6 +911,7 @@ async function sendOfferToViewer(viewerId) {
   if (peerConnections[viewerId]) {
     closePeerConnection(peerConnections[viewerId]);
     delete peerConnections[viewerId];
+    _removeViewerVAD(viewerId);
   }
 
   if (!_turnCredentials && _turnFetchPromise) {
@@ -955,6 +1038,7 @@ async function sendOfferToViewer(viewerId) {
         document.body.appendChild(audioEl);
       }
       audioEl.srcObject = e.streams[0];
+      _setupViewerVAD(viewerId, e.streams[0]);
       log(`Incoming voice stream attached for ${viewerId}`, 'ok');
     }
   };

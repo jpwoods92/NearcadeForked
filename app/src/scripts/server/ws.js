@@ -962,8 +962,14 @@ function attachWebSocketServer(wss, deps) {
             return;
           }
 
-          // Inject viewer ID for answers AND mic renegotiation requests
-          if (msg.type === 'answer' || msg.type === 'ice-viewer' || msg.type === 'viewer-mic-ready') {
+          // Inject viewer ID for answers, mic renegotiation requests, and
+          // cross-viewer volume commands from the voice chat overlay.
+          if (
+            msg.type === 'answer' ||
+            msg.type === 'ice-viewer' ||
+            msg.type === 'viewer-mic-ready' ||
+            msg.type === 'set-viewer-volume'
+          ) {
             msg._viewerId = id;
             if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1)
               state.runtime.hostWS.send(JSON.stringify(msg));

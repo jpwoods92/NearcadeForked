@@ -485,6 +485,7 @@ function setLocalTalking(active) {
   const myEntry = document.getElementById('talkingMe');
   if (myEntry) myEntry.classList.toggle('talking-active', active);
   refreshTalkingOverlayVisibility();
+  if (typeof window.vcSetTalking === 'function') window.vcSetTalking('self', active);
 }
 
 /**

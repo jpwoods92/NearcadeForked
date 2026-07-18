@@ -429,6 +429,49 @@
                   />
                 </div>
               </div>
+              <div class="setting-row">
+                <div class="setting-info" style="flex: 1; margin-right: 20px">
+                  <h4>Host Avatar</h4>
+                  <p>Your avatar shown in voice chat. Click Randomize to generate a new one.</p>
+                </div>
+                <div style="display: flex; align-items: center; gap: 12px">
+                  <div
+                    style="
+                      width: 36px;
+                      height: 36px;
+                      border-radius: 50%;
+                      background: rgba(0, 0, 0, 0.4);
+                      border: 1px solid var(--border);
+                      overflow: hidden;
+                      flex-shrink: 0;
+                    "
+                  >
+                    <img
+                      id="hostAvatarPreview"
+                      src=""
+                      style="width: 100%; height: 100%; object-fit: cover; display: none"
+                      onload="this.style.display = 'block'"
+                    />
+                  </div>
+                  <button
+                    onclick="window.randomizeHostAvatar()"
+                    style="
+                      background: var(--surface);
+                      border: 1px solid var(--border);
+                      border-radius: 6px;
+                      color: var(--text);
+                      font-size: 12px;
+                      font-weight: 600;
+                      padding: 8px 12px;
+                      cursor: pointer;
+                      transition: all 0.15s;
+                      font-family: inherit;
+                    "
+                  >
+                    Randomize
+                  </button>
+                </div>
+              </div>
               <div class="setting-row" onclick="toggleAppSetting('rumble')">
                 <div class="setting-info">
                   <h4>Controller Rumble</h4>
