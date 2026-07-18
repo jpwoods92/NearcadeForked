@@ -7,7 +7,7 @@ This repository holds four independent projects that happen to share one git his
 | Directory | What it is | Package management |
 |---|---|---|
 | `app/` | The Electron desktop app: main process (`app/electron-main.js`), preloads, and all renderer/server source (`app/src/`) — the actual product. | Root `package.json` (`dependencies`/`devDependencies`). No `package.json` of its own; `app/` is a source directory, not an npm package. |
-| `android/` | A Capacitor-generated native Android (Gradle) project. | Managed by Gradle/Capacitor tooling, not npm. The npm-side tooling that drives it (`@capacitor/*`, `capacitor.config.ts`, `bin/build-android.js`) lives at the repo root. |
+| `packaging/android/` | A Capacitor-generated native Android (Gradle) project. | Managed by Gradle/Capacitor tooling, not npm. `packaging/capacitor.config.ts` lives alongside it; the npm-side tooling that drives it (`@capacitor/*`, `bin/build-android.js`) stays at the repo root. |
 | `website/` | Static marketing/arcade pages served by a Cloudflare Worker (`website/_worker.js`, `wrangler.jsonc`). | No `package.json` of its own. Deployed via the root's `wrangler` devDependency (`npm run deploy` / `npm run preview`). |
 | `vps/` | A separate Rust signaling/router service. | Its own `Cargo.toml` — fully independent of npm. |
 
@@ -15,7 +15,7 @@ This repository holds four independent projects that happen to share one git his
 
 Nothing under `app/` or `bin/` ever `require()`s a Capacitor or Wrangler package — they're invoked purely as CLIs (`npx cap sync android`, `wrangler deploy`/`dev`). So they're declared as `optionalDependencies` in the root `package.json`: a plain `npm install` still installs everything (no behavior change for existing workflows), but anyone who only cares about the desktop app can run `npm install` (or `npm ci`, as CI now does for the lint/test and desktop-release jobs) and skip ~365 packages of Android/Cloudflare tooling entirely.
 
-This is deliberately **not** npm workspaces. Workspaces exist to manage multiple *npm packages* sharing one lockfile — but `android/` and `website/` have no `package.json` of their own and don't need one (they're not npm-managed), so there's nothing genuine for a `workspaces` array to list. A directory-level split plus `optionalDependencies` gets the practical benefit (smaller installs, clear ownership) without inventing dependency-management structure that has no second member.
+This is deliberately **not** npm workspaces. Workspaces exist to manage multiple *npm packages* sharing one lockfile — but `packaging/android/` and `website/` have no `package.json` of their own and don't need one (they're not npm-managed), so there's nothing genuine for a `workspaces` array to list. A directory-level split plus `optionalDependencies` gets the practical benefit (smaller installs, clear ownership) without inventing dependency-management structure that has no second member.
 
 ## Path structure inside `app/`
 
