@@ -2,6 +2,8 @@
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
+const https = require('https');
 const { spawn } = require('child_process');
 const crypto = require('crypto');
 const si = require('systeminformation');
@@ -14,6 +16,7 @@ const { startTunnelVps, startTunnel, PROVIDERS: TUNNEL_PROVIDERS, getProviderFn 
 const { arcadeSessions } = require('./arcade-signaling.js');
 const inputDriver = require('../../sidecar/input_backends/InputOrchestrator.js');
 const captureManager = require('../../sidecar/CaptureManager.js');
+const launcherDetect = require('../../sidecar/launcher-detect.js');
 
 // This file lives at app/src/scripts/server/http.js — one level deeper than
 // the app/src/scripts/ that all these static-serving paths were originally
@@ -294,6 +297,82 @@ function registerHttpRoutes(app, deps) {
     // Return null if nothing is configured — clients will use their built-in STUN pool
     if (iceServers.length === 0) return res.json(null);
     res.json(iceServers.length === 1 ? iceServers[0] : iceServers);
+  });
+
+  // ── Game launcher & launcher detection ────────────────────────────────
+  app.get('/games-picker.html', (req, res) => {
+    res.setHeader('Content-Type', 'text/html');
+    res.sendFile('games-picker.html', { root: pagesDir });
+  });
+
+  app.get('/api/launchers', (_req, res) => {
+    res.json({ launchers: launcherDetect.detect() });
+  });
+
+  const gamesCache = { data: null, time: 0, TTL: 15000 };
+  app.get('/api/games', (_req, res) => {
+    if (gamesCache.data && Date.now() - gamesCache.time < gamesCache.TTL) {
+      return res.json({ games: gamesCache.data });
+    }
+    try {
+      const games = launcherDetect.detectGames();
+      gamesCache.data = games;
+      gamesCache.time = Date.now();
+      res.json({ games });
+    } catch (e) {
+      console.error('[api/games] Error detecting games:', e.message);
+      res.status(500).json({ error: e.message, games: [] });
+    }
+  });
+
+  const gameArtCacheDir = path.join(os.homedir(), '.cache', 'Nearcade', 'game-art');
+  app.get('/api/game-art/:appId', (req, res) => {
+    const { appId } = req.params;
+    if (!/^\d+$/.test(appId)) return res.status(400).end();
+    fs.mkdirSync(gameArtCacheDir, { recursive: true });
+    const cachePath = path.join(gameArtCacheDir, appId + '.jpg');
+    if (fs.existsSync(cachePath)) {
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      return res.sendFile(cachePath);
+    }
+    const urls = [
+      `https://shared.steamstatic.com/store_item_assets/steam/apps/${appId}/header.jpg`,
+      `https://cdn.cloudflare.steamstatic.com/steam/apps/${appId}/header.jpg`,
+      `https://steamcdn-a.akamaihd.net/steam/apps/${appId}/header.jpg`,
+    ];
+    let idx = 0;
+    function tryFetch() {
+      if (idx >= urls.length) return res.status(404).end();
+      const url = urls[idx++];
+      https
+        .get(url, (resp) => {
+          if (resp.statusCode !== 200) {
+            resp.resume();
+            return tryFetch();
+          }
+          const chunks = [];
+          resp.on('data', (c) => chunks.push(c));
+          resp.on('end', () => {
+            const buf = Buffer.concat(chunks);
+            fs.writeFileSync(cachePath, buf);
+            res.setHeader('Cache-Control', 'public, max-age=86400');
+            res.sendFile(cachePath);
+          });
+        })
+        .on('error', tryFetch);
+    }
+    tryFetch();
+  });
+
+  app.post('/api/launch-game', express.json(), (req, res) => {
+    const { launcher, gameId } = req.body || {};
+    if (!launcher || !gameId) return res.status(400).json({ error: 'Missing launcher or gameId' });
+    try {
+      launcherDetect.launch(launcher, String(gameId));
+      res.json({ ok: true });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
   });
 
   app.get('/api/status', (req, res) => {

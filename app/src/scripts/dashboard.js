@@ -781,6 +781,65 @@ window.addEventListener('message', (event) => {
   }
 });
 
+// ── Games Ribbon ──────────────────────────────────────────────────────
+// The '<' tab on the right edge slides in an iframe of games-picker.html
+// (app/src/pages/games-picker.html, served by server/http.js), which
+// postMessages back here on launch/close rather than calling the launch
+// API itself — the launch handoff to /host needs sessionStorage + a page
+// navigation, which only the parent frame can do.
+(function initGamesLauncher() {
+  window.openGamesOverlay = function () {
+    const panel = document.querySelector('#gamesOverlay .go-panel');
+    if (!panel.querySelector('iframe')) {
+      const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || 'c084fc';
+      panel.innerHTML = '<iframe src="/games-picker.html?accent=' + encodeURIComponent(accent) + '"></iframe>';
+    }
+    document.getElementById('gamesOverlay').classList.add('open');
+  };
+
+  window.closeGamesOverlay = function () {
+    document.getElementById('gamesOverlay').classList.remove('open');
+  };
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') closeGamesOverlay();
+  });
+
+  window.addEventListener('message', function (e) {
+    if (e.data && e.data.type === 'close-games') {
+      closeGamesOverlay();
+      return;
+    }
+    if (e.data && e.data.type === 'launch-game') {
+      const overlay = document.getElementById('gamesOverlay');
+      const panel = overlay.querySelector('.go-panel');
+      panel.innerHTML =
+        '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--muted);font-size:13px;">Launching ' +
+        (e.data.name || '').replace(/[<>"&]/g, '') +
+        '...</div>';
+      sessionStorage.setItem(
+        'ns_launch_game',
+        JSON.stringify({
+          launcher: e.data.launcher,
+          gameId: e.data.gameId,
+          name: (e.data.name || '').replace(/[<>"&]/g, ''),
+        })
+      );
+      fetch(`http://localhost:${_getServerPort()}/api/launch-game`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ launcher: e.data.launcher, gameId: e.data.gameId }),
+      })
+        .then(() => {
+          window.location.href = '/host?launch=1';
+        })
+        .catch(() => {
+          window.location.href = '/host?launch=1';
+        });
+    }
+  });
+})();
+
 const cursor = document.getElementById('virtual-cursor');
 let cx = window.innerWidth / 2,
   cy = window.innerHeight / 2;

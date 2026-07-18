@@ -21,6 +21,7 @@ const { startTunnelVps, startTunnel, getProviderFn } = require('./server/tunnel.
 // WS handlers that used them.
 const { stopArcadeHeartbeatWorker } = require('./server/arcade-signaling.js');
 const { wivrnEnsureRunning, wivrnShutdown } = require('./server/wivrn-lifecycle.js');
+const launcherDetect = require('../sidecar/launcher-detect.js');
 
 // --- STREAMER PRIVACY SCRUBBER ---
 const _origLog = console.log;
@@ -159,6 +160,10 @@ async function main() {
   } else if (process.platform === 'linux') {
     console.log('✓ Linux - Fully supported (stable)');
   }
+  try {
+    launcherDetect.protectSelf();
+    console.log('  PRIORITY: Boosting Nearcade process priority & OOM protection');
+  } catch {}
   console.log('');
 
   state.runtime.activePort = await findFreePort(3000);

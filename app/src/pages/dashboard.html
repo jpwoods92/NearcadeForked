@@ -889,6 +889,16 @@
         console.error('Failed to load dashboard modals, status:', xhr.status);
       }
     </script>
+
+    <!-- ═══ GAMES RIBBON ═══ -->
+    <div id="gamesTab" onclick="openGamesOverlay()" title="Games">&lsaquo;</div>
+
+    <div id="gamesOverlay" onclick="if (event.target === this) closeGamesOverlay();">
+      <div class="go-panel">
+        <iframe id="gamesFrame" src="/games-picker.html"></iframe>
+      </div>
+    </div>
+
     <script src="/js/i18n.js"></script>
     <script src="/js/dashboard.js"></script>
   </body>

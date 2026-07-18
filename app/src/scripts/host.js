@@ -1703,6 +1703,136 @@ if (window.electronAPI?.hydrateSettings) {
 
 connectWS();
 
+// ── Auto-capture on game launch ───────────────────────────────────────
+// Dashboard's games ribbon POSTs /api/launch-game then navigates here with
+// the launched game's info handed off via sessionStorage (see dashboard.js's
+// games-picker message handler) rather than a URL param, so this check runs
+// unconditionally on load.
+const launchGameData = (() => {
+  try {
+    return JSON.parse(sessionStorage.getItem('ns_launch_game') || 'null');
+  } catch {
+    return null;
+  }
+})();
+if (launchGameData) {
+  sessionStorage.removeItem('ns_launch_game');
+  window._autoCapture = true;
+  document.addEventListener('DOMContentLoaded', () => {
+    setTimeout(() => {
+      const badge = document.getElementById('capStatus');
+      if (badge) badge.textContent = 'Launching ' + (launchGameData.name || 'game') + '...';
+      setTimeout(showSourceSelectionModal, 300);
+    }, 500);
+  });
+}
+
+// ── Host toolbar game launcher button ─────────────────────────────────
+function injectGameLauncher() {
+  if (document.getElementById('gameLauncherWrap')) return;
+  const style = document.createElement('style');
+  style.textContent =
+    '#gameLauncherBtn{background:none;border:none;cursor:pointer;font-size:16px;padding:4px 6px;line-height:1;opacity:0.7}#gameLauncherBtn:hover{opacity:1}#gameLauncherPop{display:none;position:absolute;top:100%;right:0;background:var(--surface);border:1px solid var(--border2);border-radius:8px;padding:10px;z-index:9999;width:220px}#gameLauncherPop.show{display:block}#gameLauncherPop input{width:100%;box-sizing:border-box;background:rgba(0,0,0,0.3);border:1px solid var(--border2);border-radius:4px;padding:6px 8px;color:var(--text);font-family:inherit;font-size:12px;margin-bottom:6px}#gameLauncherPop .launcher-grid{display:flex;flex-wrap:wrap;gap:4px}#gameLauncherPop .launcher-btn{padding:4px 8px;border-radius:4px;border:1px solid var(--border2);background:rgba(0,0,0,0.2);color:var(--text);font-size:10px;cursor:pointer;font-family:inherit;flex:1;min-width:60px;text-align:center}#gameLauncherPop .launcher-btn:hover{background:var(--accent-dim, rgba(192,132,252,0.15));border-color:var(--accent)}#gameLauncherPop .no-launchers{font-size:11px;color:var(--muted);text-align:center;padding:8px 0}';
+  document.head.appendChild(style);
+
+  // The fork's host toolbar is .topbar-right (next to the capture status
+  // pill) rather than upstream's .ctrl-bar/.stream-controls, which don't
+  // exist in this layout.
+  const controls = document.querySelector('.topbar-right');
+  if (!controls) return;
+
+  const wrap = document.createElement('div');
+  wrap.id = 'gameLauncherWrap';
+  wrap.style.cssText = 'position:relative;display:inline-flex';
+
+  const btn = document.createElement('button');
+  btn.id = 'gameLauncherBtn';
+  btn.textContent = '🎮';
+  btn.title = 'Launch Game';
+  btn.type = 'button';
+  wrap.appendChild(btn);
+
+  const pop = document.createElement('div');
+  pop.id = 'gameLauncherPop';
+  pop.innerHTML =
+    '<input id="launcherGameId" placeholder="Game ID (e.g. 730 for CS2)" maxlength="40"><div class="launcher-grid" id="launcherGrid"></div>';
+  wrap.appendChild(pop);
+
+  const ALL_LAUNCHERS = [
+    { id: 'steam', label: 'Steam' },
+    { id: 'heroic', label: 'Heroic' },
+    { id: 'lutris', label: 'Lutris' },
+    { id: 'epic', label: 'Epic' },
+    { id: 'uplay', label: 'Ubisoft' },
+    { id: 'origin', label: 'Origin' },
+    { id: 'bnet', label: 'Battle.net' },
+    { id: 'gog', label: 'GOG Galaxy' },
+    { id: 'itch', label: 'itch.io' },
+    { id: 'ea', label: 'EA App' },
+    { id: 'amazon', label: 'Amazon Games' },
+  ];
+
+  function renderLaunchers(installed) {
+    const grid = document.getElementById('launcherGrid');
+    if (!grid) return;
+    let html = '';
+    const shown = installed ? ALL_LAUNCHERS.filter((l) => installed.includes(l.id)) : ALL_LAUNCHERS;
+    for (const l of shown) {
+      html += `<button class="launcher-btn" data-proto="${l.id}" onclick="window._launchGame('${l.id}')">${l.label}</button>`;
+    }
+    grid.innerHTML = html || '<div class="no-launchers">No launchers detected</div>';
+  }
+
+  fetch('/api/launchers')
+    .then((r) => r.json())
+    .then((d) => {
+      renderLaunchers(d.launchers);
+    })
+    .catch(() => {
+      renderLaunchers(null);
+    });
+
+  btn.onclick = () => pop.classList.toggle('show');
+  document.addEventListener('click', (ev) => {
+    if (!wrap.contains(ev.target)) pop.classList.remove('show');
+  });
+
+  controls.appendChild(wrap);
+}
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', injectGameLauncher);
+} else {
+  injectGameLauncher();
+}
+
+window._launchGame = function (launcher) {
+  const id = document.getElementById('launcherGameId')?.value?.trim();
+  if (!id) {
+    document.getElementById('launcherGameId')?.focus();
+    return;
+  }
+  const protoMap = {
+    steam: 'steam://rungameid/',
+    heroic: 'heroic://launch/',
+    lutris: 'lutris://rungame/',
+    epic: 'com.epicgames.launcher://apps/',
+    uplay: 'uplay://launch/',
+    origin: 'origin://launchgame/',
+    bnet: 'battlenet://',
+    gog: 'goggalaxy://openGameView/',
+    itch: 'itch://',
+    ea: 'ea://launchgame/',
+    amazon: 'amazon-games://play/',
+  };
+  const url = (protoMap[launcher] || '') + id;
+  if (window.electronAPI?.openExternal) {
+    window.electronAPI.openExternal(url);
+  } else {
+    window.open(url);
+  }
+  document.getElementById('gameLauncherPop')?.classList.remove('show');
+};
+
 // ── AUTOMATED HEADLESS BOOT (Arcade Worker) ───────────────────────────
 const urlParams = new URLSearchParams(window.location.search);
 if (urlParams.get('auto') === '1') {
