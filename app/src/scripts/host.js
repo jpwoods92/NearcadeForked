@@ -534,7 +534,56 @@ function savePersistentPassword(val) {
 }
 
 function connectWS() {
-  ws = new WebSocket(proto + '://' + location.host + '/ws/host');
+  const sig = new Signaling();
+  let _sigOnOpen, _sigOnMessage, _sigOnClose, _sigOnError;
+  ws = {
+    get readyState() {
+      return sig.readyState;
+    },
+    set onopen(fn) {
+      _sigOnOpen = fn;
+    },
+    get onopen() {
+      return _sigOnOpen;
+    },
+    set onmessage(fn) {
+      _sigOnMessage = fn;
+    },
+    get onmessage() {
+      return _sigOnMessage;
+    },
+    set onclose(fn) {
+      _sigOnClose = fn;
+    },
+    get onclose() {
+      return _sigOnClose;
+    },
+    set onerror(fn) {
+      _sigOnError = fn;
+    },
+    get onerror() {
+      return _sigOnError;
+    },
+    send: (data) => sig.send(data),
+    close: (c, r) => sig.disconnect(c, r),
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    _sig: sig,
+  };
+  sig.on('connected', () => {
+    if (_sigOnOpen) _sigOnOpen({});
+  });
+  sig.on('disconnected', (d) => {
+    if (_sigOnClose) _sigOnClose({ code: d.code || 1000, reason: d.reason || '' });
+  });
+  sig.on('error', (d) => {
+    if (_sigOnError) _sigOnError(d || {});
+  });
+  sig.on('*', (type, msg) => {
+    if (_sigOnMessage && !{ connected: 1, disconnected: 1, error: 1, binary: 1 }[type])
+      _sigOnMessage({ data: JSON.stringify(msg) });
+  });
+  sig.connect(proto + '://' + location.host + '/ws/host');
   ws.onopen = () => {
     log(I18N.t('Connected to server'), 'ok');
 

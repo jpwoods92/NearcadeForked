@@ -685,8 +685,67 @@ async function connect() {
 
     if (enteredPin) wsUrl += (wsUrl.includes('?') ? '&' : '?') + `pin=${encodeURIComponent(enteredPin)}`;
     if (enteredPassword) wsUrl += (wsUrl.includes('?') ? '&' : '?') + `password=${encodeURIComponent(enteredPassword)}`;
-    ws = new WebSocket(wsUrl);
-    ws.binaryType = 'arraybuffer';
+    const sig = new Signaling();
+    let _sigOnOpen, _sigOnMessage, _sigOnClose, _sigOnError;
+    ws = {
+      get readyState() {
+        return sig.readyState;
+      },
+      url: wsUrl,
+      set onopen(fn) {
+        _sigOnOpen = fn;
+      },
+      get onopen() {
+        return _sigOnOpen;
+      },
+      set onmessage(fn) {
+        _sigOnMessage = fn;
+      },
+      get onmessage() {
+        return _sigOnMessage;
+      },
+      set onclose(fn) {
+        _sigOnClose = fn;
+      },
+      get onclose() {
+        return _sigOnClose;
+      },
+      set onerror(fn) {
+        _sigOnError = fn;
+      },
+      get onerror() {
+        return _sigOnError;
+      },
+      set binaryType(_) {},
+      get binaryType() {
+        return 'arraybuffer';
+      },
+      send: (data) => {
+        if (data instanceof ArrayBuffer || data instanceof Blob) return sig.sendBinary(data);
+        return sig.send(data);
+      },
+      close: (c, r) => sig.disconnect(c, r),
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      _sig: sig,
+    };
+    sig.on('connected', () => {
+      if (_sigOnOpen) _sigOnOpen({});
+    });
+    sig.on('disconnected', (d) => {
+      if (_sigOnClose) _sigOnClose({ code: d.code || 1000, reason: d.reason || '' });
+    });
+    sig.on('error', (d) => {
+      if (_sigOnError) _sigOnError(d || {});
+    });
+    sig.on('binary', (data) => {
+      if (_sigOnMessage) _sigOnMessage({ data });
+    });
+    sig.on('*', (type, msg) => {
+      if (_sigOnMessage && !{ connected: 1, disconnected: 1, error: 1, binary: 1 }[type])
+        _sigOnMessage({ data: JSON.stringify(msg) });
+    });
+    sig.connect(wsUrl);
 
     // ── EXPERIMENTAL WEBTRANSPORT CLIENT ──────────────────────────────────────
     const wtRequested = urlParams.get('wt') === '1' || urlParams.get('pipeline') === 'webtransport';

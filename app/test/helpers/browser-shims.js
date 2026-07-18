@@ -57,6 +57,7 @@ function installStorageStubs() {
  * shared-global-script behavior. */
 function installSharedScriptGlobals() {
   for (const modPath of [
+    '../../src/scripts/signaling.js',
     '../../src/scripts/chat.js',
     '../../src/scripts/webrtc/peer-connection.js',
     '../../src/scripts/webrtc/codec-negotiation.js',
