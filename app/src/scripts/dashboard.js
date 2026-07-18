@@ -285,6 +285,171 @@ function syncToNode() {
   }).catch(() => {});
 }
 
+// ── Additional Tunnels settings section ──────────────────────────────
+// Discoverable provider catalog fetched from GET /api/tunnels/providers
+// (tunnel.js's PROVIDERS list, server/http.js's route) and activated via
+// POST /api/tunnels/start. Lazily loaded the first time the section is
+// expanded, cached in _tunnelProviders for the rest of the session.
+let _tunnelProviders = null;
+
+async function toggleTunnelGrid() {
+  const btn = document.getElementById('moreTunnelsBtn');
+  const container = document.getElementById('tunnelGridContainer');
+  const isOpen = container.classList.toggle('open');
+  btn.classList.toggle('open', isOpen);
+
+  if (isOpen && !_tunnelProviders) {
+    try {
+      const res = await fetch(`http://localhost:${_getServerPort()}/api/tunnels/providers`);
+      const data = await res.json();
+      _tunnelProviders = data.providers || [];
+      renderTunnelGrid();
+    } catch (e) {
+      document.getElementById('tunnelGridLoading').textContent = 'Failed to load: ' + e.message;
+    }
+  }
+}
+
+function renderTunnelGrid() {
+  document.getElementById('tunnelGridLoading').style.display = 'none';
+  const el = document.getElementById('tunnelGridContent');
+  el.style.display = 'block';
+
+  const only = _tunnelProviders.filter((p) => !p.integrated);
+
+  let html = '<div class="tunnel-section-label">Additional Tunnels</div>';
+  html +=
+    '<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:8px;">';
+  html += '<div class="tunnel-grid">';
+  for (const p of only) html += tunnelCardHtml(p);
+  html += '</div></div>';
+
+  el.innerHTML = html;
+}
+
+function tunnelCardHtml(p) {
+  const icon = p.name.charAt(0).toUpperCase();
+  const dotClass = p.status.found ? 'found' : p.status.error ? 'error' : 'missing';
+  const dotLabel =
+    p.requiresBinary === false
+      ? 'no binary needed'
+      : p.status.found
+        ? 'binary found'
+        : p.status.error
+          ? 'error'
+          : 'binary not detected';
+  const badges = [
+    p.difficulty ? '<span class="tc-badge ' + p.difficulty + '">' + p.difficulty + '</span>' : '',
+    p.pricing ? '<span class="tc-badge ' + p.pricing + '">' + p.pricing + '</span>' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+
+  const isActive = appConfig.tunnelProvider === p.id;
+  return (
+    '<div class="tunnel-card' +
+    (isActive ? ' highlight' : '') +
+    '" id="tunnel-card-' +
+    p.id +
+    '" onclick="tunnelCardClick(\'' +
+    p.id +
+    '\')">' +
+    '<div class="tc-header">' +
+    '<div class="tc-icon">' +
+    icon +
+    '</div>' +
+    '<div class="tc-name">' +
+    p.name +
+    '</div>' +
+    badges +
+    '</div>' +
+    '<div class="tc-desc">' +
+    p.description +
+    '</div>' +
+    '<div class="tc-footer">' +
+    '<span class="tc-status"><span class="tc-dot ' +
+    dotClass +
+    '"></span> ' +
+    dotLabel +
+    '</span>' +
+    '</div>' +
+    '</div>'
+  );
+}
+
+function tunnelCardClick(id) {
+  const p = _tunnelProviders.find((x) => x.id === id);
+  if (!p) return;
+  document.querySelectorAll('.tunnel-card').forEach((c) => c.classList.remove('highlight'));
+  const card = document.getElementById('tunnel-card-' + id);
+  if (card) card.classList.add('highlight');
+  appConfig.tunnelProvider = id;
+  if (window.electronAPI) window.electronAPI.saveSettings(appConfig);
+  syncToNode();
+  document.getElementById('moreTunnelsLabel').textContent = 'Starting ' + p.name + '...';
+
+  const statusEl = document.getElementById('tunnelStatus');
+  if (statusEl) {
+    statusEl.textContent = 'Starting ' + p.name + '...';
+    statusEl.className = 'tunnel-status loading';
+    statusEl.style.display = 'block';
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 50000);
+  fetch(`http://localhost:${_getServerPort()}/api/tunnels/start`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ provider: id }),
+    signal: controller.signal,
+  })
+    .then((r) => {
+      clearTimeout(timeoutId);
+      return r.json();
+    })
+    .then((data) => {
+      if (data.success && data.url) {
+        document.getElementById('moreTunnelsLabel').textContent = 'Active: ' + p.name;
+        if (statusEl) {
+          statusEl.innerHTML =
+            '<span style="color:var(--green)">✓</span> ' +
+            p.name +
+            ' running<br><small>URL: <a href="' +
+            data.url +
+            '" target="_blank" style="color:var(--accent)">' +
+            data.url +
+            '</a></small>';
+          statusEl.className = 'tunnel-status success';
+        }
+      } else {
+        document.getElementById('moreTunnelsLabel').textContent = p.name + ' failed';
+        if (statusEl) {
+          statusEl.innerHTML =
+            '<span style="color:var(--danger)">✗</span> ' +
+            p.name +
+            ' failed: ' +
+            (data.details || data.error || 'unknown error');
+          statusEl.className = 'tunnel-status error';
+        }
+      }
+      setTimeout(closeTunnelGrid, 6000);
+    })
+    .catch((e) => {
+      document.getElementById('moreTunnelsLabel').textContent = p.name + ' error';
+      if (statusEl) {
+        statusEl.innerHTML = '<span style="color:var(--danger)">✗</span> Network error: ' + e.message;
+        statusEl.className = 'tunnel-status error';
+      }
+    });
+}
+
+function closeTunnelGrid() {
+  const btn = document.getElementById('moreTunnelsBtn');
+  const container = document.getElementById('tunnelGridContainer');
+  btn.classList.remove('open');
+  container.classList.remove('open');
+}
+
 async function loadAndSyncSettings() {
   if (!window.electronAPI) return;
   appConfig = await window.electronAPI.getSettings();

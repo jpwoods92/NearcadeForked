@@ -15,15 +15,7 @@ const serverNetwork = require('./server/network-info.js');
 // toUinput is re-exported below for electron-main.js; normalizeGamepadMsg
 // isn't needed here anymore -- ws.js requires input-bridge.js directly.
 const { toUinput } = require('./server/input-bridge.js');
-const {
-  startTunnelCloudflared,
-  startTunnelVps,
-  startTunnelPlayit,
-  startTunnelLocalhostRun,
-  startTunnelServeo,
-  startTunnelZrok,
-  startTunnel,
-} = require('./server/tunnel.js');
+const { startTunnelVps, startTunnel, getProviderFn } = require('./server/tunnel.js');
 // Only stopArcadeHeartbeatWorker is needed here (cleanup()) -- the rest of
 // this module's exports moved into ws.js/http.js along with the routes and
 // WS handlers that used them.
@@ -262,14 +254,9 @@ async function main() {
       console.log("  ~ Tunnel: using saved provider '" + cfg.tunnelProvider + "'");
 
       const fn =
-        {
-          zrok: startTunnelZrok,
-          cloudflared: startTunnelCloudflared,
-          playit: startTunnelPlayit,
-          localhostrun: startTunnelLocalhostRun,
-          serveo: startTunnelServeo,
-          vps: (p) => startTunnelVps(p, cfg.vpsHost || process.env.VPS_HOST || ''),
-        }[cfg.tunnelProvider] || startTunnel;
+        cfg.tunnelProvider === 'vps'
+          ? (p) => startTunnelVps(p, cfg.vpsHost || process.env.VPS_HOST || '')
+          : getProviderFn(cfg.tunnelProvider) || startTunnel;
 
       const tun = await fn(state.runtime.activePort);
       if (tun) {

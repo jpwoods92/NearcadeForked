@@ -462,6 +462,761 @@ function startTunnelZrok(port, retries = 3) {
   }).catch(() => null);
 }
 
+function getTailscaleIP() {
+  for (const iface of Object.values(os.networkInterfaces()))
+    for (const n of iface) if (n.family === 'IPv4' && n.address.startsWith('100.')) return n.address;
+  return null;
+}
+
+// ── Extra provider implementations ───────────────────────────────────
+
+function startTunnelBore(port) {
+  return new Promise((resolve) => {
+    findBinaryPath('bore')
+      .then((borePath) => {
+        if (!borePath) {
+          resolve({ error: 'NOT_FOUND', provider: 'bore' });
+          return;
+        }
+        ensureExecutable(borePath);
+
+        console.log('  \x1b[33m~\x1b[0m Starting bore tunnel...');
+        const proc = spawn(borePath, ['local', String(port), '--to', 'bore.pub'], {
+          stdio: ['ignore', 'pipe', 'pipe'],
+        });
+        let done = false;
+        const check = (data) => {
+          const str = data.toString();
+          const url = str.match(/https?:\/\/[a-z0-9\-]+\.bore\.pub/);
+          if (url && !done) {
+            done = true;
+            resolve({ url: url[0], proc });
+            console.log('  \x1b[32m✓\x1b[0m Tunnel URL: \x1b[1m' + url[0] + '\x1b[0m');
+          }
+        };
+        proc.stdout.on('data', check);
+        proc.stderr.on('data', check);
+        proc.on('close', () => {
+          if (!done) resolve(null);
+        });
+        setTimeout(() => {
+          if (!done) {
+            done = true;
+            resolve(null);
+            console.log('  \x1b[33m!\x1b[0m bore timeout');
+          }
+        }, 45000);
+      })
+      .catch(() => resolve(null));
+  });
+}
+
+function startTunnelNgrok(port) {
+  return new Promise((resolve) => {
+    findBinaryPath('ngrok')
+      .then((ngrokPath) => {
+        if (!ngrokPath) {
+          resolve({ error: 'NOT_FOUND', provider: 'ngrok' });
+          return;
+        }
+        ensureExecutable(ngrokPath);
+
+        const authtoken = process.env.NGROK_AUTHTOKEN || readEnv('NGROK_AUTHTOKEN');
+        if (authtoken) spawn(ngrokPath, ['authtoken', authtoken], { stdio: 'ignore' });
+
+        console.log('  \x1b[33m~\x1b[0m Starting ngrok tunnel...');
+        const proc = spawn(ngrokPath, ['http', String(port), '--log', 'stdout'], { stdio: ['ignore', 'pipe', 'pipe'] });
+        let done = false;
+        const check = (data) => {
+          const str = data.toString();
+          const url = str.match(/https?:\/\/[a-z0-9\-]+\.ngrok(-free)?\.app/);
+          if (url && !done) {
+            done = true;
+            resolve({ url: url[0], proc });
+            console.log('  \x1b[32m✓\x1b[0m Tunnel URL: \x1b[1m' + url[0] + '\x1b[0m');
+          }
+        };
+        proc.stdout.on('data', check);
+        proc.stderr.on('data', check);
+        proc.on('close', () => {
+          if (!done) resolve(null);
+        });
+        setTimeout(() => {
+          if (!done) {
+            done = true;
+            resolve(null);
+            console.log('  \x1b[33m!\x1b[0m ngrok timeout');
+          }
+        }, 60000);
+      })
+      .catch(() => resolve(null));
+  });
+}
+
+function startTunnelFrp(port) {
+  return new Promise((resolve) => {
+    findBinaryPath('frpc').then((frpcPath) => {
+      if (frpcPath) {
+        runFrpc(frpcPath);
+        return;
+      }
+      findBinaryPath('frp').then((p) => {
+        if (p) runFrpc(p);
+        else resolve({ error: 'NOT_FOUND', provider: 'frp' });
+      });
+    });
+
+    function runFrpc(frpcPath) {
+      const frpsAddr = process.env.FRPS_ADDR || readEnv('FRPS_ADDR');
+      const frpsPort = process.env.FRPS_PORT || readEnv('FRPS_PORT') || '7000';
+      const token = process.env.FRP_TOKEN || readEnv('FRP_TOKEN');
+      if (!frpsAddr) {
+        console.log('  \x1b[31m✗\x1b[0m FRPS_ADDR not configured');
+        resolve({ error: 'NO_CONFIG', provider: 'frp' });
+        return;
+      }
+
+      console.log('  \x1b[33m~\x1b[0m Starting frp tunnel...');
+      const args = ['-c', '-', '-n', 'nearcade'];
+      const config = `[common]\nserver_addr = ${frpsAddr}\nserver_port = ${frpsPort}\n${token ? `token = ${token}\n` : ''}[nearcade]\ntype = http\nlocal_ip = 127.0.0.1\nlocal_port = ${port}\n`;
+      const proc = spawn(frpcPath, args, { stdio: ['pipe', 'pipe', 'pipe'] });
+      proc.stdin.write(config);
+      proc.stdin.end();
+
+      let done = false;
+      const check = (data) => {
+        const str = data.toString();
+        if ((str.includes('start proxy success') || str.includes('login to server success')) && !done) {
+          done = true;
+          const url = `http://${frpsAddr}:${frpsPort}/?v3`;
+          resolve({ url, proc });
+          console.log('  \x1b[32m✓\x1b[0m Tunnel URL: \x1b[1m' + url + '\x1b[0m');
+        }
+      };
+      proc.stdout.on('data', check);
+      proc.stderr.on('data', check);
+      proc.on('close', () => {
+        if (!done) resolve(null);
+      });
+      setTimeout(() => {
+        if (!done) {
+          done = true;
+          resolve(null);
+          console.log('  \x1b[33m!\x1b[0m frp timeout');
+        }
+      }, 45000);
+    }
+  });
+}
+
+function startTunnelTailscaleFunnel(port) {
+  return new Promise((resolve) => {
+    findBinaryPath('tailscale')
+      .then((tailscalePath) => {
+        if (!tailscalePath) {
+          resolve({ error: 'NOT_FOUND', provider: 'tailscale-funnel' });
+          return;
+        }
+        ensureExecutable(tailscalePath);
+
+        console.log('  \x1b[33m~\x1b[0m Starting Tailscale Funnel...');
+
+        // First check if tailscale is logged in and up
+        const statusCheck = spawn(tailscalePath, ['status', '--json'], { stdio: ['pipe', 'pipe', 'pipe'] });
+        let statusData = '';
+        statusCheck.stdout.on('data', (d) => (statusData += d));
+        statusCheck.on('close', () => {
+          let statusOk = true;
+          try {
+            const j = JSON.parse(statusData);
+            if (!j.Self || j.Self.Online === false) statusOk = false;
+            const hasFunnel = j.Self && j.Self.CapMap && j.Self.CapMap.NodeFunnelAvailable === true;
+            if (!hasFunnel) console.log('  \x1b[33m!\x1b[0m Tailscale Funnel may not be available on your plan');
+          } catch (e) {}
+
+          if (!statusOk) {
+            console.log('  \x1b[31m✗\x1b[0m Tailscale is not connected or authenticated');
+            resolve({ error: 'TAILSCALE_NOT_CONNECTED', provider: 'tailscale-funnel' });
+            return;
+          }
+
+          // Run funnel with --bg=false so the process stays in foreground
+          const proc = spawn(tailscalePath, ['funnel', '--bg=false', String(port)], {
+            stdio: ['ignore', 'pipe', 'pipe'],
+          });
+          let done = false;
+          let output = '';
+
+          const check = (data) => {
+            output += data.toString();
+            const str = output;
+            // Match various tailscale URL formats
+            const url =
+              str.match(/https?:\/\/[a-z0-9][a-z0-9\-.]*[a-z0-9]\.ts\.net(?::\d+)?/i) ||
+              str.match(/https?:\/\/[a-z0-9\-.]+\.ts\.net(?::\d+)?/i);
+            if (url && !done) {
+              done = true;
+              resolve({ url: url[0], proc });
+              console.log('  \x1b[32m✓\x1b[0m Tunnel URL: \x1b[1m' + url[0] + '\x1b[0m');
+              return;
+            }
+            // Check for error messages
+            if (str.includes('Funnel is not available') || str.includes('not available')) {
+              done = true;
+              resolve({ error: 'FUNNEL_NOT_AVAILABLE', provider: 'tailscale-funnel', details: str });
+              console.log('  \x1b[31m✗\x1b[0m ' + str.trim());
+              return;
+            }
+          };
+
+          proc.stdout.on('data', check);
+          proc.stderr.on('data', check);
+
+          proc.on('close', (code) => {
+            if (!done) {
+              if (output && !output.includes('error')) {
+                // Process exited but we have some output - try to extract URL
+                const m = output.match(/https?:\/\/[a-z0-9][a-z0-9\-.]*[a-z0-9]\.ts\.net(?::\d+)?/i);
+                if (m) {
+                  done = true;
+                  resolve({ url: m[0], proc: null });
+                  console.log('  \x1b[32m✓\x1b[0m Tunnel URL: \x1b[1m' + m[0] + '\x1b[0m');
+                  return;
+                }
+              }
+              resolve({ error: 'EXIT_CODE_' + code, provider: 'tailscale-funnel', details: output });
+              console.log('  \x1b[31m!\x1b[0m tailscale funnel closed (code ' + code + '): ' + output.trim());
+            }
+          });
+
+          const timeout = 120000;
+          const timer = setTimeout(() => {
+            if (!done) {
+              done = true;
+              proc.kill();
+              resolve({ error: 'TIMEOUT', provider: 'tailscale-funnel', details: output });
+              console.log('  \x1b[33m!\x1b[0m tailscale funnel timeout (120s)');
+            }
+          }, timeout);
+
+          // Also try to get URL from serve status as fallback
+          setTimeout(() => {
+            if (!done) {
+              const serveCheck = spawn(tailscalePath, ['serve', 'status', '--json'], {
+                stdio: ['pipe', 'pipe', 'pipe'],
+              });
+              let serveData = '';
+              serveCheck.stdout.on('data', (d) => (serveData += d));
+              serveCheck.on('close', () => {
+                if (!done) {
+                  try {
+                    const j = JSON.parse(serveData);
+                    const funnelUrl = j?.Funnel?.find?.((f) => f?.URL)?.URL || j?.Serve?.find?.((f) => f?.URL)?.URL;
+                    if (funnelUrl) {
+                      done = true;
+                      clearTimeout(timer);
+                      resolve({ url: funnelUrl, proc });
+                      console.log('  \x1b[32m✓\x1b[0m Tunnel URL (from status): \x1b[1m' + funnelUrl + '\x1b[0m');
+                    }
+                  } catch (e) {}
+                }
+              });
+            }
+          }, 8000);
+        });
+      })
+      .catch(() => resolve(null));
+  });
+}
+
+function startTunnelTailscaleServe(port) {
+  return new Promise((resolve) => {
+    const ip = getTailscaleIP();
+    if (ip) {
+      const url = `http://${ip}:${port}/?v3`;
+      console.log('  \x1b[32m✓\x1b[0m Tailscale Serve URL: \x1b[1m' + url + '\x1b[0m');
+
+      // Best-effort: also configure serve for a friendly hostname in the background
+      findBinaryPath('tailscale')
+        .then((tpath) => {
+          if (!tpath) return;
+          spawn(tpath, ['serve', 'http://127.0.0.1:' + port], { stdio: 'ignore' });
+        })
+        .catch(() => {});
+
+      resolve({ url, proc: null });
+      return;
+    }
+
+    // No tailscale IP — try to diagnose and start daemon
+    findBinaryPath('tailscale')
+      .then((tpath) => {
+        if (!tpath) {
+          resolve({ error: 'NOT_FOUND', provider: 'tailscale-serve' });
+          return;
+        }
+        console.log('  \x1b[33m~\x1b[0m Checking Tailscale status...');
+        const check = spawn(tpath, ['status', '--json'], { stdio: ['pipe', 'pipe', 'pipe'] });
+        let out = '';
+        check.stdout.on('data', (d) => (out += d));
+        check.stderr.on('data', (d) => (out += d));
+        let done = false;
+        check.on('error', () => {
+          if (!done) {
+            done = true;
+            resolve({ error: 'SPAWN_ERR', provider: 'tailscale-serve' });
+          }
+        });
+        check.on('close', () => {
+          if (done) return;
+          done = true;
+          const ip2 = getTailscaleIP();
+          if (ip2) {
+            resolve({ url: `http://${ip2}:${port}/?v3`, proc: null });
+            return;
+          }
+          if (/not running|daemon|not connected/i.test(out)) {
+            // Try pkexec to start daemon with GUI auth dialog
+            console.log('  \x1b[33m~\x1b[0m tailscaled not running, attempting auto-start...');
+            const pe = spawn('pkexec', ['systemctl', 'start', 'tailscaled'], { stdio: 'ignore', detached: true });
+            let peDone = false;
+            setTimeout(() => {
+              if (!peDone) {
+                peDone = true;
+                pe.kill();
+              }
+            }, 30000);
+            pe.on('error', () => {
+              if (!peDone) {
+                peDone = true;
+                resolve({
+                  error: 'DAEMON_DOWN',
+                  provider: 'tailscale-serve',
+                  details: 'Run: sudo systemctl enable --now tailscaled',
+                });
+              }
+            });
+            pe.on('close', (code) => {
+              if (peDone) return;
+              peDone = true;
+              if (code !== 0) {
+                resolve({
+                  error: 'DAEMON_DOWN',
+                  provider: 'tailscale-serve',
+                  details: 'Run: sudo systemctl enable --now tailscaled',
+                });
+                return;
+              }
+              console.log('  \x1b[32m✓\x1b[0m tailscaled started');
+              // Wait for daemon to initialize, then re-check IP
+              setTimeout(() => {
+                const ip3 = getTailscaleIP();
+                if (ip3) {
+                  resolve({ url: `http://${ip3}:${port}/?v3`, proc: null });
+                } else {
+                  resolve({
+                    error: 'NOT_CONNECTED',
+                    provider: 'tailscale-serve',
+                    details: 'Daemon started but not authenticated. Run: sudo tailscale up',
+                  });
+                }
+              }, 4000);
+            });
+          } else {
+            resolve({ error: 'NOT_CONNECTED', provider: 'tailscale-serve', details: 'Run: tailscale up' });
+          }
+        });
+      })
+      .catch(() => resolve(null));
+  });
+}
+
+function startTunnelTailscaleMesh(port) {
+  return new Promise((resolve) => {
+    const ip = getTailscaleIP();
+    if (!ip) {
+      resolve({ error: 'NO_TAILSCALE_IP', provider: 'tailscale-mesh' });
+      return;
+    }
+    const url = `http://${ip}:${port}/?v3`;
+    console.log('  \x1b[32m✓\x1b[0m Tailscale Mesh URL: \x1b[1m' + url + '\x1b[0m');
+    resolve({ url, proc: null });
+  });
+}
+
+function getZeroTierIP(networkId) {
+  try {
+    const { execSync } = require('child_process');
+    const out = execSync('zerotier-cli listnetworks', { encoding: 'utf8' });
+    const lines = out.trim().split('\n').slice(1);
+    for (const line of lines) {
+      const parts = line.split(/\s+/);
+      if (parts[0] === networkId && parts[4] && parts[4] !== '-') {
+        return parts[4].split('/')[0];
+      }
+    }
+  } catch (e) {}
+  return null;
+}
+
+function startTunnelZeroTier(port) {
+  return new Promise((resolve) => {
+    findBinaryPath('zerotier-cli')
+      .then((ztPath) => {
+        if (!ztPath) {
+          resolve({ error: 'NOT_FOUND', provider: 'zerotier' });
+          return;
+        }
+
+        const networkId = process.env.ZEROTIER_NETWORK_ID || readEnv('ZEROTIER_NETWORK_ID');
+        if (!networkId) {
+          console.log('  \x1b[31m✗\x1b[0m ZEROTIER_NETWORK_ID not configured');
+          resolve({ error: 'NO_CONFIG', provider: 'zerotier' });
+          return;
+        }
+
+        console.log('  \x1b[33m~\x1b[0m Joining ZeroTier network...');
+        const join = spawn(ztPath, ['join', networkId], { stdio: ['ignore', 'pipe', 'pipe'] });
+        join.on('close', () => {
+          const ztIp = getZeroTierIP(networkId);
+          if (ztIp) {
+            const url = `http://${ztIp}:${port}/?v3`;
+            console.log('  \x1b[32m✓\x1b[0m ZeroTier URL: \x1b[1m' + url + '\x1b[0m');
+            resolve({ url, proc: null });
+          } else {
+            resolve({ error: 'NO_ZT_IP', provider: 'zerotier' });
+          }
+        });
+      })
+      .catch(() => resolve(null));
+  });
+}
+
+function startTunnelNetmaker(port) {
+  return new Promise((resolve) => {
+    const apiUrl = process.env.NETMAKER_API_URL || readEnv('NETMAKER_API_URL');
+    const token = process.env.NETMAKER_TOKEN || readEnv('NETMAKER_TOKEN');
+    if (!apiUrl || !token) {
+      console.log('  \x1b[31m✗\x1b[0m NETMAKER_API_URL and NETMAKER_TOKEN required');
+      resolve({ error: 'NO_CONFIG', provider: 'netmaker' });
+      return;
+    }
+    console.log(
+      '  \x1b[33m~\x1b[0m Netmaker requires manual WireGuard config. Set up peer in Netmaker UI and connect locally.'
+    );
+    resolve({ error: 'MANUAL_SETUP', provider: 'netmaker', url: 'manual' });
+  });
+}
+
+function startTunnelWireguardDirect(port) {
+  return new Promise((resolve) => {
+    findBinaryPath('wg-quick')
+      .then((wgPath) => {
+        if (!wgPath) {
+          findBinaryPath('wg').then((p) => {
+            if (p) wgPath = p;
+          });
+        }
+        if (!wgPath) {
+          resolve({ error: 'NOT_FOUND', provider: 'wireguard-direct' });
+          return;
+        }
+
+        const configPath = process.env.WIREGUARD_CONFIG || readEnv('WIREGUARD_CONFIG') || '/etc/wireguard/wg0.conf';
+        console.log('  \x1b[33m~\x1b[0m Starting WireGuard interface...');
+        const proc = spawn(wgPath, ['up', configPath.replace('.conf', '')], { stdio: ['ignore', 'pipe', 'pipe'] });
+        proc.on('close', (code) => {
+          if (code === 0) {
+            const vpsIp = process.env.WIREGUARD_VPS_IP || readEnv('WIREGUARD_VPS_IP');
+            const url = vpsIp ? `http://${vpsIp}:${port}/?v3` : 'manual';
+            console.log('  \x1b[32m✓\x1b[0m WireGuard up. Connect viewers to: \x1b[1m' + url + '\x1b[0m');
+            resolve({ url, proc: null });
+          } else {
+            resolve({ error: 'START_FAILED', provider: 'wireguard-direct' });
+          }
+        });
+      })
+      .catch(() => resolve(null));
+  });
+}
+
+// ── Provider catalog ──────────────────────────────────────────────────
+// Single source of truth for {id -> start fn} — consumed by getProviderFn()
+// so server.js's boot-time auto-start and http.js's /api/start-tunnel +
+// /api/tunnels/* routes no longer each keep their own copy of this table.
+const PROVIDERS = [
+  {
+    id: 'zrok',
+    name: 'zrok',
+    type: 'reverse',
+    category: 'primary',
+    integrated: true,
+    pricing: 'free',
+    difficulty: 'easy',
+    description: 'Open-source reverse tunnel. Headless mode, auto-retry, best performance.',
+    tags: ['binary', 'open-source'],
+    binaryNames: ['zrok', 'zrok2'],
+    start: (port) => startTunnelZrok(port),
+    detect: async () => {
+      const p = (await findBinaryPath('zrok')) || (await findBinaryPath('zrok2'));
+      return { found: !!p, path: p };
+    },
+  },
+  {
+    id: 'cloudflared',
+    name: 'cloudflared',
+    type: 'reverse',
+    category: 'primary',
+    integrated: true,
+    pricing: 'free',
+    difficulty: 'easy',
+    description: 'Cloudflare Tunnel. Free random URL via trycloudflare, custom domain via CF_TOKEN.',
+    tags: ['binary', 'cloudflare'],
+    binaryNames: ['cloudflared'],
+    start: (port) => startTunnelCloudflared(port),
+    detect: async () => {
+      const p = await findBinaryPath('cloudflared');
+      return { found: !!p, path: p };
+    },
+  },
+  {
+    id: 'playit',
+    name: 'playit.gg',
+    type: 'reverse',
+    category: 'primary',
+    integrated: true,
+    pricing: 'paid',
+    difficulty: 'easy',
+    description: 'Gaming-focused tunnel. Persistent subdomain on paid plan, ephemeral on free.',
+    tags: ['binary', 'gaming'],
+    binaryNames: ['playit'],
+    start: (port) => startTunnelPlayit(port),
+    detect: async () => {
+      const p = await findBinaryPath('playit');
+      return { found: !!p, path: p };
+    },
+  },
+  {
+    id: 'localhostrun',
+    name: 'localhost.run',
+    type: 'reverse',
+    category: 'primary',
+    integrated: true,
+    pricing: 'free',
+    difficulty: 'easy',
+    description: 'SSH-based. Uses system ssh. Random URL. Requires outbound port 22.',
+    tags: ['ssh'],
+    binaryNames: ['ssh'],
+    start: (port) => startTunnelLocalhostRun(port),
+    detect: async () => {
+      const p = await findBinaryPath('ssh');
+      return { found: !!p, path: p };
+    },
+  },
+  {
+    id: 'serveo',
+    name: 'serveo.net',
+    type: 'reverse',
+    category: 'primary',
+    integrated: true,
+    pricing: 'free',
+    difficulty: 'easy',
+    description: 'SSH-based like localhost.run. Custom subdomain on paid plan.',
+    tags: ['ssh'],
+    binaryNames: ['ssh'],
+    start: (port) => startTunnelServeo(port),
+    detect: async () => {
+      const p = await findBinaryPath('ssh');
+      return { found: !!p, path: p };
+    },
+  },
+  {
+    id: 'vps',
+    name: 'Custom VPS (SSH)',
+    type: 'reverse',
+    category: 'primary',
+    integrated: true,
+    pricing: 'paid',
+    difficulty: 'advanced',
+    description: 'Reverse SSH tunnel to your own VPS. Requires VPS credentials.',
+    tags: ['ssh', 'vps', 'self-hosted'],
+    binaryNames: ['ssh'],
+    start: (port) => startTunnelVps(port, readEnv('VPS_HOST') || ''),
+    detect: async () => {
+      const p = await findBinaryPath('ssh');
+      return { found: !!p, path: p };
+    },
+  },
+  // ── Extra reverse tunnels ──
+  {
+    id: 'bore',
+    name: 'bore',
+    type: 'reverse',
+    category: 'extra',
+    pricing: 'free',
+    difficulty: 'manual',
+    description: 'Minimal Rust tunnel. Run your own server or use public bore.pub.',
+    tags: ['binary', 'rust', 'self-hosted'],
+    binaryNames: ['bore'],
+    start: (port) => startTunnelBore(port),
+    detect: async () => {
+      const p = await findBinaryPath('bore');
+      return { found: !!p, path: p };
+    },
+  },
+  {
+    id: 'ngrok',
+    name: 'ngrok',
+    type: 'reverse',
+    category: 'extra',
+    pricing: 'paid',
+    difficulty: 'easy',
+    description: 'Popular tunnel. Heavy rate limiting on free plan. Requires account token.',
+    tags: ['binary', 'popular'],
+    binaryNames: ['ngrok'],
+    start: (port) => startTunnelNgrok(port),
+    detect: async () => {
+      const p = await findBinaryPath('ngrok');
+      return { found: !!p, path: p };
+    },
+  },
+  {
+    id: 'frp',
+    name: 'frp',
+    type: 'reverse',
+    category: 'extra',
+    pricing: 'free',
+    difficulty: 'manual',
+    description: 'Self-hosted reverse proxy. Run frps on a VPS, frpc locally.',
+    tags: ['binary', 'go', 'self-hosted'],
+    binaryNames: ['frpc', 'frp'],
+    start: (port) => startTunnelFrp(port),
+    detect: async () => {
+      const p = (await findBinaryPath('frpc')) || (await findBinaryPath('frp'));
+      return { found: !!p, path: p };
+    },
+  },
+  {
+    id: 'tailscale-funnel',
+    name: 'Tailscale Funnel',
+    type: 'reverse',
+    category: 'extra',
+    pricing: 'paid',
+    difficulty: 'easy',
+    description: 'Tailscale public reverse tunnel. Requires Tailscale Funnel feature (paid plan).',
+    tags: ['binary', 'tailscale'],
+    binaryNames: ['tailscale'],
+    start: (port) => startTunnelTailscaleFunnel(port),
+    detect: async () => {
+      const p = await findBinaryPath('tailscale');
+      return { found: !!p, path: p };
+    },
+  },
+  {
+    id: 'tailscale-serve',
+    name: 'Tailscale Serve',
+    type: 'reverse',
+    category: 'extra',
+    pricing: 'free',
+    difficulty: 'easy',
+    description: 'Expose to your tailnet via Tailscale Serve. Free, no account needed beyond Tailscale.',
+    tags: ['binary', 'tailscale'],
+    binaryNames: ['tailscale'],
+    start: (port) => startTunnelTailscaleServe(port),
+    detect: async () => {
+      const p = await findBinaryPath('tailscale');
+      return { found: !!p, path: p };
+    },
+  },
+  // ── Mesh VPN ──
+  {
+    id: 'tailscale-mesh',
+    name: 'Tailscale (Mesh)',
+    type: 'mesh',
+    category: 'extra',
+    pricing: 'free',
+    difficulty: 'easy',
+    description: 'WireGuard-based mesh VPN. Both sides install. Connect via 100.x.x.x:port.',
+    tags: ['binary', 'mesh', 'wireguard'],
+    binaryNames: ['tailscale'],
+    start: (port) => startTunnelTailscaleMesh(port),
+    detect: async () => {
+      const p = await findBinaryPath('tailscale');
+      const ip = getTailscaleIP();
+      return { found: !!ip, path: p, extra: { tailscaleIP: ip } };
+    },
+  },
+  {
+    id: 'zerotier',
+    name: 'ZeroTier',
+    type: 'mesh',
+    category: 'extra',
+    pricing: 'free',
+    difficulty: 'setup',
+    description: 'SD-WAN mesh. Viewers join same network ID. Direct P2P after handshake.',
+    tags: ['binary', 'mesh'],
+    binaryNames: ['zerotier-cli', 'zerotier-one'],
+    start: (port) => startTunnelZeroTier(port),
+    detect: async () => {
+      const p = await findBinaryPath('zerotier-cli').catch(() => null);
+      return { found: !!p, path: p };
+    },
+  },
+  {
+    id: 'netmaker',
+    name: 'Netmaker',
+    type: 'mesh',
+    category: 'extra',
+    pricing: 'free',
+    difficulty: 'manual',
+    description: 'Self-hosted WireGuard mesh. Requires a VPS as controller.',
+    tags: ['mesh', 'wireguard', 'self-hosted'],
+    requiresBinary: false,
+    binaryNames: [],
+    start: (port) => startTunnelNetmaker(port),
+    detect: async () => ({ found: false }),
+  },
+  // ── Other ──
+  {
+    id: 'portforward',
+    name: 'Port Forwarding',
+    type: 'other',
+    category: 'primary',
+    pricing: 'free',
+    difficulty: 'manual',
+    description: 'Open port 3000 on your router. Direct connection, no tunnel binary.',
+    tags: ['router'],
+    requiresBinary: false,
+    binaryNames: [],
+    start: () => Promise.resolve({ error: 'MANUAL_SETUP', provider: 'portforward', url: 'manual' }),
+    detect: async () => ({ found: false }),
+  },
+  {
+    id: 'wireguard-direct',
+    name: 'WireGuard Direct',
+    type: 'other',
+    category: 'extra',
+    pricing: 'free',
+    difficulty: 'manual',
+    description: 'Raw WireGuard tunnel to a VPS. Viewers connect to VPS IP directly.',
+    tags: ['wireguard', 'vps', 'self-hosted'],
+    binaryNames: ['wg', 'wg-quick'],
+    start: (port) => startTunnelWireguardDirect(port),
+    detect: async () => {
+      const p = await findBinaryPath('wg').catch(() => null);
+      return { found: !!p, path: p };
+    },
+  },
+];
+
+/** Looks up a provider's `start(port)` function by id — the single source
+ * server.js's boot-time auto-start and http.js's tunnel routes both read
+ * from, instead of each keeping their own copy of this table. */
+function getProviderFn(id) {
+  const p = PROVIDERS.find((p) => p.id === id);
+  return p ? p.start : null;
+}
+
 async function startTunnel(port) {
   const forced = (process.env.TUNNEL || '').toLowerCase();
   if (forced === 'zrok') return startTunnelZrok(port);
@@ -494,11 +1249,23 @@ async function startTunnel(port) {
 module.exports = {
   findBinaryPath,
   ensureExecutable,
+  getTailscaleIP,
   startTunnelCloudflared,
   startTunnelVps,
   startTunnelPlayit,
   startTunnelLocalhostRun,
   startTunnelServeo,
   startTunnelZrok,
+  startTunnelBore,
+  startTunnelNgrok,
+  startTunnelFrp,
+  startTunnelTailscaleFunnel,
+  startTunnelTailscaleServe,
+  startTunnelTailscaleMesh,
+  startTunnelZeroTier,
+  startTunnelNetmaker,
+  startTunnelWireguardDirect,
   startTunnel,
+  PROVIDERS,
+  getProviderFn,
 };

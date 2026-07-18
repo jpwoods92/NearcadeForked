@@ -10,15 +10,7 @@ const state = require('./state.js');
 const { projectRoot, loadConfig, saveConfig, readEnv } = require('./env.js');
 const { shouldRequirePin } = require('./network-info.js');
 const { initVirtualAudio, routeGameAudio } = require('./audio-routing.js');
-const {
-  startTunnelCloudflared,
-  startTunnelVps,
-  startTunnelPlayit,
-  startTunnelLocalhostRun,
-  startTunnelServeo,
-  startTunnelZrok,
-  startTunnel,
-} = require('./tunnel.js');
+const { startTunnelVps, startTunnel, PROVIDERS: TUNNEL_PROVIDERS, getProviderFn } = require('./tunnel.js');
 const { arcadeSessions } = require('./arcade-signaling.js');
 const inputDriver = require('../../sidecar/input_backends/InputOrchestrator.js');
 const captureManager = require('../../sidecar/CaptureManager.js');
@@ -551,16 +543,7 @@ function registerHttpRoutes(app, deps) {
     // CRITICAL FIX: Use readEnv to catch the host if the GUI fails to pass it!
     const resolvedVpsHost = req.body && req.body.vpsHost ? req.body.vpsHost.trim() : (readEnv('VPS_HOST') || '').trim();
 
-    const fn =
-      {
-        zrok: startTunnelZrok,
-        cloudflared: startTunnelCloudflared,
-        playit: startTunnelPlayit,
-        localhostrun: startTunnelLocalhostRun,
-        serveo: startTunnelServeo,
-        vps: (p) => startTunnelVps(p, resolvedVpsHost),
-        portforward: async () => null,
-      }[provider] || startTunnel;
+    const fn = provider === 'vps' ? (p) => startTunnelVps(p, resolvedVpsHost) : getProviderFn(provider) || startTunnel;
 
     if (provider === 'vps' && resolvedVpsHost) {
       saveConfig({ vpsHost: resolvedVpsHost });
@@ -586,6 +569,57 @@ function registerHttpRoutes(app, deps) {
       console.log(`  \x1b[31m~\x1b[0m Tunnel error:`, e.message);
       if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1)
         state.runtime.hostWS.send(JSON.stringify({ type: 'tunnel-error', provider: provider }));
+    }
+  });
+
+  // Dashboard "Additional Tunnels" section: discoverable provider catalog with
+  // live binary-found status, and a start endpoint scoped to that flow. Kept
+  // separate from /api/start-tunnel above (the in-session host tunnel modal's
+  // route, with its remember/vpsHost handling) rather than merged into it —
+  // both now read from tunnel.js's single PROVIDERS/getProviderFn source.
+  app.get('/api/tunnels/providers', async (_req, res) => {
+    const results = await Promise.all(
+      TUNNEL_PROVIDERS.map(async (p) => {
+        let status;
+        try {
+          status = await p.detect();
+        } catch (e) {
+          status = { found: false, error: e.message };
+        }
+        return {
+          id: p.id,
+          name: p.name,
+          type: p.type,
+          pricing: p.pricing,
+          difficulty: p.difficulty,
+          description: p.description,
+          tags: p.tags,
+          requiresBinary: p.requiresBinary !== false,
+          integrated: !!p.integrated,
+          status,
+        };
+      })
+    );
+    res.json({ providers: results });
+  });
+
+  app.post('/api/tunnels/start', express.json(), async (req, res) => {
+    const { provider } = req.body || {};
+    if (!provider) return res.status(400).json({ error: 'provider required' });
+    saveConfig({ tunnelProvider: provider });
+    const fn = provider === 'vps' ? (p) => startTunnelVps(p, readEnv('VPS_HOST') || '') : getProviderFn(provider);
+    if (!fn) return res.status(400).json({ success: false, error: 'Unknown provider: ' + provider });
+    try {
+      const result = await fn(state.runtime.activePort);
+      if (result && result.url) {
+        res.json({ success: true, url: result.url });
+      } else if (result && result.error) {
+        res.json({ success: false, error: result.error, details: result.details || '' });
+      } else {
+        res.json({ success: false, error: 'Tunnel failed to start', details: 'No URL returned' });
+      }
+    } catch (e) {
+      res.status(500).json({ success: false, error: e.message });
     }
   });
 }
