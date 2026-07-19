@@ -45,6 +45,7 @@ const runtime = {
 // in server/arcade-signaling.js). ──
 const viewers = new Map();
 const viewerNames = new Map();
+const viewerColors = new Map();
 const inputPerms = new Map();
 const pinAttempts = new Map();
 const viewerGamepads = new Map();
@@ -62,6 +63,7 @@ module.exports = {
   runtime,
   viewers,
   viewerNames,
+  viewerColors,
   inputPerms,
   pinAttempts,
   viewerGamepads,

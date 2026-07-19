@@ -270,6 +270,7 @@ function initWebCodecsViewer(config) {
       }
       frame.close();
       if (window._wcHealthTrackFrame) window._wcHealthTrackFrame();
+      if (window._trackViewerFrame) window._trackViewerFrame();
 
       if (_wcFirstFrame) {
         _wcFirstFrame = false;
@@ -281,6 +282,8 @@ function initWebCodecsViewer(config) {
         }
         const overlay = document.getElementById('overlay');
         if (overlay) overlay.style.backgroundColor = '';
+        const latencyOverlay = document.getElementById('latency-overlay');
+        if (latencyOverlay) latencyOverlay.style.display = 'block';
       }
     },
     error: (e) => {

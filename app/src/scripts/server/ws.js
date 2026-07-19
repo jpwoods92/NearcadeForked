@@ -234,6 +234,7 @@ function attachWebSocketServer(wss, deps) {
         roster.push({
           id: rosterId,
           name: (state.viewerNames.get(id) || id) + nameSuffix,
+          color: state.viewerColors.get(id) || '',
           gp: !!p.gp,
           kb: !!p.kb,
           slot: p.slot ?? autoSlot++,
@@ -397,6 +398,7 @@ function attachWebSocketServer(wss, deps) {
 
             state.viewers.delete(realId);
             state.viewerNames.delete(realId);
+            state.viewerColors.delete(realId);
             state.inputPerms.delete(realId);
 
             if (targetWs) {
@@ -635,6 +637,7 @@ function attachWebSocketServer(wss, deps) {
             if (!id || !state.viewers.has(id)) return;
             state.viewers.delete(id);
             state.viewerNames.delete(id);
+            state.viewerColors.delete(id);
             const padId = id + '_0';
             toUinput({ type: 'flush_neutral', viewer_id: padId });
             toUinput({ type: 'disconnect_viewer', viewer_id: padId });
@@ -904,6 +907,17 @@ function attachWebSocketServer(wss, deps) {
         try {
           const msg = JSON.parse(raw);
 
+          // ── LATENCY OVERLAY: relay-path RTT probe ──
+          // Named 'latency-ping'/'latency-pong' rather than reusing the
+          // generic 'ping'/'pong' pair: those are already owned by
+          // Signaling's own keepalive heartbeat (signaling.js), which
+          // consumes and swallows any 'pong' message before viewer.js ever
+          // sees it. A distinct type avoids that collision.
+          if (msg.type === 'latency-ping') {
+            ws.send(JSON.stringify({ type: 'latency-pong' }));
+            return;
+          }
+
           // ── NAME HANDSHAKE: viewer sends { type:'join', name, viewerId, pin } ──
           // This is the first message from the viewer after ws.onopen.
           // We update the name here, then fire viewer-joined to the host.
@@ -994,6 +1008,9 @@ function attachWebSocketServer(wss, deps) {
                 state.viewerNames.get(tempId) || state.viewerNames.get(claimedId) || 'Guest'
               );
               state.viewerNames.delete(tempId);
+              const rejoinColor = state.viewerColors.get(tempId) || state.viewerColors.get(claimedId);
+              if (rejoinColor) state.viewerColors.set(claimedId, rejoinColor);
+              state.viewerColors.delete(tempId);
               if (state.viewerHasController.has(tempId)) {
                 state.viewerHasController.delete(tempId);
                 state.viewerHasController.add(claimedId);
@@ -1082,6 +1099,17 @@ function attachWebSocketServer(wss, deps) {
             if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1)
               state.runtime.hostWS.send(JSON.stringify({ type: 'viewer-renamed', viewerId: id, name }));
             broadcastRoster();
+            return;
+          }
+
+          // Persists the viewer's chosen chat/profile color so it shows up
+          // in the roster (and from there, the voice-chat overlay's avatar
+          // ring colors — vcSyncRoster already reads roster[i].color).
+          if (msg.type === 'update-color') {
+            if (msg.color) {
+              state.viewerColors.set(id, String(msg.color).slice(0, 7));
+              broadcastRoster();
+            }
             return;
           }
 
@@ -1295,6 +1323,7 @@ function attachWebSocketServer(wss, deps) {
         if (wasActive) {
           state.viewers.delete(id);
           state.viewerNames.delete(id);
+          state.viewerColors.delete(id);
           state.viewerGamepads.delete(id);
           state.viewerHasController.delete(id);
           for (const [hwKey, vid] of state.hwIdToViewer) {

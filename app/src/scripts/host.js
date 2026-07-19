@@ -990,17 +990,24 @@ async function sendOfferToViewer(viewerId) {
   // ── UDP FAST-LANE FOR INPUT ──
   pc.inputChannel = pc.createDataChannel('input', { ordered: false, maxRetransmits: 0 });
   pc.inputChannel.onmessage = (e) => {
-    if (ws && ws.readyState === 1) {
-      try {
-        const inner = JSON.parse(e.data);
+    try {
+      const inner = JSON.parse(e.data);
+      // Latency overlay's true peer-to-peer RTT probe: echo directly back
+      // over the datachannel rather than round-tripping through the server,
+      // so it measures the actual P2P path instead of relay latency.
+      if (inner.type === 'ping') {
+        pc.inputChannel.send(JSON.stringify({ type: 'pong' }));
+        return;
+      }
+      if (ws && ws.readyState === 1) {
         // Fast-lane inputs bypass the VPS router, so we must manually stamp the correct session ID
         inner.viewerId = viewerId;
         inner.viewer_id = viewerId;
         if (inner.type === 'gamepad' && !inner.pad_id) inner.pad_id = viewerId + '_0';
         ws.send(JSON.stringify(inner));
-      } catch (_) {
-        ws.send(e.data);
       }
+    } catch (_) {
+      if (ws && ws.readyState === 1) ws.send(e.data);
     }
   };
 

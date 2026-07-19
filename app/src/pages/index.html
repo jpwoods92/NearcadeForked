@@ -101,57 +101,113 @@
         "
       ></select>
 
-      <div class="pin-card">
-        <div class="pin-field-label">Display Name</div>
-        <input
-          id="nameInput"
-          type="text"
-          placeholder="Guest"
-          maxlength="20"
-          class="pin-input"
-          onkeydown="if (event.key === 'Enter') submitPin();"
-        />
+      <!-- ── HOST INFO (fetched before join, only when ?host=<url> is present) ── -->
+      <div id="hostInfoBar">
+        <div id="hostInfoName"></div>
+        <div id="hostInfoGame"></div>
+        <div id="hostInfoMeta"></div>
+      </div>
 
-        <div id="pinWrap">
-          <div class="pin-field-label" style="margin-top: 4px">PIN Code</div>
+      <div class="pin-card-wrap">
+        <div class="pin-card">
+          <div class="pin-field-label">Display Name</div>
           <input
-            id="pinInput"
+            id="nameInput"
             type="text"
-            autocomplete="off"
-            placeholder="0000"
-            maxlength="32"
+            placeholder="Guest"
+            maxlength="20"
             class="pin-input"
             onkeydown="if (event.key === 'Enter') submitPin();"
           />
+          <div id="namePreview"></div>
+
+          <div id="pinWrap">
+            <div class="pin-field-label" style="margin-top: 4px">PIN Code</div>
+            <input
+              id="pinInput"
+              type="text"
+              autocomplete="off"
+              placeholder="0000"
+              maxlength="32"
+              class="pin-input"
+              onkeydown="if (event.key === 'Enter') submitPin();"
+            />
+          </div>
+
+          <!-- Session password — hidden until server sends session-password-required -->
+          <div id="sessionPasswordWrap" style="display: none">
+            <div class="pin-field-label" style="margin-top: 4px">Session Password</div>
+            <input
+              id="sessionPasswordInput"
+              type="password"
+              placeholder="Enter session password"
+              class="pin-input"
+              onkeydown="if (event.key === 'Enter') submitSessionPassword();"
+            />
+          </div>
+
+          <button class="pin-submit-btn" onclick="submitPin()">Join Stream →</button>
+          <button
+            class="pin-submit-btn client-only-btn"
+            style="
+              display: none;
+              background: var(--surface);
+              color: var(--text);
+              border: 1px solid var(--border);
+              margin-top: 8px;
+            "
+            onclick="window.electronAPI ? window.electronAPI.backToDashboard() : (window.location.href = '/')"
+          >
+            ← Cancel & Go Back
+          </button>
+          <div id="pinErr"></div>
         </div>
 
-        <!-- Session password — hidden until server sends session-password-required -->
-        <div id="sessionPasswordWrap" style="display: none">
-          <div class="pin-field-label" style="margin-top: 4px">Session Password</div>
-          <input
-            id="sessionPasswordInput"
-            type="password"
-            placeholder="Enter session password"
-            class="pin-input"
-            onkeydown="if (event.key === 'Enter') submitSessionPassword();"
-          />
-        </div>
+        <button id="profileTab" onclick="toggleProfile()" title="Profile">‹</button>
+        <div id="profilePanel">
+          <button class="pp-close-btn" onclick="toggleProfile()" aria-label="Close profile panel">×</button>
+          <div class="pp-label">Avatar</div>
+          <div class="pp-row" style="gap: 10px; margin-bottom: 8px">
+            <div class="pp-avatar-wrap">
+              <img id="profileAvatarPreview" src="" onload="this.style.display = 'block'" />
+            </div>
+            <button class="pp-randomize-btn" onclick="window.randomizeAvatar()">Randomize</button>
+          </div>
+          <div class="pp-label">Chat Color</div>
+          <div class="pp-clr-row">
+            <input
+              type="color"
+              id="profileClr"
+              class="clr-native"
+              value="#43b581"
+              onchange="setProfileColor(this.value)"
+              oninput="setProfileColor(this.value)"
+            />
+            <span id="profileFreqClrs"></span>
+          </div>
 
-        <button class="pin-submit-btn" onclick="submitPin()">Join Stream →</button>
-        <button
-          class="pin-submit-btn client-only-btn"
-          style="
-            display: none;
-            background: var(--surface);
-            color: var(--text);
-            border: 1px solid var(--border);
-            margin-top: 8px;
-          "
-          onclick="window.electronAPI ? window.electronAPI.backToDashboard() : (window.location.href = '/')"
-        >
-          ← Cancel & Go Back
-        </button>
-        <div id="pinErr"></div>
+          <div class="pp-row">
+            <span class="pp-label" style="margin: 0">User ID</span>
+            <button class="pp-id-reveal" id="profileIdReveal" onclick="toggleProfileId()" title="Reveal ID">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                width="16"
+                height="16"
+              >
+                <path
+                  d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"
+                />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
+            </button>
+          </div>
+          <div id="profileIdVal" style="display: none"></div>
+        </div>
       </div>
     </div>
 
@@ -331,6 +387,33 @@
         >
           Disconnect
         </button>
+      </div>
+    </div>
+
+    <!-- ════ QUICK HOST PANEL (desktop only) ════ -->
+    <button id="quickHostBtn" onclick="toggleQuickHost()">🎮 Quick Host</button>
+    <div id="quickHostBackdrop" onclick="toggleQuickHost()"></div>
+    <div id="quickHostPanel">
+      <div class="qhp-header">
+        <span>Quick Host</span>
+        <button class="qhp-close" onclick="toggleQuickHost()">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.5"
+            stroke-linecap="round"
+            style="width: 13px; height: 13px"
+          >
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      </div>
+      <input id="quickHostGameId" class="qhp-input" placeholder="Game ID (e.g. 730 for CS2)" maxlength="40" />
+      <div id="quickHostGrid" class="qhp-grid"></div>
+      <div class="qhp-note">
+        Game will launch locally. You'll be redirected to your host page to manage the session.
       </div>
     </div>
 

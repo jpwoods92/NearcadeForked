@@ -340,10 +340,199 @@ if (!localStorage.getItem('ns_name')) {
         myName = cfg.hostName;
         document.getElementById('nameInput').value = myName;
         localStorage.setItem('ns_name', myName);
+        const inp = document.getElementById('nameInput');
+        if (inp) inp.dispatchEvent(new Event('input', { bubbles: true }));
       }
     })
     .catch(() => {});
 }
+
+// ── PRE-JOIN HOST INFO ──────────────────────────────────────────────────────
+// Populates #hostInfoBar when arriving via a directory/discovery link that
+// knows the host's own base URL (?host=<url>) — fetches that host's own
+// /api/info cross-origin, before this viewer has joined anything.
+(function fetchHostInfo() {
+  const hostUrl = urlParamsGlobal.get('host');
+  if (!hostUrl) return;
+  safeApiJson(hostUrl + '/api/info', null).then((info) => {
+    if (!info) return;
+    const bar = document.getElementById('hostInfoBar');
+    const nameEl = document.getElementById('hostInfoName');
+    const gameEl = document.getElementById('hostInfoGame');
+    const metaEl = document.getElementById('hostInfoMeta');
+    if (!bar || !nameEl) return;
+    if (info.hostName) nameEl.textContent = info.hostName;
+    if (info.game && !/^(Unknown Game|Arcade Game|Game)$/i.test(info.game)) gameEl.textContent = '🎮 ' + info.game;
+    const parts = [];
+    if (info.viewerCount !== undefined) parts.push('👥 ' + info.viewerCount);
+    if (parts.length) metaEl.textContent = parts.join(' · ');
+    bar.style.display = 'block';
+  });
+})();
+
+// ── PROFILE PANEL: avatar, chat color, user-ID reveal ───────────────────────
+// Expandable from the pin card's #profileTab. Adapted from upstream, which
+// keeps this as an inline <script> in src/pages/index.html — this fork's
+// convention keeps page-shared JS out of inline blocks (see CLAUDE.md), so
+// it lives here instead. Also drops upstream's dead `nativeInput`/
+// `freqContainer`/`profileName` references: those target #nativeClr/
+// #freqClrs/#profileName elements that don't exist in upstream's own markup
+// either (leftover from an earlier layout) — every read of them was already
+// null-guarded there, so this is a no-op removal, not a behavior change.
+(function initColorPicker() {
+  let savedAvatar = localStorage.getItem('ns_avatar');
+  if (!savedAvatar) {
+    savedAvatar = Math.floor(Math.random() * 100) + 1;
+    localStorage.setItem('ns_avatar', savedAvatar);
+  }
+  const avatarPreview = document.getElementById('profileAvatarPreview');
+  if (avatarPreview) avatarPreview.src = `/assets/avatars/avatar-${savedAvatar}.svg`;
+
+  window.randomizeAvatar = function () {
+    const newAv = Math.floor(Math.random() * 100) + 1;
+    localStorage.setItem('ns_avatar', newAv);
+    if (avatarPreview) avatarPreview.src = `/assets/avatars/avatar-${newAv}.svg`;
+    if (typeof window.vcUpdateSelf === 'function') window.vcUpdateSelf(undefined, undefined, newAv);
+  };
+
+  let saved = localStorage.getItem('ns_chat_color');
+  if (!saved) {
+    saved = '#43b581';
+    localStorage.setItem('ns_chat_color', saved);
+  }
+  const savedName = localStorage.getItem('ns_name') || '';
+  const freq = JSON.parse(localStorage.getItem('ns_freq_colors') || '[]');
+  const DEFAULT_FREQ = ['#43b581', '#8b5cf6', '#f87171', '#fbbf24', '#60a5fa', '#f472b6', '#34d399'];
+  let freqChanged = false;
+  for (const df of DEFAULT_FREQ) {
+    if (!freq.includes(df)) {
+      freq.push(df);
+      freqChanged = true;
+    }
+  }
+  if (freqChanged) localStorage.setItem('ns_freq_colors', JSON.stringify(freq));
+
+  const nameInput = document.getElementById('nameInput');
+  const profileClr = document.getElementById('profileClr');
+  const profileFreq = document.getElementById('profileFreqClrs');
+  const namePreview = document.getElementById('namePreview');
+  if (!nameInput) return;
+
+  function updatePreview() {
+    if (!namePreview) return;
+    const n = nameInput.value.trim() || localStorage.getItem('ns_name') || 'Guest';
+    namePreview.innerHTML =
+      '<span style="color:' + saved + ';font-weight:700;">' + n.replace(/</g, '&lt;') + '</span> will appear in chat';
+    const joinBtn = document.querySelector('.pin-submit-btn');
+    if (joinBtn) joinBtn.style.background = saved;
+  }
+
+  nameInput.value = savedName;
+  nameInput.style.setProperty('--ni-color', saved);
+  nameInput.dataset.clr = saved;
+  if (profileClr) profileClr.value = saved;
+  const root = document.documentElement;
+  root.style.setProperty('accent-color', saved);
+  root.style.setProperty('--accent', saved);
+  root.style.setProperty('--accent2', saved);
+  const r0 = parseInt(saved.slice(1, 3), 16);
+  const g0 = parseInt(saved.slice(3, 5), 16);
+  const b0 = parseInt(saved.slice(5, 7), 16);
+  root.style.setProperty('--accent-dim', `rgba(${r0},${g0},${b0},0.14)`);
+  root.style.setProperty('--accent-glow', `rgba(${r0},${g0},${b0},0.35)`);
+  updatePreview();
+
+  function renderFreq() {
+    const dot = (c, active) =>
+      '<button class="clr-freq' +
+      (c === active ? ' active' : '') +
+      '" data-clr="' +
+      c +
+      '" style="background:' +
+      c +
+      '" onclick="window.setColor(\'' +
+      c +
+      '\')"></button>';
+    const all = [saved].concat(freq.filter((c) => c !== saved));
+    if (profileFreq)
+      profileFreq.innerHTML = all
+        .slice(0, 7)
+        .map((c) => dot(c, saved))
+        .join('');
+  }
+
+  function syncName(val) {
+    nameInput.value = val;
+    if (val) localStorage.setItem('ns_name', val);
+    if (typeof window.vcUpdateSelf === 'function') window.vcUpdateSelf(val, undefined);
+    updatePreview();
+  }
+
+  window.setColor = function (clr) {
+    saved = clr;
+    nameInput.style.setProperty('--ni-color', clr);
+    if (profileClr) profileClr.value = clr;
+    nameInput.dataset.clr = clr;
+    localStorage.setItem('ns_chat_color', clr);
+    if (typeof window.vcUpdateSelf === 'function') window.vcUpdateSelf(undefined, clr);
+    const idx = freq.indexOf(clr);
+    if (idx > -1) freq.splice(idx, 1);
+    freq.unshift(clr);
+    localStorage.setItem('ns_freq_colors', JSON.stringify(freq));
+    renderFreq();
+    updatePreview();
+    root.style.setProperty('accent-color', clr);
+    root.style.setProperty('--accent', clr);
+    root.style.setProperty('--accent2', clr);
+    const r = parseInt(clr.slice(1, 3), 16);
+    const g = parseInt(clr.slice(3, 5), 16);
+    const b = parseInt(clr.slice(5, 7), 16);
+    root.style.setProperty('--accent-dim', `rgba(${r},${g},${b},0.14)`);
+    root.style.setProperty('--accent-glow', `rgba(${r},${g},${b},0.35)`);
+    if (ws && ws.readyState === 1) {
+      ws.send(JSON.stringify({ type: 'update-color', color: clr }));
+    }
+  };
+
+  nameInput.oninput = function () {
+    syncName(this.value);
+  };
+  if (profileClr) {
+    profileClr.oninput = function () {
+      window.setColor(this.value);
+    };
+  }
+
+  renderFreq();
+})();
+
+function toggleProfile() {
+  const panel = document.getElementById('profilePanel');
+  const tab = document.getElementById('profileTab');
+  const opened = panel.classList.toggle('open');
+  tab.classList.toggle('open', opened);
+  tab.textContent = opened ? '›' : '‹';
+}
+
+function toggleProfileId() {
+  const el = document.getElementById('profileIdVal');
+  const reveal = document.getElementById('profileIdReveal');
+  if (el.style.display === 'none') {
+    el.style.display = 'block';
+    el.textContent = myId || sessionStorage.getItem('ns_viewer_id') || '—';
+    reveal.innerHTML =
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49"/><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242"/><path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143"/><path d="m2 2 20 20"/></svg>';
+  } else {
+    el.style.display = 'none';
+    reveal.innerHTML =
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></svg>';
+  }
+}
+
+function setProfileColor(clr) {
+  if (window.setColor) window.setColor(clr);
+}
+
 let enteredPin = '',
   enteredPassword = '',
   audioMuted = false;
@@ -505,6 +694,13 @@ async function createPC() {
         videoEl.muted = true; // Required by Chrome/Safari to allow dynamic autoplay
         videoEl.srcObject = e.streams && e.streams[0] ? e.streams[0] : new MediaStream([e.track]);
         videoEl.play().catch((err) => console.warn('[WebRTC] video.play() exception:', err));
+        if ('requestVideoFrameCallback' in videoEl) {
+          const vfc = () => {
+            if (window._trackViewerFrame) window._trackViewerFrame();
+            videoEl.requestVideoFrameCallback(vfc);
+          };
+          videoEl.requestVideoFrameCallback(vfc);
+        }
         videoEl.onplaying = () => {
           if (typeof showOverlay === 'function') showOverlay(false);
           setStatus('');
@@ -515,6 +711,7 @@ async function createPC() {
           }
           const overlay = document.getElementById('overlay');
           if (overlay) overlay.style.backgroundColor = '';
+          if (_latencyOverlayEl) _latencyOverlayEl.style.display = 'block';
         };
         console.log('[WebRTC] Video stream attached to #video');
       }
@@ -617,11 +814,18 @@ async function createPC() {
     if (channel.label === 'input') {
       console.log('[Input] Dedicated 250Hz Fast Lane connected.');
 
-      // This ensures your mouse/keyboard coordinates are actually processed
+      // This ensures your mouse/keyboard coordinates are actually processed.
+      // The one thing the host does send back on this channel is the latency
+      // overlay's 'pong' reply to its own 'ping' probe (see _latencySendPing).
       channel.onmessage = (e) => {
-        // (If your viewer was receiving data from the host here, you'd parse it.
-        // Usually this channel is purely for sending FROM the viewer TO the host,
-        // but we must acknowledge the channel open state regardless).
+        if (typeof e.data === 'string') {
+          try {
+            const m = JSON.parse(e.data);
+            if (m.type === 'pong') _latencyOnPong();
+          } catch (err) {
+            log('[Input] Failed to parse fast-lane message: ' + err.message);
+          }
+        }
       };
 
       // Bind the fast-lane channel to your input dispatcher
@@ -1219,6 +1423,10 @@ async function connect() {
       }
       return;
     }
+    if (msg.type === 'latency-pong') {
+      _latencyOnPong();
+      return;
+    }
     if (msg.type === 'your-id') {
       document.getElementById('pinScreen').classList.add('gone');
       myId = msg.viewerId;
@@ -1736,6 +1944,194 @@ document.addEventListener('keyup', (e) => {
 document.addEventListener('input', (e) => {
   if (e.target.id === 'chatMsg') _showMentionDropdown(e.target);
 });
+
+// ── LATENCY OVERLAY ──────────────────────────────────────────────────────────
+// Compact always-on ping/FPS/jitter/path readout, top-right — distinct from
+// (and simpler than) the fuller, toggle-based #netStatsOverlay in
+// stats-hud.js. Ping/pong state lives at module scope, not nested inside
+// initLatencyOverlay() like upstream: upstream's own onPong() is declared
+// *inside* that function, but called from pc.ondatachannel's 'input'-channel
+// handler and the WS message router — both outside its scope — so upstream's
+// shipped ping never actually resolves (the ReferenceError is silently
+// swallowed by the surrounding try/catch and a `typeof onPong === 'function'`
+// guard). Module-scope state fixes that instead of reproducing it.
+let _latencyOverlayEl = null;
+let _latencyPingSent = 0;
+let _latencyPingPath = '';
+let _latencyLastRtt = 0;
+let _latencyFrames = 0;
+let _latencyLastFpsCheck = 0;
+let _latencyFrameTimes = [];
+let _latencyPrevFrameTime = 0;
+
+function _latencySendPing() {
+  // Prefer the P2P fast-lane datachannel (true game path); fall back to the
+  // WS relay. The relay probe uses 'latency-ping'/'latency-pong', not
+  // 'ping'/'pong' — those are already claimed by Signaling's own keepalive
+  // heartbeat (signaling.js), which consumes 'pong' before viewer.js sees it.
+  const dc = window._fastLaneChannel;
+  if (dc && dc.readyState === 'open') {
+    _latencyPingPath = 'P2P';
+    _latencyPingSent = performance.now();
+    try {
+      dc.send(JSON.stringify({ type: 'ping' }));
+      return;
+    } catch (e) {
+      log('[Latency] Fast-lane ping send failed, falling back to relay: ' + e.message);
+    }
+  }
+  if (ws && ws.readyState === 1) {
+    _latencyPingPath = 'Relay';
+    _latencyPingSent = performance.now();
+    ws.send(JSON.stringify({ type: 'latency-ping' }));
+  }
+}
+
+function _trackViewerFrame() {
+  _latencyFrames++;
+  const now = performance.now();
+  if (_latencyPrevFrameTime > 0) {
+    _latencyFrameTimes.push(now - _latencyPrevFrameTime);
+    if (_latencyFrameTimes.length > 60) _latencyFrameTimes.shift();
+  }
+  _latencyPrevFrameTime = now;
+}
+window._trackViewerFrame = _trackViewerFrame;
+
+function _latencyOnPong() {
+  if (_latencyPingSent) {
+    _latencyLastRtt = performance.now() - _latencyPingSent;
+    _latencyPingSent = 0;
+  }
+}
+
+function _updateLatencyDisplay() {
+  if (!_latencyOverlayEl) return;
+  const now = performance.now();
+  const dt = now - _latencyLastFpsCheck;
+  if (dt < 1000) return;
+  const fps = Math.round(_latencyFrames / (dt / 1000));
+  _latencyFrames = 0;
+  _latencyLastFpsCheck = now;
+
+  const mean = _latencyFrameTimes.length
+    ? _latencyFrameTimes.reduce((a, b) => a + b, 0) / _latencyFrameTimes.length
+    : 0;
+  const jitter =
+    _latencyFrameTimes.length > 2
+      ? Math.round(Math.sqrt(_latencyFrameTimes.reduce((s, t) => s + (t - mean) ** 2, 0) / _latencyFrameTimes.length))
+      : 0;
+  _latencyFrameTimes = [];
+
+  const pingColor = _latencyLastRtt < 50 ? '#4ade80' : _latencyLastRtt < 100 ? '#facc15' : '#f87171';
+  _latencyOverlayEl.innerHTML =
+    'Ping: <span style="color:' +
+    pingColor +
+    ';font-weight:600;">' +
+    (_latencyLastRtt ? Math.round(_latencyLastRtt) + 'ms' : '—') +
+    '</span>' +
+    '<br>FPS: <span style="font-weight:600;">' +
+    fps +
+    '</span>' +
+    '<br>Jitter: <span style="font-weight:600;">' +
+    jitter +
+    'ms</span>' +
+    '<br>Path: <span style="font-weight:600;">' +
+    (_latencyPingPath || '—') +
+    '</span>';
+}
+
+function initLatencyOverlay() {
+  _latencyOverlayEl = document.createElement('div');
+  _latencyOverlayEl.id = 'latency-overlay';
+  _latencyOverlayEl.style.cssText =
+    'position:fixed;top:12px;right:12px;z-index:9997;display:none;padding:8px 12px;background:rgba(0,0,0,0.6);backdrop-filter:blur(6px);border:1px solid rgba(255,255,255,0.08);border-radius:8px;font-family:sans-serif;font-size:10px;color:rgba(255,255,255,0.7);line-height:1.6;pointer-events:none;';
+  _latencyOverlayEl.innerHTML = 'Ping: —<br>FPS: —<br>Jitter: —<br>Path: —';
+  document.body.appendChild(_latencyOverlayEl);
+  _latencyLastFpsCheck = performance.now();
+
+  setInterval(_latencySendPing, 3000);
+
+  function _latencyLoop() {
+    _updateLatencyDisplay();
+    requestAnimationFrame(_latencyLoop);
+  }
+  requestAnimationFrame(_latencyLoop);
+}
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initLatencyOverlay);
+} else {
+  initLatencyOverlay();
+}
+
+// ── QUICK HOST PANEL (Electron only) ────────────────────────────────────────
+// Lets someone already sitting at the host machine's viewer page (e.g. after
+// backToDashboard()) launch a game and jump straight to /host, without a
+// detour through the dashboard's own games ribbon (Phase 3).
+(function initQuickHost() {
+  if (!window.electronAPI) return;
+  document.body.classList.add('electron');
+
+  const LAUNCHER_LABELS = {
+    steam: 'Steam',
+    heroic: 'Heroic',
+    lutris: 'Lutris',
+    epic: 'Epic',
+    uplay: 'Ubisoft',
+    origin: 'Origin',
+    bnet: 'Battle.net',
+  };
+
+  const grid = document.getElementById('quickHostGrid');
+  const input = document.getElementById('quickHostGameId');
+  if (!grid) return;
+
+  fetch('/api/launchers')
+    .then((r) => r.json())
+    .then((d) => {
+      const ids = d.launchers || [];
+      if (!ids.length) {
+        grid.innerHTML = '<div class="qhp-no-lauchers">No game launchers detected</div>';
+        return;
+      }
+      grid.innerHTML = ids
+        .map((id) => `<button class="qhp-btn" data-id="${id}">${LAUNCHER_LABELS[id] || id}</button>`)
+        .join('');
+      grid.querySelectorAll('.qhp-btn').forEach((btn) => {
+        btn.onclick = () => {
+          const gameId = input.value.trim();
+          if (!gameId) {
+            input.focus();
+            return;
+          }
+          const launcher = btn.dataset.id;
+          fetch('/api/launch-game', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ launcher, gameId }),
+          })
+            .then(() => {
+              setTimeout(() => {
+                window.location.href = '/host';
+              }, 500);
+            })
+            .catch(() => {
+              setTimeout(() => {
+                window.location.href = '/host';
+              }, 500);
+            });
+        };
+      });
+    })
+    .catch(() => {
+      grid.innerHTML = '<div class="qhp-no-lauchers">Could not detect launchers</div>';
+    });
+})();
+
+function toggleQuickHost() {
+  document.getElementById('quickHostPanel').classList.toggle('open');
+  document.getElementById('quickHostBackdrop').classList.toggle('open');
+}
 
 function toggleChat() {
   document.getElementById('chatPanel').classList.toggle('open');

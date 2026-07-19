@@ -168,7 +168,14 @@ function registerHttpRoutes(app, deps) {
     }
   });
 
-  app.get('/api/info', (req, res) =>
+  app.get('/api/info', (req, res) => {
+    // hostRegion/codec aren't tracked anywhere server-side (region was never
+    // wired up; codec is a per-viewer WebRTC negotiation detail that lives
+    // in host.js's renderer process, not this sidecar) — the pre-join info
+    // bar's optional display of those two fields (viewer.js's fetchHostInfo)
+    // just no-ops without them, same as it does for any other omitted field.
+    const infoCfg = loadConfig();
+    const sess = arcadeSessions.size > 0 ? [...arcadeSessions.values()][0] : null;
     res.json({
       lanIP: state.serverInfo.lanIp,
       port: state.runtime.activePort,
@@ -178,8 +185,11 @@ function registerHttpRoutes(app, deps) {
       publicIP: state.serverInfo.publicIp || null,
       tunnelUrl: state.runtime.tunnelUrl || null,
       version: state.serverInfo.appVersion,
-    })
-  );
+      hostName: infoCfg.hostName || 'Host',
+      game: sess ? sess.game : undefined,
+      viewerCount: state.viewers.size,
+    });
+  });
   app.post('/api/fe-log', express.json(), (req, res) => {
     const clientIp = req.socket.remoteAddress || 'unknown';
     if (!rateLimit('fe-log:' + clientIp, 30, 10000)) return res.status(429).json({ error: 'rate limited' });
