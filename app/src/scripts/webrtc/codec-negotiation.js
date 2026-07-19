@@ -64,6 +64,10 @@ const congestionControl = {
 
 async function monitorCongestion(pc, viewerId) {
   if (!congestionControl.enabled) return;
+  if (typeof appSettings !== 'undefined' && appSettings.tournamentMode) {
+    console.log('[Tournament] Congestion monitoring disabled');
+    return;
+  }
 
   const poll = async () => {
     try {

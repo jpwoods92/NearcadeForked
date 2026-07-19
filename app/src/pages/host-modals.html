@@ -67,6 +67,37 @@
       </div>
 
       <div
+        class="ctrl-modal-row"
+        id="settingRowTournamentMode"
+        onclick="toggleAppSetting('tournamentMode')"
+        style="margin-top: 8px"
+      >
+        <div class="ctrl-toggle-track" id="settingTrackTournamentMode">
+          <div class="ctrl-toggle-thumb"></div>
+        </div>
+        <div class="ctrl-row-text">
+          <div class="ctrl-row-label">
+            Tournament Mode
+            <span
+              style="
+                font-size: 9px;
+                color: var(--accent);
+                background: var(--accent-dim);
+                padding: 1px 6px;
+                border-radius: 3px;
+                margin-left: 6px;
+                vertical-align: middle;
+              "
+              >Lowest Latency</span
+            >
+          </div>
+          <div class="ctrl-row-desc">
+            Disables arcade pings, Discord RPC, and dynamic bitrate recovery to minimize host-side latency overhead.
+          </div>
+        </div>
+      </div>
+
+      <div
         style="
           font-size: 9px;
           letter-spacing: 0.15em;

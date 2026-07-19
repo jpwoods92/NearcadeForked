@@ -114,6 +114,7 @@ const appSettings = {
   alwaysOnTop: localStorage.getItem('ns_app_alwaysOnTop') === 'true',
   hidePreviewOnStart: localStorage.getItem('ns_app_hidePreview') === 'true',
   captureMic: localStorage.getItem('ns_app_captureMic') === 'true',
+  tournamentMode: localStorage.getItem('ns_app_tournamentMode') === 'true',
 };
 let selectedMicDeviceId = localStorage.getItem('ns_audio_input') || 'default';
 let selectedOutputDeviceId = localStorage.getItem('ns_audio_output') || 'default';
@@ -425,6 +426,10 @@ function appendChat(name, text, isMe) {
 }
 
 function sendChat() {
+  if (appSettings.tournamentMode) {
+    console.log('[Tournament] Chat disabled');
+    return;
+  }
   chatSendMessage(ws, 'Host', null);
 }
 
@@ -874,6 +879,7 @@ function connectWS() {
       return;
     }
     if (msg.type === 'chat') {
+      if (appSettings.tournamentMode) return;
       const isMe = msg.from === 'Host';
       appendChat(msg.from, msg.msg, isMe);
     }
@@ -1581,6 +1587,14 @@ function _stopInputVizSse() {
   }
 }
 
+// Applies the App Settings modal's saved state (incl. tournament mode's
+// .app-shell collapse) immediately on page load, not just when the modal
+// happens to be opened — otherwise the right panel stays visible on
+// reload even though tournament mode was left on last session.
+document.addEventListener('DOMContentLoaded', () => {
+  if (typeof applyAppSettingsUI === 'function') applyAppSettingsUI();
+});
+
 // Audio backend setting (saved for the worker init path)
 function saveAudioBackend(val) {
   saveSetting('ns_audio_backend', val, 'audioBackend');
@@ -1730,6 +1744,7 @@ async function enumerateAudioDevices() {
 }
 
 function sysChat(text) {
+  if (appSettings.tournamentMode) return;
   chatSendSystemMessage(ws, 'Nearcade', text);
 }
 
@@ -2047,6 +2062,7 @@ if (document.readyState === 'loading') {
 let _discordStartTime = null;
 
 function _updateDiscordRPC() {
+  if (appSettings.tournamentMode) return;
   console.log(
     '[DEBUG] _updateDiscordRPC called. streamActive:',
     typeof streamActive !== 'undefined' ? streamActive : 'undef',

@@ -199,6 +199,7 @@ function applyAppSettingsUI() {
     ['tray', 'settingTrackTray', 'settingRowTray'],
     ['alwaysOnTop', 'settingTrackAlwaysOnTop', 'settingRowAlwaysOnTop'],
     ['hidePreviewOnStart', 'settingTrackHidePreview', 'settingRowHidePreview'],
+    ['tournamentMode', 'settingTrackTournamentMode', 'settingRowTournamentMode'],
     ['captureMic', 'settingTrackMic', 'settingRowMic'],
   ];
   pairs.forEach(([key, trackId, rowId]) => {
@@ -209,6 +210,7 @@ function applyAppSettingsUI() {
   });
   const micRow = document.getElementById('micDeviceRow');
   if (micRow) micRow.style.display = appSettings.captureMic ? 'block' : 'none';
+  document.querySelector('.app-shell')?.classList.toggle('tournament-mode', !!appSettings.tournamentMode);
 }
 
 function toggleAppSetting(key) {
@@ -219,6 +221,23 @@ function toggleAppSetting(key) {
   if (key === 'alwaysOnTop' && window.electronAPI?.toggleAlwaysOnTop) {
     window.electronAPI.toggleAlwaysOnTop();
   }
+  if (key === 'tournamentMode') {
+    fetch('/api/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tournamentMode: appSettings[key] }),
+    }).catch(() => {});
+    // Disconnect the renderer's Pusher client immediately rather than
+    // waiting for the next reload — arcade-registration.js's top-level
+    // init only checks tournament mode once, at load time.
+    if (appSettings[key] && typeof pusher !== 'undefined' && pusher) {
+      try {
+        pusher.disconnect();
+      } catch (_) {}
+      pusher = null;
+      arcadeChannel = null;
+    }
+  }
   // Persist app-behaviour toggles to the config file so the main process
   // sees them on next boot (upstream v3.0.2 — e.g. tray=false means the
   // close button quits instead of hiding).
@@ -226,6 +245,7 @@ function toggleAppSetting(key) {
     if (key === 'tray') window.electronAPI.saveSettings({ tray: appSettings[key] });
     if (key === 'discordRPC') window.electronAPI.saveSettings({ discordRPC: appSettings[key] });
     if (key === 'rumble') window.electronAPI.saveSettings({ rumble: appSettings[key] });
+    if (key === 'tournamentMode') window.electronAPI.saveSettings({ tournamentMode: appSettings[key] });
   }
   log(I18N.t('Setting') + ' ' + key + ' = ' + appSettings[key], 'ok');
 }

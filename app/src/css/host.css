@@ -674,6 +674,14 @@ color: var(--muted) !important;
 /* ── CLIENT-ONLY MODE: hide host-specific sections ───────────────────────── */
 body.client-only .host-only { display: none !important; }
 
+/* ── Tournament Mode ────────────────────────────────────────────── */
+.app-shell.tournament-mode {
+    grid-template-columns: 68px 1fr;
+}
+.app-shell.tournament-mode .right-panel {
+    display: none;
+}
+
 
 /* ── Mobile Responsive (upstream v3.0.2) ────────────────────────── */
 @media (max-width: 800px) {

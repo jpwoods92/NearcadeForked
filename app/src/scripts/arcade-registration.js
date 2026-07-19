@@ -14,31 +14,42 @@
 // in the browser and the other in Node with no bundler between them. Keep
 // both in sync by hand if either changes. See REFACTOR_PLAN.md Phase 5.7.
 
+// Tournament mode skips Pusher entirely, on load and immediately when the
+// setting is toggled on (see host.js's toggleAppSetting('tournamentMode'),
+// which reassigns these two `let`s to null). Read straight from
+// localStorage rather than host.js's `appSettings` object: this file loads
+// *before* host.js in the <script> order (see host.html), so appSettings
+// wouldn't exist yet at this top-level point — see CLAUDE.md's script-order
+// note.
 Pusher.logToConsole = false;
-const pusher = new Pusher('a93f5405058cd9fc7967', {
-  cluster: 'us2',
-  authEndpoint: 'https://nearcade.cutefame.net/api/pusher-auth',
-});
-const arcadeChannel = pusher.subscribe('private-arcade-global');
+let pusher = null;
+let arcadeChannel = null;
+if (localStorage.getItem('ns_app_tournamentMode') !== 'true') {
+  pusher = new Pusher('a93f5405058cd9fc7967', {
+    cluster: 'us2',
+    authEndpoint: 'https://nearcade.cutefame.net/api/pusher-auth',
+  });
+  arcadeChannel = pusher.subscribe('private-arcade-global');
 
-// ── NEW: Catch the Ban 403 error and alert the Host ──
-arcadeChannel.bind('pusher:subscription_error', (status) => {
-  if (status === 403) {
-    log(I18N.t('Arcade Error: Your IP is banned from the network.'), 'err');
+  // ── NEW: Catch the Ban 403 error and alert the Host ──
+  arcadeChannel.bind('pusher:subscription_error', (status) => {
+    if (status === 403) {
+      log(I18N.t('Arcade Error: Your IP is banned from the network.'), 'err');
 
-    // Change the Arcade Live button to show the ban
-    const btnArcade = document.getElementById('btnArcade');
-    if (btnArcade) {
-      btnArcade.innerHTML = '<span style="color:var(--danger); font-weight:bold; font-size: 11px;">BANNED</span>';
+      // Change the Arcade Live button to show the ban
+      const btnArcade = document.getElementById('btnArcade');
+      if (btnArcade) {
+        btnArcade.innerHTML = '<span style="color:var(--danger); font-weight:bold; font-size: 11px;">BANNED</span>';
+      }
+
+      // Stop the ping interval so it doesn't spam the banned endpoint
+      if (arcadePingInterval) {
+        clearInterval(arcadePingInterval);
+        arcadePingInterval = null;
+      }
     }
-
-    // Stop the ping interval so it doesn't spam the banned endpoint
-    if (arcadePingInterval) {
-      clearInterval(arcadePingInterval);
-      arcadePingInterval = null;
-    }
-  }
-});
+  });
+}
 // ─────────────────────────────────────────────────────
 
 let arcadePingInterval = null;
@@ -201,29 +212,35 @@ function _doArcadeRegister() {
         };
       };
 
-      arcadeChannel.trigger('client-session-ping', getPingData());
+      if (!appSettings.tournamentMode) {
+        arcadeChannel.trigger('client-session-ping', getPingData());
 
-      // One-shot registration with the arcade directory (KV session tracking
-      // + Discord embed on the Cloudflare Worker, upstream v3.0.2). Sent once
-      // — every POST can fire a webhook embed, so this must not be on the
-      // 10s interval below.
-      fetch('https://nearcade.cutefame.net/api/arcade/ping', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(getPingData()),
-      }).catch((e) => console.error('[Arcade] Server ping failed:', e));
+        // One-shot registration with the arcade directory (KV session tracking
+        // + Discord embed on the Cloudflare Worker, upstream v3.0.2). Sent once
+        // — every POST can fire a webhook embed, so this must not be on the
+        // 10s interval below.
+        fetch('https://nearcade.cutefame.net/api/arcade/ping', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(getPingData()),
+        }).catch((e) => console.error('[Arcade] Server ping failed:', e));
+      } else {
+        console.log('[Tournament] Arcade pings disabled');
+      }
 
       sysChat(I18N.t('Arcade Mode started:') + ' ' + arcadeConfig.title);
       document.getElementById('btnArcade').innerHTML =
         '<span style="color:var(--green); font-weight:bold; font-size: 10px;">ARCADE<br>LIVE</span>';
 
       if (arcadePingInterval) clearInterval(arcadePingInterval);
-      arcadePingInterval = setInterval(() => {
-        arcadeChannel.trigger('client-session-ping', getPingData());
-      }, 10000);
+      if (!appSettings.tournamentMode) {
+        arcadePingInterval = setInterval(() => {
+          arcadeChannel.trigger('client-session-ping', getPingData());
+        }, 10000);
+      }
 
       isArcade = true;
-      _updateDiscordRPC();
+      if (!appSettings.tournamentMode) _updateDiscordRPC();
     })
     .catch(() => log(I18N.t('Arcade: Could not read server info'), 'err'));
 }
