@@ -19,6 +19,7 @@ const ipcModules = [
   require('./electron/ipc/app-info.js'),
   require('./electron/ipc/log-viewing.js'),
   require('./electron/ipc/setup-checks.js'),
+  require('./electron/ipc/capture.js'),
 ];
 
 powerSaveBlocker.start('prevent-app-suspension');

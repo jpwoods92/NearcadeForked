@@ -8,6 +8,7 @@
     "start": "node app/src/scripts/server.js",
     "build:uinput": "cd app/src/sidecar/input_backends && node-gyp rebuild",
     "build:capture-win": "cd app/src/sidecar/capture && node-gyp rebuild",
+    "build:capture-linux": "cd app/src/sidecar/capture && node-gyp rebuild",
     "build:rawinput-win": "cd app/src/sidecar/input_backends/rawinput && node-gyp rebuild",
     "build:trystero": "node bin/build-trystero.js",
     "test": "npm run test:unit && node bin/verify.js",

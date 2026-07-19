@@ -61,6 +61,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   checkTunnelInstalled: (name) => ipcRenderer.invoke('check-tunnel-installed', name),
   checkHmBridge: () => ipcRenderer.invoke('check-hm-bridge'),
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
+  drmCaptureStart: () => ipcRenderer.invoke('drm-capture-start'),
+  drmCaptureGetFrame: () => ipcRenderer.invoke('drm-capture-get-frame'),
+  drmCaptureStop: () => ipcRenderer.invoke('drm-capture-stop'),
   onSetupSuccess: (cb) => ipcRenderer.on('setup-success', () => cb()),
   onSetupFailed: (cb) => ipcRenderer.on('setup-failed', (_e, err) => cb(err)),
 
