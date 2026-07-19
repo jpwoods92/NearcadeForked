@@ -376,12 +376,15 @@
     <div id="chatPanel">
       <div id="chatHeader">
         <span id="chatHeaderTitle">Chat</span>
-        <button id="chatCloseBtn" onclick="closeChatPanel()" title="Close chat">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-            <line x1="18" y1="6" x2="6" y2="18" />
-            <line x1="6" y1="6" x2="18" y2="18" />
-          </svg>
-        </button>
+        <div style="display: flex; align-items: center; gap: 2px">
+          <div id="chatResizeHandle" title="Drag to resize">╲</div>
+          <button id="chatCloseBtn" onclick="closeChatPanel()" title="Close chat">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
       </div>
       <div id="chatLog"></div>
       <div id="chatInput">
@@ -583,6 +586,7 @@
     <script src="/js/i18n.js"></script>
     <script src="/js/version.js"></script>
     <script src="/js/signaling.js"></script>
+    <script src="/js/emoji-data.js"></script>
     <script type="module" src="/js/p2p-signaler.js"></script>
     <script src="/js/chat.js"></script>
     <script src="/js/webrtc/peer-connection.js"></script>

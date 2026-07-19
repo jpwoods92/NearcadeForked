@@ -118,6 +118,7 @@ export default [
       'app/src/scripts/viewer.js',
       'app/src/scripts/signaling.js',
       'app/src/scripts/voice-chat.js',
+      'app/src/scripts/emoji-data.js',
       'app/src/scripts/chat.js',
       'app/src/scripts/dashboard.js',
       'app/src/scripts/client-only-mode.js',

@@ -743,6 +743,7 @@ function attachWebSocketServer(wss, deps) {
             return;
           }
 
+          if (msg.type === 'chat') msg.isHost = true;
           broadcast(JSON.stringify(msg));
         } catch (err) {
           console.error('[host] Message parsing error:', err.message);

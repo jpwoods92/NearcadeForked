@@ -1437,7 +1437,7 @@ async function connect() {
       return;
     } // Slot info not displayed to viewer
     if (msg.type === 'chat') {
-      appendChat(msg.from || msg.name, msg.msg, msg.viewerId === myId);
+      appendChat(msg.from || msg.name, msg.msg, msg.viewerId === myId, msg.platform, msg.color, msg.isHost);
       return;
     }
     if (msg.type === 'host-voice-cmd' && msg.targetViewerId === myId) {
@@ -1462,6 +1462,8 @@ async function connect() {
     }
     if (msg.type === 'roster') {
       if (typeof window.vcSyncRoster === 'function') window.vcSyncRoster(msg.viewers || [], myId);
+      // Source list for the @-mention autocomplete dropdown, below.
+      window._rosterList = msg.viewers || [];
       const listEl = document.getElementById('lobbyList');
       if (listEl) {
         listEl.innerHTML = '';
@@ -1605,12 +1607,136 @@ function submitSessionPassword() {
 // Suppresses an identical own message repeated within 1s — see chat.js's
 // chatAppendMessage() for what this dedupState box does.
 const _chatDedup = { msg: '', time: 0, windowMs: 1000 };
-function appendChat(name, text, isMe) {
-  chatAppendMessage(name, text, isMe, _chatDedup);
+function appendChat(name, text, isMe, platform, color, isHost) {
+  chatAppendMessage(name, text, isMe, _chatDedup, platform, color, isHost);
 }
 function sendChat() {
-  chatSendMessage(ws, myName, _chatDedup);
+  chatSendMessage(ws, myName, _chatDedup, viewerPlatform, localStorage.getItem('ns_chat_color') || '');
 }
+
+function detectViewerPlatform() {
+  const ua = navigator.userAgent;
+  if (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua)) return 'Mobile';
+  if (
+    navigator.platform === 'Linux x86_64' &&
+    navigator.maxTouchPoints > 0 &&
+    screen.width === 1280 &&
+    screen.height === 800
+  )
+    return 'Steam Deck';
+  if (ua.includes('Win')) return 'Windows';
+  if (ua.includes('Mac')) return 'macOS';
+  if (ua.includes('Linux')) return 'Linux';
+  return '';
+}
+const viewerPlatform = detectViewerPlatform();
+
+// ── @-MENTION AUTOCOMPLETE ──────────────────────────────────────────────────
+// Sourced from window._rosterList (set by the 'roster' handler above). Built
+// with createElement/textContent/addEventListener rather than upstream's
+// innerHTML + inline onclick="..." string approach: viewer display names are
+// attacker-controlled (any viewer can set theirs) and end up interpolated
+// into the dropdown, so raw string interpolation into HTML/inline-JS would
+// be an XSS vector — textContent + real listeners sidesteps both the HTML-
+// and JS-string-escaping bugs that would introduce.
+let _mentionData = { viewers: [], idx: -1 };
+
+function _highlightMentionItem(dd) {
+  dd.querySelectorAll('.m-item').forEach((el, i) => {
+    el.classList.toggle('active', i === _mentionData.idx);
+  });
+}
+
+function _applyMention(inp, name) {
+  const v = inp.value;
+  const cs = inp.selectionStart;
+  const bf = v.slice(0, v.lastIndexOf('@', cs));
+  const af = v.slice(cs);
+  const mention = '@' + name + ' ';
+  inp.value = bf + mention + af;
+  inp.selectionStart = inp.selectionEnd = bf.length + mention.length;
+  inp.focus();
+  _hideMentionDropdown();
+}
+
+function _showMentionDropdown(inp) {
+  const val = inp.value;
+  const cursor = inp.selectionStart;
+  const before = val.slice(0, cursor);
+  const atIdx = before.lastIndexOf('@');
+  if (atIdx === -1 || (atIdx > 0 && before[atIdx - 1] !== ' ' && before[atIdx - 1] !== '\n')) {
+    _hideMentionDropdown();
+    return;
+  }
+  const partial = before.slice(atIdx + 1).toLowerCase();
+  const roster = window._rosterList || [];
+  let known = roster
+    .map((v) => ({ id: v.id, name: (v.name || '').replace(/ \d+$/, '') }))
+    .filter((v) => v.name.toLowerCase().includes(partial));
+  if (partial === '' || (known.length === 0 && 'host'.includes(partial))) {
+    known = [{ id: 'HOST', name: 'Host' }, ...known];
+  }
+  if (known.length === 0) {
+    _hideMentionDropdown();
+    return;
+  }
+  _mentionData.viewers = known;
+  _mentionData.idx = 0;
+  let dd = document.getElementById('mentionDD');
+  if (!dd) {
+    dd = document.createElement('div');
+    dd.id = 'mentionDD';
+    const wrapper = document.querySelector('.chat-input-row') || inp.parentElement;
+    if (wrapper) wrapper.appendChild(dd);
+  }
+  dd.innerHTML = '';
+  known.forEach((v, i) => {
+    const item = document.createElement('div');
+    item.className = 'm-item' + (i === 0 ? ' active' : '');
+    item.dataset.idx = String(i);
+    item.textContent = v.name;
+    item.addEventListener('mouseover', () => {
+      _mentionData.idx = i;
+      _highlightMentionItem(dd);
+    });
+    item.addEventListener('click', () => _applyMention(inp, v.name));
+    dd.appendChild(item);
+  });
+  dd.style.display = 'block';
+}
+
+function _hideMentionDropdown() {
+  const dd = document.getElementById('mentionDD');
+  if (dd) dd.style.display = 'none';
+  _mentionData.idx = -1;
+}
+
+document.addEventListener('keydown', (e) => {
+  const dd = document.getElementById('mentionDD');
+  if (!dd || dd.style.display === 'none') return;
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    _mentionData.idx = Math.min(_mentionData.idx + 1, _mentionData.viewers.length - 1);
+    _highlightMentionItem(dd);
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    _mentionData.idx = Math.max(_mentionData.idx - 1, 0);
+    _highlightMentionItem(dd);
+  } else if (e.key === 'Enter' || e.key === 'Tab') {
+    e.preventDefault();
+    const sel = dd.querySelector(`.m-item[data-idx="${_mentionData.idx}"]`);
+    if (sel) sel.click();
+  } else if (e.key === 'Escape') {
+    _hideMentionDropdown();
+  }
+});
+document.addEventListener('keyup', (e) => {
+  if (e.target.id === 'chatMsg') _showMentionDropdown(e.target);
+});
+document.addEventListener('input', (e) => {
+  if (e.target.id === 'chatMsg') _showMentionDropdown(e.target);
+});
+
 function toggleChat() {
   document.getElementById('chatPanel').classList.toggle('open');
   document.getElementById('nsBar').classList.remove('open');
@@ -1846,11 +1972,94 @@ window.setUserVolume = function (targetId, volume) {
   );
 };
 
+// ── Chat panel: resize (top-right) + drag-to-move + adaptive font ──────────
+(function initChatDragResize() {
+  const panel = document.getElementById('chatPanel');
+  const header = document.getElementById('chatHeader');
+  const handle = document.getElementById('chatResizeHandle');
+  const log = document.getElementById('chatLog');
+  if (!panel || !header || !handle) return;
+
+  let mode = null; // 'resize' | 'move'
+  let startX, startY, startW, startH, startL, startB;
+
+  function clamp(v, min, max) {
+    return Math.min(max, Math.max(min, v));
+  }
+
+  function applyFontScale() {
+    if (!log) return;
+    const h = panel.clientHeight;
+    // font: 12px at 300px height → 15px at 600px height, capped at 17px
+    const size = clamp(Math.round(12 + (h - 300) * (3 / 300)), 12, 17);
+    log.style.fontSize = size + 'px';
+  }
+
+  function onDown(e) {
+    if (e.button !== 0) return;
+    // Don't intercept close button clicks
+    if (e.target.closest('#chatCloseBtn')) return;
+
+    const rect = panel.getBoundingClientRect();
+    startX = e.clientX;
+    startY = e.clientY;
+    startW = rect.width;
+    startH = rect.height;
+    startL = rect.left;
+    startB = rect.bottom;
+
+    if (e.target === handle || handle.contains(e.target)) {
+      mode = 'resize';
+    } else if (e.target === header || header.contains(e.target)) {
+      mode = 'move';
+    } else {
+      return;
+    }
+    e.preventDefault();
+    header.classList.toggle('is-dragging', mode === 'move');
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp, { once: true });
+  }
+
+  function onMove(e) {
+    const dx = e.clientX - startX;
+    const dy = startY - e.clientY;
+    if (mode === 'resize') {
+      const newW = clamp(startW + dx, 180, window.innerWidth - 40);
+      const newH = clamp(startH + dy, 120, window.innerHeight - 40);
+      panel.style.width = newW + 'px';
+      panel.style.height = newH + 'px';
+      applyFontScale();
+    } else if (mode === 'move') {
+      const newL = clamp(startL + dx, 0, window.innerWidth - 180);
+      const newB = clamp(startB - dy, 120, window.innerHeight);
+      panel.style.left = newL + 'px';
+      panel.style.bottom = window.innerHeight - newB + 'px';
+    }
+  }
+
+  function onUp() {
+    document.removeEventListener('mousemove', onMove);
+    header.classList.remove('is-dragging');
+    mode = null;
+  }
+
+  header.addEventListener('mousedown', onDown);
+})();
+
 // ── Test-only export shim ──────────────────────────────────────────────────
 // `module` does not exist in the browser, so this block is inert there and
 // changes no runtime behavior. It exists purely so Vitest (Node) can import
 // these functions directly instead of re-parsing the whole file. See
 // REFACTOR_PLAN.md Phase 0 / test/unit/chat.test.js.
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { log, appendChat, sendChat, preferReceiverCodec };
+  module.exports = {
+    log,
+    appendChat,
+    sendChat,
+    preferReceiverCodec,
+    _showMentionDropdown,
+    _hideMentionDropdown,
+    _applyMention,
+  };
 }

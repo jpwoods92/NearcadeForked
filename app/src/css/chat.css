@@ -60,6 +60,13 @@ gap: 4px;
     word-break: break-word;
 }
 
+.cmsg-mentioned {
+    background: rgba(250,204,21,0.12);
+    border-left: 3px solid #facc15;
+    padding-left: 8px;
+    border-radius: 0 4px 4px 0;
+}
+
 .cname {
     color: var(--accent2);
     font-weight: 700;
@@ -67,6 +74,24 @@ gap: 4px;
 }
 
 .cname.me { color: var(--warn); }
+
+.plat-badge {
+    font-size: 11px;
+    opacity: 0.5;
+    margin-left: 2px;
+    text-transform: uppercase;
+    vertical-align: middle;
+    letter-spacing: 0.5px;
+}
+
+.plat-badge.host-badge {
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    color: var(--accent);
+    opacity: 0.7;
+    margin-left: 4px;
+}
 
 .chat-input-row {
     display: flex;

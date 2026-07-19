@@ -421,16 +421,25 @@ function log(msg, cls) {
   }
 }
 
-function appendChat(name, text, isMe) {
-  chatAppendMessage(name, text, isMe, null);
+function appendChat(name, text, isMe, platform, color, isHost) {
+  chatAppendMessage(name, text, isMe, null, platform, color, isHost);
 }
+
+const _hostPlatform = (() => {
+  const ua = navigator.userAgent;
+  if (/Mobile|Android/i.test(ua)) return 'Mobile';
+  if (/Linux/i.test(ua) && !/Android/i.test(ua)) return 'Linux';
+  if (/Windows/i.test(ua)) return 'Windows';
+  if (/Mac/i.test(ua)) return 'macOS';
+  return 'PC';
+})();
 
 function sendChat() {
   if (appSettings.tournamentMode) {
     console.log('[Tournament] Chat disabled');
     return;
   }
-  chatSendMessage(ws, 'Host', null);
+  chatSendMessage(ws, 'Host', null, _hostPlatform, localStorage.getItem('ns_chat_color') || '');
 }
 
 function setCapDot(state) {
@@ -896,7 +905,7 @@ function connectWS() {
     if (msg.type === 'chat') {
       if (appSettings.tournamentMode) return;
       const isMe = msg.from === 'Host';
-      appendChat(msg.from, msg.msg, isMe);
+      appendChat(msg.from, msg.msg, isMe, msg.platform, msg.color, msg.isHost);
     }
     if (msg.type === 'viewer-gpid') log(I18N.t('Controller:') + ' ' + msg.id, 'ok');
     if (msg.type === 'arcade-session-active') log(I18N.t('Arcade session is LIVE on Nearcade Arcade!'), 'ok');
