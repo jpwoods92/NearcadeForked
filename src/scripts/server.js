@@ -98,6 +98,24 @@ const urlSpam = new Map();
 const reports = new Map();    // anonHash -> Array<{ timestamp, sessionId }>
 const bannedIps = new Map();  // anonHash -> { bannedAt, expiresAt, reason }
 
+let _gstOfferStr = null;
+let _gstIceCandidates = [];
+
+// Route GStreamer WebRTC outputs (Offers/ICE) back to viewers
+captureManager.setGstSignalingCallback((msg) => {
+  if (msg.type === 'sdp') {
+    _gstOfferStr = msg.sdp;
+    _gstIceCandidates = [];
+    // Prime viewer state machine BEFORE the offer lands
+    broadcast(JSON.stringify({ type: 'host-stream-ready' }));
+    broadcast(JSON.stringify({ type: 'offer', sdp: { type: 'offer', sdp: _gstOfferStr } }));
+  } else if (msg.type === 'ice') {
+    const candidateObj = { candidate: msg.candidate, sdpMLineIndex: msg.sdpMLineIndex };
+    _gstIceCandidates.push(candidateObj);
+    broadcast(JSON.stringify({ type: 'ice-host', candidate: candidateObj }));
+  }
+});
+
 const { Worker } = require('worker_threads');
 
 const PusherRaw = require('pusher-js');
@@ -2107,11 +2125,24 @@ async function main() {
               }));
             }
 
-            // Send host info to viewer unconditionally — it's needed for the UI
-            // even if the host reconnects moments later.
+            // Send host-connected FIRST so viewer.js clears any stale PC
+            // BEFORE we deliver the offer. If the offer arrives first, then
+            // host-connected would destroy the newly negotiated PeerConnection.
             const hCfg = loadConfig();
             _hostDisplayName = hCfg.hostName || 'Host';
             ws.send(JSON.stringify({ type: "host-connected", hostName: _hostDisplayName, hostRegion }));
+
+            // If GStreamer is running, replay the cached offer to this new viewer.
+            if (_gstOfferStr) {
+                // host-stream-ready signals the viewer to show "Host found, connecting..."
+                ws.send(JSON.stringify({ type: 'host-stream-ready' }));
+                ws.send(JSON.stringify({ type: 'offer', sdp: { type: 'offer', sdp: _gstOfferStr } }));
+                for (const c of _gstIceCandidates) {
+                    ws.send(JSON.stringify({ type: 'ice-host', candidate: c }));
+                }
+            }
+
+            // ctrl-settings and host-stream-ready for non-GStreamer mode
             ws.send(JSON.stringify({
               type: "ctrl-settings",
               enableMotion: !!global.enableMotion,
@@ -2124,7 +2155,8 @@ async function main() {
               ws.send(JSON.stringify({ type: 'tournament-mode', enabled: true }));
             }
 
-            if (hostStreaming) {
+            // In non-GStreamer mode, host-stream-ready is sent if already streaming
+            if (hostStreaming && !_gstOfferStr) {
               ws.send(JSON.stringify({ type: "host-stream-ready" }));
             }
 
@@ -2144,7 +2176,11 @@ async function main() {
           // Inject viewer ID for answers AND mic renegotiation requests
           if (msg.type === "answer" || msg.type === "ice-viewer" || msg.type === "viewer-mic-ready" || msg.type === "offer" || msg.type === "set-viewer-volume") {
             msg._viewerId = id;
-            if (hostWS && hostWS.readyState === 1) hostWS.send(JSON.stringify(msg));
+            if (captureManager.getStatus().method === 'gstreamer_webrtc') {
+              captureManager.sendGstSignaling(msg);
+            } else if (hostWS && hostWS.readyState === 1) {
+              hostWS.send(JSON.stringify(msg));
+            }
             return;
           }
 

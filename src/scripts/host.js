@@ -1876,7 +1876,9 @@ function connectWS() {
                 // If they didn't set a name, we can't save it to savedViewerModes, but we still apply it
                 setTimeout(() => changeInputMode(msg.viewerId, 'kbm_emulated'), 200);
             }
-            if (currentStream) {
+            if (currentStream === 'gstreamer') {
+                // Native C++ daemon handles its own WebRTC signaling via backend
+            } else if (currentStream) {
                 await sendOfferToViewer(msg.viewerId);
             } else {
                 ws.send(JSON.stringify({ type: 'host-not-streaming', viewerId: msg.viewerId }));
@@ -2295,6 +2297,7 @@ async function sendOfferToViewer(viewerId) {
 }
 
 let selectedSourceId = null;
+let selectedSourceName = null;
 
 
 async function showSourceSelectionModal() {
@@ -2305,9 +2308,11 @@ async function showSourceSelectionModal() {
     const ua = navigator.userAgent.toLowerCase();
     const isLinux = ua.includes('linux');
     const isMac = ua.includes('mac os x');
+    const pSelect = document.getElementById('pipelineSelect');
+    const isGStreamer = pSelect && pSelect.value === 'gstreamer_webrtc';
 
-    // Only show modal if electronAPI is available AND we are not on Linux or macOS
-    if (!window.electronAPI || !window.electronAPI.getWindowSources || isLinux || isMac) {
+    // Only show modal if electronAPI is available AND we are not on Linux or macOS (UNLESS using GStreamer)
+    if (!window.electronAPI || !window.electronAPI.getWindowSources || ((isLinux || isMac) && !isGStreamer)) {
         if (isLinux || isMac) log(I18N.t('Platform detected: Delegating to native portal/picker for audio support'), 'ok');
         else log(I18N.t('Source selection not available on this platform'), 'warn');
 
@@ -2315,8 +2320,11 @@ async function showSourceSelectionModal() {
         return;
     }
 
-    // Show modal immediately while sources load
-    document.getElementById('sourceModal').classList.remove('gone');
+    // Only show "Scanning sources..." modal immediately if NOT on Linux
+    // (Because Linux Wayland blocks on the OS portal popup and we don't want the HTML UI showing behind it)
+    if (!isLinux) {
+        document.getElementById('sourceModal').classList.remove('gone');
+    }
     await _populateSourceGrid();
 }
 
@@ -2332,7 +2340,9 @@ async function _populateSourceGrid() {
     sourceGrid.innerHTML = '<div style="padding:20px;text-align:center;color:var(--muted);font-size:11px;">Scanning sources…</div>';
     if (noSources) noSources.style.display = 'none';
     if (confirmBtn) confirmBtn.disabled = true;
+    if (confirmBtn) confirmBtn.disabled = true;
     selectedSourceId = null;
+    selectedSourceName = null;
 
     try {
         // Request both windows AND screens from Electron
@@ -2345,16 +2355,29 @@ async function _populateSourceGrid() {
         sourceGrid.innerHTML = '';
 
         if (!sources || sources.length === 0) {
+            document.getElementById('sourceModal').classList.remove('gone');
             if (noSources) noSources.style.display = 'flex';
             log(I18N.t('No capture sources found — try clicking Refresh or opening a window'), 'warn');
             return;
         }
 
+        const isLinux = navigator.userAgent.toLowerCase().includes('linux');
+        if (isLinux && sources.length === 1) {
+            selectedSourceId = sources[0].id;
+            selectedSourceName = sources[0].name;
+            // Never showed the modal, so no need to hide it
+            startCapture();
+            return;
+        }
+
+        // Show modal now if it wasn't shown earlier
+        document.getElementById('sourceModal').classList.remove('gone');
+
         sources.forEach((source, idx) => {
             const card = document.createElement('div');
             card.className = 'source-card';
             card.id = 'source-' + idx;
-            card.onclick = () => selectSource(idx, source.id);
+            card.onclick = () => selectSource(idx, source.id, source.name);
 
             const thumbnail = source.thumbnail || '';
             const imgHtml = thumbnail
@@ -2381,7 +2404,7 @@ async function _populateSourceGrid() {
     }
 }
 
-function selectSource(idx, sourceId) {
+function selectSource(idx, sourceId, sourceName) {
     document.querySelectorAll('.source-card').forEach(card => {
         card.style.borderColor = '';
         card.style.background = '';
@@ -2392,12 +2415,14 @@ function selectSource(idx, sourceId) {
     selectedCard.style.background = 'rgba(100, 200, 100, 0.1)';
 
     selectedSourceId = sourceId;
+    selectedSourceName = sourceName;
     document.getElementById('confirmSourceBtn').disabled = false;
 }
 
 function closeSourceModal() {
     document.getElementById('sourceModal').classList.add('gone');
     selectedSourceId = null;
+    selectedSourceName = null;
     // FREEZE FIX: Re-enable the Start button whenever the user dismisses without
     // confirming. Without this, the button stays disabled after cancellation because
     // startCapture() was never called (or is still awaiting getUserMedia).
@@ -2409,8 +2434,10 @@ function closeSourceModal() {
 
 async function confirmSource() {
     const pendingId = selectedSourceId;
+    const pendingName = selectedSourceName;
     closeSourceModal();
     selectedSourceId = pendingId;
+    selectedSourceName = pendingName;
     await startCapture();
 }
 
@@ -2454,6 +2481,15 @@ function hydrateSelectsFromStorage() {
             if (cfg && cfg.vpsEnabled) {
                 log('VPS SFU mode enabled — connecting to ' + cfg.vpsUrl, 'ok');
                 connectVps(cfg);
+            }
+        }).catch(() => {});
+    }
+
+    if (window.electronAPI && typeof window.electronAPI.checkGstreamerDeps === 'function') {
+        window.electronAPI.checkGstreamerDeps().then(hasDeps => {
+            if (hasDeps) {
+                const opt = document.getElementById('optGstreamer');
+                if (opt) opt.style.display = 'block';
             }
         }).catch(() => {});
     }
@@ -2609,6 +2645,42 @@ async function startCapture() {
             displayMediaOptions.audio = false;
         }
 
+        // ── 1. NATIVE GSTREAMER WEBRTC INTERCEPTOR ──
+        if (document.getElementById('pipelineSelect')?.value === 'gstreamer_webrtc') {
+            log('Starting Native C++ GStreamer WebRTC Daemon...', 'warn');
+            try {
+                const res = await fetch('/api/capture/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ method: 'gstreamer_webrtc', options: { sourceId: selectedSourceId, sourceName: selectedSourceName } })
+                });
+                const data = await res.json();
+                if (data.ok) {
+                    log('GStreamer WebRTC Pipeline Running in Background!', 'ok');
+                    setCapDot('live', 'GStreamer WebRTC');
+                    ws.send(JSON.stringify({ type: 'host-stream-ready' }));
+                    sysChat('Native WebRTC daemon started.');
+                    
+                    // We DO NOT capture screen here for WebRTC. Fake the stream state so the UI knows we are running.
+                    currentStream = 'gstreamer'; // Truthy value so toggleStreamState knows to STOP
+                    _elDisabled('btnSwitch', false);
+                    _elDisabled('btnStop', false);
+                    _elDisabled('btnKbmPanic', false);
+                    if (typeof updatePlaygroundToolbarState === 'function') updatePlaygroundToolbarState(true);
+                    return;
+                } else {
+                    log('Failed to start GStreamer: ' + data.message, 'err');
+                    _elDisabled('btnStart', false);
+                    return;
+                }
+            } catch (err) {
+                console.error(err);
+                log('Network error starting GStreamer', 'err');
+                _elDisabled('btnStart', false);
+                return;
+            }
+        }
+
         // ── 1. FFMPEG EXPERIMENTAL INTERCEPTOR ──
         // Ask the backend directly if FFmpeg is active, bypassing UI state
         /*
@@ -2704,6 +2776,7 @@ async function startCapture() {
         if (!screenStream && selectedSourceId && window.electronAPI) {
             try {
                 window._lastSourceId = selectedSourceId;
+                window._lastSourceName = selectedSourceName;
 
                 if (!selectedSourceId.startsWith('window:') && !selectedSourceId.startsWith('screen:')) {
                     const isNumeric = /^\d+$/.test(selectedSourceId);
@@ -3081,6 +3154,10 @@ function stopCapture() {
     if (window._stopDrmLoop) { window._stopDrmLoop(); window._stopDrmLoop = null; }
     if (currentStream) { _forceKillStream(currentStream); currentStream = null; }
     if (window._resInterval) { clearInterval(window._resInterval); window._resInterval = null; }
+    if (window._gstPreviewInterval) { clearInterval(window._gstPreviewInterval); window._gstPreviewInterval = null; }
+    if (window._gstPreviewStream) { _forceKillStream(window._gstPreviewStream); window._gstPreviewStream = null; }
+    const localVideo = document.getElementById('localVideo');
+    if (localVideo) localVideo.poster = '';
     _stopStatsHud();
     stopAudioMeter();
 
@@ -3098,8 +3175,8 @@ function stopCapture() {
     const wcCanvas = document.getElementById('webcodecs-preview-canvas');
     if (wcCanvas) wcCanvas.remove();
 
-    // Stop FFmpeg experimental pipeline if it was running
-    // fetch(`/api/capture/stop`, { method: 'POST' }).catch(() => {});
+    // Stop backend pipeline if it was running (FFmpeg/GStreamer/WiVRn)
+    fetch(`/api/capture/stop`, { method: 'POST' }).catch(() => {});
     if (window._ffmpegHealthInterval) { clearInterval(window._ffmpegHealthInterval); window._ffmpegHealthInterval = null; }
     const prevEl = document.getElementById('preview');
     if (prevEl) prevEl.srcObject = null;
@@ -3851,10 +3928,14 @@ function saveCaptureMethod(method) {
     
     // Determine what the CURRENT active pipeline is based on URL params
     const urlParams = new URLSearchParams(window.location.search);
-    let activeMethod = 'native';
-    if (urlParams.get('wc') === '1') activeMethod = 'webcodecs';
-    else if (urlParams.get('wc') === '2') activeMethod = 'custom_webcodecs';
-    else if (urlParams.get('ff') === '1' || (typeof process !== 'undefined' && process.argv?.includes('--ffmpeg'))) activeMethod = 'ffmpeg';
+    let activeMethod = urlParams.get('pipeline');
+    if (!activeMethod) {
+        if (urlParams.get('wc') === '1') activeMethod = 'webcodecs';
+        else if (urlParams.get('wc') === '2') activeMethod = 'custom_webcodecs';
+        else if (urlParams.get('ff') === '1' || (typeof process !== 'undefined' && process.argv?.includes('--ffmpeg'))) activeMethod = 'ffmpeg';
+        else if (urlParams.get('gst') === '1') activeMethod = 'gstreamer_webrtc';
+        else activeMethod = 'native';
+    }
     
     if (window.electronAPI && window.electronAPI.saveSettings) {
         // Let the user know they need to restart
@@ -3877,12 +3958,18 @@ function hydratePipelineSelect() {
     if (!pSelect) return;
 
     const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.get('wc') === '1') {
+    const pipelineParam = urlParams.get('pipeline');
+    
+    if (pipelineParam) {
+        pSelect.value = pipelineParam;
+    } else if (urlParams.get('wc') === '1') {
         pSelect.value = 'webcodecs';
     } else if (urlParams.get('wc') === '2') {
         pSelect.value = 'custom_webcodecs';
     } else if (urlParams.get('ff') === '1' || (typeof process !== 'undefined' && process.argv?.includes('--ffmpeg'))) {
         pSelect.value = 'ffmpeg';
+    } else if (urlParams.get('gst') === '1') {
+        pSelect.value = 'gstreamer_webrtc';
     } else {
         pSelect.value = 'native';
     }
@@ -5364,7 +5451,7 @@ function addExpDevice(inVal, inText, inEnabled = true) {
     if (list.querySelector(`[data-exp-val="${val}"]`)) return;
 
     // Determine status text based on device type
-    const isImplemented = val === 'tablet' || val === 'guitar' || val === 'eye' || val === 'hotas';
+    const isImplemented = val === 'tablet' || val === 'guitar' || val === 'eye' || val === 'hotas' || val === 'webhid';
     const statusText = isImplemented ? '<span style="color:var(--green);">Status: Active</span>' : '<span style="color:var(--muted2);">0 Users (Coming Soon)</span>';
 
     const el = document.createElement('div');

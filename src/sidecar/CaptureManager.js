@@ -24,6 +24,10 @@ class CaptureManager {
         this._ffmpegStreamRes = null;
         this._ffmpegEncoder = null;
 
+        // GStreamer WebRTC specific state
+        this._gstProc = null;
+        this._gstSignalingCallback = null;
+
         // PipeWire specific state
         this._pipewireProc = null;
         this._pipewireServer = null;
@@ -60,6 +64,8 @@ class CaptureManager {
                 return await this._startWiVRn(options);
             case 'webcodecs':
                 return { ok: true, message: 'WebCodecs armed on backend. Waiting for frontend execution.' };
+            case 'gstreamer_webrtc':
+                return await this._startGstWebRTC(options);
             case 'webrtc':
                 return { ok: true, message: 'Native WebRTC armed on backend.' };
             default:
@@ -77,6 +83,8 @@ class CaptureManager {
             this._stopPipeWire();
         } else if (this._activeMethod === 'wivrn') {
             this._stopWiVRn();
+        } else if (this._activeMethod === 'gstreamer_webrtc') {
+            this._stopGstWebRTC();
         }
 
         this._activeMethod = null;
@@ -90,6 +98,7 @@ class CaptureManager {
             details: this._activeMethod === 'ffmpeg' ? `FFmpeg via ${this._ffmpegEncoder}` :
                      this._activeMethod === 'pipewire' ? `PipeWire node: ${this._pipewireNodeName || 'auto'}` :
                      this._activeMethod === 'wivrn' ? `WiVRn stream: ${this._wivrnPort || 'not started'}` :
+                     this._activeMethod === 'gstreamer_webrtc' ? 'Native C++ GStreamer WebRTC' :
                      'Frontend Execution'
         };
     }
@@ -414,6 +423,93 @@ class CaptureManager {
         }
 
         this._wivrnIntegration.stopServer();
+    }
+
+    // ── GStreamer WebRTC Implementation ──────────────────────────────
+
+    async _startGstWebRTC(options) {
+        if (os.platform() !== 'linux') throw new Error('GStreamer WebRTC currently only supports Linux.');
+
+        const pyScript = path.join(__dirname, 'gstreamer_webrtc.py');
+        if (!fs.existsSync(pyScript)) {
+            throw new Error(`[CaptureManager] gstreamer_webrtc.py not found at ${pyScript}`);
+        }
+
+        const args = ['-u', pyScript];
+        
+        // Attempt headless PipeWire node discovery (Gamescope/SteamVR/WiVRn)
+        try {
+            const { findGamescopeNode } = require('./pipewire-capture.js');
+            const targetNode = findGamescopeNode();
+            if (targetNode) {
+                const targetStr = targetNode.serial || targetNode.name || targetNode.id;
+                console.log(`[CaptureManager] Auto-discovered PipeWire target node: ${targetNode.name} (ID: ${targetNode.id}, Serial: ${targetNode.serial}) -> Passing ${targetStr}`);
+                args.push('--node', targetStr);
+            } else {
+                console.warn('[CaptureManager] No headless PipeWire node found. GStreamer will fallback to default video source.');
+            }
+        } catch (err) {
+            console.error('[CaptureManager] Error resolving PipeWire node:', err.message);
+        }
+
+        console.log('[CaptureManager] Spawning GStreamer WebRTC Python Daemon with args:', args);
+        this._gstProc = spawn('python3', args, {
+            stdio: ['pipe', 'pipe', 'inherit']
+        });
+
+        // Listen for raw SDP / ICE candidates from Python
+        this._gstProc.stdout.on('data', (data) => {
+            const lines = data.toString().split('\n');
+            for (const line of lines) {
+                if (!line.trim()) continue;
+                try {
+                    const msg = JSON.parse(line);
+                    if (this._gstSignalingCallback) {
+                        this._gstSignalingCallback(msg);
+                    }
+                } catch (err) {
+                    // Ignore non-JSON output from GStreamer
+                }
+            }
+        });
+
+        this._gstProc.on('error', (err) => {
+            console.error('[CaptureManager] GStreamer error:', err.message);
+            this._stopGstWebRTC();
+        });
+
+        this._gstProc.on('close', (code) => {
+            console.log(`[CaptureManager] GStreamer WebRTC exited with code ${code}`);
+            if (this._activeMethod === 'gstreamer_webrtc') {
+                this._activeMethod = null;
+            }
+        });
+
+        return { ok: true, message: 'Native C++ GStreamer WebRTC daemon running' };
+    }
+
+    _stopGstWebRTC() {
+        if (this._gstProc) {
+            try { this._gstProc.kill('SIGTERM'); } catch (_) {}
+            this._gstProc = null;
+        }
+        this._gstSignalingCallback = null;
+    }
+
+    // Pass the routing function so CaptureManager can emit WebRTC offers to Server.js
+    setGstSignalingCallback(cb) {
+        this._gstSignalingCallback = cb;
+    }
+
+    // Send Answers / ICE candidates from Server.js into the Python daemon
+    sendGstSignaling(msg) {
+        if (this._gstProc && this._gstProc.stdin.writable) {
+            try {
+                this._gstProc.stdin.write(JSON.stringify(msg) + '\n');
+            } catch (err) {
+                console.error('[CaptureManager] Error writing to GStreamer stdin', err);
+            }
+        }
     }
 }
 

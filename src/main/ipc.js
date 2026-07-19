@@ -140,6 +140,18 @@ function registerIpcHandlers(ctx) {
     return ctx.settings.alwaysOnTop;
   });
 
+  ipcMain.handle('check-gstreamer-deps', () => {
+    if (process.platform !== 'linux') return false;
+    try {
+      const { execSync } = require('child_process');
+      // Python will exit 0 if the module is found and imports successfully.
+      execSync('python3 -c "import gi; gi.require_version(\'GstWebRTC\', \'1.0\')"', { stdio: 'ignore' });
+      return true;
+    } catch (_) {
+      return false;
+    }
+  });
+
   ipcMain.handle('get-window-sources', async () => {
     try {
       const sources = await desktopCapturer.getSources({
@@ -257,9 +269,14 @@ function registerIpcHandlers(ctx) {
     else if (version === 'custom') route = '/host-custom';
 
     const captureParams = [];
+    if (ctx.settings.captureMethod) {
+        captureParams.push(`pipeline=${encodeURIComponent(ctx.settings.captureMethod)}`);
+    }
+    // Legacy fallback flags
     if (ctx.settings.captureMethod === 'custom_webcodecs') captureParams.push('wc=2');
     else if (ctx.settings.captureMethod === 'webcodecs' || ctx.isWebCodecs) captureParams.push('wc=1');
-    if (ctx.settings.captureMethod === 'ffmpeg' || ctx.isFFmpegCapture) captureParams.push('ffmpeg=1');
+    if (ctx.settings.captureMethod === 'ffmpeg' || ctx.isFFmpegCapture) captureParams.push('ff=1');
+    if (ctx.settings.captureMethod === 'gstreamer_webrtc' || ctx.isGstWebRTC) captureParams.push('gst=1');
     const qs = captureParams.length ? '?' + captureParams.join('&') : '';
     if (ctx.win && !ctx.win.isDestroyed()) ctx.win.loadURL(`http://localhost:${ctx.serverPort}${route}${qs}`);
   });
