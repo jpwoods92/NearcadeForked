@@ -26,6 +26,13 @@
 // which decides when the viewer proactively asks for one of these early.
 const KEYFRAME_INTERVAL_MS = 500; // was 2000
 
+// Temporal SVC layer count (VP9/AV1 only — H264/VP8 have no scalabilityMode
+// support in WebCodecs). 1 = disabled. viewer.js's setSvcLayer() sends a
+// preference over the signaling channel, but nothing server/host-side
+// consumes it yet (upstream ships the same gap — see Phase 6 plan notes),
+// so this only ever changes via a direct updateSvcLayers() call today.
+let _wcSvcLayers = 1;
+
 async function startWebCodecsPipeline(videoTrack, dataChannel) {
   console.log('Initializing WebCodecs VideoEncoder...');
 
@@ -182,6 +189,7 @@ async function startWebCodecsNetworkPipeline(videoTrack) {
           description: metadata.decoderConfig.description
             ? Array.from(new Uint8Array(metadata.decoderConfig.description))
             : null,
+          svcTemporalLayers: _wcSvcLayers,
         });
         broadcastToViewers(_lastWcConfig);
       }
@@ -235,6 +243,10 @@ async function startWebCodecsNetworkPipeline(videoTrack) {
     hardwareAcceleration: 'prefer-hardware',
     latencyMode: 'realtime',
   };
+  // Temporal SVC (VP9/AV1 only) — H264/VP8 have no scalabilityMode support.
+  if (_wcSvcLayers > 1 && (_wcCodecStr.startsWith('vp09') || _wcCodecStr.startsWith('av01'))) {
+    wcConfig.scalabilityMode = `L1T${Math.min(_wcSvcLayers, 3)}`;
+  }
   // Software fallback: 'prefer-hardware' hard-fails where no HW encoder
   // exists, so probe first and drop to 'no-preference' (the old behavior).
   try {
@@ -398,6 +410,29 @@ async function startWebCodecsNetworkPipeline(videoTrack) {
   }, 1000);
 }
 
+// Reconfigures the live encoder's temporal SVC layer count. Unlike upstream's
+// version (which reconfigures off a `_wcEncoder._lastConfig` that's never
+// actually populated there), this reuses the same `encoder._lastConfig`
+// object the adaptive-bitrate/resolution-handling code above already
+// maintains, so a mid-stream layer change doesn't clobber codec/width/height.
+function updateSvcLayers(n) {
+  _wcSvcLayers = Math.max(1, Math.min(n, 3));
+  if (!_wcEncoder || _wcEncoder.state !== 'configured' || !_wcEncoder._lastConfig) return;
+  const codec = _wcEncoder._lastConfig.codec || '';
+  if (!(codec.startsWith('vp09') || codec.startsWith('av01'))) return;
+  if (_wcSvcLayers > 1) {
+    _wcEncoder._lastConfig.scalabilityMode = `L1T${_wcSvcLayers}`;
+  } else {
+    delete _wcEncoder._lastConfig.scalabilityMode;
+  }
+  try {
+    _wcEncoder.configure(_wcEncoder._lastConfig);
+    console.log(`[WebCodecs] SVC layers → ${_wcSvcLayers}`);
+  } catch (e) {
+    console.error('[WebCodecs] SVC reconfigure failed:', e);
+  }
+}
+
 // Worst per-transport backlog across everything video currently flows over —
 // the bitrate controller's early congestion signal.
 function _wcMaxBufferedAmount() {
@@ -536,5 +571,6 @@ if (typeof module !== 'undefined' && module.exports) {
     _broadcastP2P,
     _wcGatedSend,
     _wcSendFragmented,
+    updateSvcLayers,
   };
 }

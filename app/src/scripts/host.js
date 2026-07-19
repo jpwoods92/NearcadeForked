@@ -810,6 +810,21 @@ function connectWS() {
       return;
     }
 
+    if (msg.type === 'webcodecs-health') {
+      const vid = msg.viewerId || '(unknown)';
+      const htype = msg.wcHealthType || '?';
+      console.warn(`[WcHealth] Viewer ${vid}: ${htype}`, msg.wcHealthData || '');
+      if (htype === 'fallback-request') {
+        const pc = peerConnections[vid];
+        if (pc) {
+          try {
+            ws.send(JSON.stringify({ type: 'force-reload', viewerId: vid, url: window.location.href.split('?')[0] }));
+          } catch (_) {}
+        }
+      }
+      return;
+    }
+
     if (msg.type === 'tunnel-url') {
       // In VPS SFU mode the tunnel URL is irrelevant — the custom domain
       // is already displayed. Swallowing this message prevents the Cloudflare

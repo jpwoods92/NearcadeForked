@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { _wcGatedSend, _wcSendFragmented } from '../../src/scripts/webcodecs-encoder.js';
+import { _wcGatedSend, _wcSendFragmented, updateSvcLayers } from '../../src/scripts/webcodecs-encoder.js';
 
 // Tests for the WebCodecs transport send gate (webcodecs-encoder.js).
 // _wcGatedSend wraps every video-chunk send (VPS WS, tunnel WS, per-viewer
@@ -149,5 +149,54 @@ describe('_wcSendFragmented()', () => {
     const wsT = fakeTransport(0);
     _wcGatedSend(wsT, big, true, false);
     expect(wsT.sent).toEqual([big]); // whole message — TCP handles size
+  });
+});
+
+// updateSvcLayers() reconfigures the live encoder's temporal SVC layer
+// count. Its only externally-observable behavior without a real
+// VideoEncoder wired up (module-private _wcEncoder, never exported) is that
+// it's a safe no-op before any stream has started — the module loads with
+// _wcEncoder still null, matching the state before startWebCodecsNetworkPipeline
+// ever runs.
+describe('updateSvcLayers()', () => {
+  beforeEach(() => {
+    // Write-only shared-global (declared in host.js in the browser, see
+    // webcodecs-encoder.js's own header comment); in Node the bare
+    // assignment lands on globalThis, same as _wcForceKeyframe above.
+    globalThis._wcEncoder = null;
+  });
+
+  it('does not throw when no encoder is active yet', () => {
+    expect(() => updateSvcLayers(2)).not.toThrow();
+    expect(() => updateSvcLayers(0)).not.toThrow();
+    expect(() => updateSvcLayers(99)).not.toThrow();
+  });
+
+  it('clamps the layer count to [1, 3] via the reconfigure guard', () => {
+    const configured = [];
+    globalThis._wcEncoder = {
+      state: 'configured',
+      _lastConfig: { codec: 'vp09.00.10.08' },
+      configure(cfg) {
+        configured.push({ ...cfg });
+      },
+    };
+    updateSvcLayers(99);
+    expect(configured.at(-1).scalabilityMode).toBe('L1T3');
+    updateSvcLayers(1);
+    expect(configured.at(-1).scalabilityMode).toBeUndefined();
+  });
+
+  it('leaves non-SVC-capable codecs (H264/VP8) untouched', () => {
+    const configured = [];
+    globalThis._wcEncoder = {
+      state: 'configured',
+      _lastConfig: { codec: 'avc1.42002A' },
+      configure(cfg) {
+        configured.push({ ...cfg });
+      },
+    };
+    updateSvcLayers(3);
+    expect(configured).toEqual([]);
   });
 });

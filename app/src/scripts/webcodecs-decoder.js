@@ -125,6 +125,10 @@ function initWebCodecsViewer(config) {
   // can rebuild immediately instead of stalling on a host config round trip.
   window._wcLastConfigMsg = config;
 
+  // Temporal SVC layer count the host's encoder is running with (1 = off).
+  // setSvcLayer() (viewer.js) clamps its requested layer index to this.
+  window._wcSvcMaxLayers = config.svcTemporalLayers || 1;
+
   // Decode-stall guard threshold: ~0.5s of queued frames means the decoder
   // is genuinely wedged; anything less is ordinary delivery jitter. Sized
   // from the stream's actual frame rate (host UI allows 15-140fps — a fixed
@@ -265,6 +269,7 @@ function initWebCodecsViewer(config) {
         wcCtx.drawImage(frame, 0, 0, wcCanvas.width, wcCanvas.height);
       }
       frame.close();
+      if (window._wcHealthTrackFrame) window._wcHealthTrackFrame();
 
       if (_wcFirstFrame) {
         _wcFirstFrame = false;

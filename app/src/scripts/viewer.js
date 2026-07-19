@@ -140,9 +140,139 @@ function recoverWebCodecsDecoder() {
     _lastWcRebuildTs = Date.now();
     try {
       initWebCodecsViewer(window._wcLastConfigMsg);
+      _startWcHealthMonitor();
     } catch (_) {}
   }
 }
+
+// ── WEBCODECS FRAME HEALTH MONITOR ──────────────────────────────────────────
+// Detects black screen, frozen stream, and decoder stalls that the decoder's
+// own error callback (recoverWebCodecsDecoder, above) doesn't catch — a
+// decoder can sit in 'configured' state outputting nothing, or outputting
+// solid black, without ever throwing. Reports to the host over whichever
+// channel is open; after repeated critical failures, falls back to standard
+// WebRTC (reload without the WebCodecs URL params) rather than leaving the
+// viewer on a stream that's silently broken.
+let _wcHealth = {
+  lastFrameTime: 0,
+  frameCount: 0,
+  consecutiveBlackFrames: 0,
+  criticalFailures: 0,
+  maxCriticalFailures: 2,
+  intervals: [],
+};
+
+function _startWcHealthMonitor() {
+  _stopWcHealthMonitor();
+  window._wcHealthTrackFrame = function () {
+    _wcHealth.lastFrameTime = performance.now();
+    _wcHealth.frameCount++;
+  };
+
+  _wcHealth.intervals.push(
+    setInterval(() => {
+      if (!wcDecoder || wcDecoder.state !== 'configured') return;
+      const elapsed = performance.now() - _wcHealth.lastFrameTime;
+      if (elapsed > 5000 && _wcHealth.lastFrameTime > 0) {
+        console.warn(`[WcHealth] Frozen — ${Math.round(elapsed)}ms no frames`);
+        _reportWcHealth('frozen', { elapsed });
+      }
+    }, 3000)
+  );
+
+  _wcHealth.intervals.push(
+    setInterval(() => {
+      if (!wcCanvas || !wcCtx || _wcHealth.frameCount < 10) return;
+      try {
+        let r = 0,
+          g = 0,
+          b = 0,
+          a = 255;
+        const cx = wcCanvas.width >> 1,
+          cy = wcCanvas.height >> 1;
+        if (typeof wcCtx.getImageData === 'function') {
+          const px = wcCtx.getImageData(cx, cy, 1, 1);
+          r = px.data[0];
+          g = px.data[1];
+          b = px.data[2];
+          a = px.data[3];
+        } else if (typeof wcCtx.readPixels === 'function') {
+          const px = new Uint8Array(4);
+          wcCtx.readPixels(cx, cy, 1, 1, wcCtx.RGBA, wcCtx.UNSIGNED_BYTE, px);
+          r = px[0];
+          g = px[1];
+          b = px[2];
+          a = px[3];
+        } else return;
+        if (r < 5 && g < 5 && b < 5 && a > 0) {
+          _wcHealth.consecutiveBlackFrames++;
+          if (_wcHealth.consecutiveBlackFrames >= 3) {
+            console.warn('[WcHealth] Black screen detected');
+            _reportWcHealth('black-screen', { consecutive: _wcHealth.consecutiveBlackFrames });
+          }
+        } else {
+          _wcHealth.consecutiveBlackFrames = 0;
+        }
+      } catch (_) {}
+    }, 3000)
+  );
+
+  _wcHealth.intervals.push(
+    setInterval(() => {
+      _reportWcHealth('telemetry', {
+        fps: _wcHealth.frameCount > 0 ? Math.round(_wcHealth.frameCount / 6) : 0,
+        decoderState: wcDecoder?.state || 'none',
+      });
+      _wcHealth.frameCount = 0;
+    }, 6000)
+  );
+}
+
+function _stopWcHealthMonitor() {
+  _wcHealth.intervals.forEach((id) => clearInterval(id));
+  _wcHealth.intervals = [];
+  _wcHealth.criticalFailures = 0;
+}
+
+function _reportWcHealth(type, data) {
+  const payload = { type: 'webcodecs-health', wcHealthType: type, wcHealthData: data };
+  if (typeof myId !== 'undefined') payload.viewerId = myId;
+  try {
+    if (ws?.readyState === 1) ws.send(JSON.stringify(payload));
+  } catch (_) {}
+  if (type === 'frozen' || type === 'black-screen') {
+    _wcHealth.criticalFailures++;
+    if (_wcHealth.criticalFailures >= _wcHealth.maxCriticalFailures) {
+      console.warn('[WcHealth] Critical — falling back to standard WebRTC');
+      _stopWcHealthMonitor();
+      try {
+        if (wcDecoder?.state !== 'closed') wcDecoder.close();
+      } catch (_) {}
+      wcDecoder = null;
+      _reportWcHealth('fallback-request', { reason: type });
+      const url = new URL(window.location.href);
+      url.searchParams.delete('wc');
+      url.searchParams.delete('wc2');
+      setTimeout(() => {
+        window.location.href = url.href;
+      }, 1000);
+    }
+  }
+}
+
+// setSvcLayer(): requests a lower/higher temporal layer from the host's
+// encoder. Sends the preference over the signaling channel, but — matching
+// upstream, not a gap introduced here — nothing server/host-side consumes
+// 'svc-layer-preference' yet, so this has no effect until that's wired up.
+let _wcSvcLayer = 0;
+function setSvcLayer(n) {
+  const maxLayers = window._wcSvcMaxLayers || 1;
+  _wcSvcLayer = Math.max(0, Math.min(n, maxLayers - 1));
+  if (typeof ws !== 'undefined' && ws.readyState === 1) {
+    ws.send(JSON.stringify({ type: 'svc-layer-preference', layer: _wcSvcLayer }));
+  }
+}
+
 // Decode one complete [isKey(1)][timestamp(8)][payload] frame received on
 // the WebCodecs DataChannel (whole message, or reassembled from fragments —
 // see the ondatachannel handler in createPC()).
@@ -440,6 +570,7 @@ async function createPC() {
             const msg = JSON.parse(e.data);
             if (msg.type === 'webcodecs-config') {
               initWebCodecsViewer(msg);
+              _startWcHealthMonitor();
             }
           } catch (err) {
             console.warn('[WebCodecs] Failed to parse string message:', err);
@@ -888,6 +1019,21 @@ async function connect() {
     if (msg.type === 'webcodecs-config') {
       window.nsWaitKey = true;
       initWebCodecsViewer(msg);
+      _startWcHealthMonitor();
+      return;
+    }
+
+    if (msg.type === 'force-reload') {
+      console.warn('[WebCodecs] Host requested fallback from WebCodecs — reloading without WebCodecs');
+      _stopWcHealthMonitor();
+      try {
+        if (wcDecoder?.state !== 'closed') wcDecoder.close();
+      } catch (_) {}
+      wcDecoder = null;
+      const url = new URL(window.location.href);
+      url.searchParams.delete('wc');
+      url.searchParams.delete('wc2');
+      window.location.href = url.href;
       return;
     }
 
