@@ -29,6 +29,12 @@ const session = {
   sessionPassword: '',
   pinEnabled: true,
   hostStreaming: false,
+  // Cached GStreamer WebRTC offer/ICE so a viewer joining mid-stream (or
+  // reconnecting) gets replayed the same session instead of renegotiating —
+  // the GStreamer backend doesn't renegotiate per-viewer like the browser
+  // WebRTC path does.
+  gstOfferStr: null,
+  gstIceCandidates: [],
 };
 
 // ── Runtime handles ──

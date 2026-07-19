@@ -7,6 +7,7 @@ const flags = {
   isFFmpegExperimental: process.argv.includes('--ffmpeg-experimental'),
   isWebCodecs: process.argv.includes('--webcodecs'),
   isFFmpegCapture: process.argv.includes('--ffmpeg'),
+  isGstWebRTC: process.argv.includes('--gstreamer'),
 };
 
 /**

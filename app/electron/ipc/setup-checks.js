@@ -207,6 +207,17 @@ function register() {
     return '#8b5cf6';
   });
 
+  ipcMain.handle('check-gstreamer-deps', () => {
+    if (process.platform !== 'linux') return false;
+    try {
+      // Python exits 0 if the module is found and imports successfully.
+      _execQuiet('python3', ['-c', "import gi; gi.require_version('GstWebRTC', '1.0')"], 3000);
+      return true;
+    } catch {
+      return false;
+    }
+  });
+
   ipcMain.handle('open-external', (_event, url) => {
     try {
       shell.openExternal(url);

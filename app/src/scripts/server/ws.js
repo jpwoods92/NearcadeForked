@@ -19,6 +19,7 @@ const {
 } = require('./arcade-signaling.js');
 const inputDriver = require('../../sidecar/input_backends/InputOrchestrator.js');
 const { wivrnBumpVrActivity, wivrnEnsureRunning, wivrnInt } = require('./wivrn-lifecycle.js');
+const captureManager = require('../../sidecar/CaptureManager.js');
 
 // Upstream v3.0.2: one virtual controller per viewer (was 4) — multi-pad
 // per-viewer was a griefing vector on public arcade sessions.
@@ -207,6 +208,23 @@ function attachWebSocketServer(wss, deps) {
       }
     });
   }
+
+  // Route GStreamer WebRTC outputs (Offers/ICE) back to viewers. Registered
+  // here (rather than in http.js, which also requires captureManager) since
+  // this is the only place `broadcast` is in scope.
+  captureManager.setGstSignalingCallback((msg) => {
+    if (msg.type === 'sdp') {
+      state.session.gstOfferStr = msg.sdp;
+      state.session.gstIceCandidates = [];
+      // Prime viewer state machine BEFORE the offer lands
+      broadcast(JSON.stringify({ type: 'host-stream-ready' }));
+      broadcast(JSON.stringify({ type: 'offer', sdp: { type: 'offer', sdp: msg.sdp } }));
+    } else if (msg.type === 'ice') {
+      const candidateObj = { candidate: msg.candidate, sdpMLineIndex: msg.sdpMLineIndex };
+      state.session.gstIceCandidates.push(candidateObj);
+      broadcast(JSON.stringify({ type: 'ice-host', candidate: candidateObj }));
+    }
+  });
 
   function controllerViewerCount() {
     return state.viewerHasController.size;
@@ -957,6 +975,17 @@ function attachWebSocketServer(wss, deps) {
             // Include the saved host name so the viewer can display "HOST SESSION — Name"
             const hCfg = loadConfig();
             ws.send(JSON.stringify({ type: 'host-connected', hostName: hCfg.hostName || 'Host' }));
+
+            // If GStreamer is running, replay the cached offer to this new viewer —
+            // the GStreamer backend doesn't renegotiate per-viewer.
+            if (state.session.gstOfferStr) {
+              ws.send(JSON.stringify({ type: 'host-stream-ready' }));
+              ws.send(JSON.stringify({ type: 'offer', sdp: { type: 'offer', sdp: state.session.gstOfferStr } }));
+              for (const c of state.session.gstIceCandidates) {
+                ws.send(JSON.stringify({ type: 'ice-host', candidate: c }));
+              }
+            }
+
             ws.send(
               JSON.stringify({
                 type: 'ctrl-settings',
@@ -965,7 +994,8 @@ function attachWebSocketServer(wss, deps) {
                 expDevices: global.expDevices || [],
               })
             );
-            if (state.session.hostStreaming) {
+            // In non-GStreamer mode, host-stream-ready is sent if already streaming
+            if (state.session.hostStreaming && !state.session.gstOfferStr) {
               ws.send(JSON.stringify({ type: 'host-stream-ready' }));
             }
 
@@ -986,8 +1016,11 @@ function attachWebSocketServer(wss, deps) {
             msg.type === 'set-viewer-volume'
           ) {
             msg._viewerId = id;
-            if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1)
+            if (captureManager.getStatus().method === 'gstreamer_webrtc') {
+              captureManager.sendGstSignaling(msg);
+            } else if (state.runtime.hostWS && state.runtime.hostWS.readyState === 1) {
               state.runtime.hostWS.send(JSON.stringify(msg));
+            }
             return;
           }
 

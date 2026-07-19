@@ -24,9 +24,11 @@ async function showSourceSelectionModal() {
   const ua = navigator.userAgent.toLowerCase();
   const isLinux = ua.includes('linux');
   const isMac = ua.includes('mac os x');
+  const pSelect = document.getElementById('pipelineSelect');
+  const isGStreamer = pSelect && pSelect.value === 'gstreamer_webrtc';
 
-  // Only show modal if electronAPI is available AND we are not on Linux or macOS
-  if (!window.electronAPI || !window.electronAPI.getWindowSources || isLinux || isMac) {
+  // Only show modal if electronAPI is available AND we are not on Linux or macOS (UNLESS using GStreamer)
+  if (!window.electronAPI || !window.electronAPI.getWindowSources || ((isLinux || isMac) && !isGStreamer)) {
     if (isLinux || isMac) log(I18N.t('Platform detected: Delegating to native portal/picker for audio support'), 'ok');
     else log(I18N.t('Source selection not available on this platform'), 'warn');
 
@@ -34,8 +36,11 @@ async function showSourceSelectionModal() {
     return;
   }
 
-  // Show modal immediately while sources load
-  document.getElementById('sourceModal').classList.remove('gone');
+  // Only show "Scanning sources..." modal immediately if NOT on Linux
+  // (Because Linux Wayland blocks on the OS portal popup and we don't want the HTML UI showing behind it)
+  if (!isLinux) {
+    document.getElementById('sourceModal').classList.remove('gone');
+  }
   await _populateSourceGrid();
 }
 
@@ -53,6 +58,7 @@ async function _populateSourceGrid() {
   if (noSources) noSources.style.display = 'none';
   if (confirmBtn) confirmBtn.disabled = true;
   selectedSourceId = null;
+  selectedSourceName = null;
 
   try {
     // Request both windows AND screens from Electron
@@ -65,16 +71,29 @@ async function _populateSourceGrid() {
     sourceGrid.innerHTML = '';
 
     if (!sources || sources.length === 0) {
+      document.getElementById('sourceModal').classList.remove('gone');
       if (noSources) noSources.style.display = 'flex';
       log(I18N.t('No capture sources found — try clicking Refresh or opening a window'), 'warn');
       return;
     }
 
+    const isLinux = navigator.userAgent.toLowerCase().includes('linux');
+    if (isLinux && sources.length === 1) {
+      selectedSourceId = sources[0].id;
+      selectedSourceName = sources[0].name;
+      // Never showed the modal, so no need to hide it
+      startCapture();
+      return;
+    }
+
+    // Show modal now if it wasn't shown earlier
+    document.getElementById('sourceModal').classList.remove('gone');
+
     sources.forEach((source, idx) => {
       const card = document.createElement('div');
       card.className = 'source-card';
       card.id = 'source-' + idx;
-      card.onclick = () => selectSource(idx, source.id);
+      card.onclick = () => selectSource(idx, source.id, source.name);
 
       const thumbnail = source.thumbnail || '';
       const imgHtml = thumbnail
@@ -101,7 +120,7 @@ async function _populateSourceGrid() {
   }
 }
 
-function selectSource(idx, sourceId) {
+function selectSource(idx, sourceId, sourceName) {
   document.querySelectorAll('.source-card').forEach((card) => {
     card.style.borderColor = '';
     card.style.background = '';
@@ -112,12 +131,14 @@ function selectSource(idx, sourceId) {
   selectedCard.style.background = 'rgba(100, 200, 100, 0.1)';
 
   selectedSourceId = sourceId;
+  selectedSourceName = sourceName;
   document.getElementById('confirmSourceBtn').disabled = false;
 }
 
 function closeSourceModal() {
   document.getElementById('sourceModal').classList.add('gone');
   selectedSourceId = null;
+  selectedSourceName = null;
   // FREEZE FIX: Re-enable the Start button whenever the user dismisses without
   // confirming. Without this, the button stays disabled after cancellation because
   // startCapture() was never called (or is still awaiting getUserMedia).
@@ -128,7 +149,11 @@ function closeSourceModal() {
 }
 
 async function confirmSource() {
+  const pendingId = selectedSourceId;
+  const pendingName = selectedSourceName;
   closeSourceModal();
+  selectedSourceId = pendingId;
+  selectedSourceName = pendingName;
   await startCapture();
 }
 

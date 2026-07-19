@@ -32,6 +32,7 @@ function register() {
     const captureParams = [];
     if (flags.isWebCodecs) captureParams.push('wc=1');
     if (flags.isFFmpegCapture) captureParams.push('ffmpeg=1');
+    if (flags.isGstWebRTC) captureParams.push('gst=1');
     const qs = captureParams.length ? '?' + captureParams.join('&') : '';
     const win = state.runtime.win;
     if (win && !win.isDestroyed()) win.loadURL(`http://localhost:${state.runtime.serverPort}${route}${qs}`);

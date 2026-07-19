@@ -733,7 +733,9 @@ function connectWS() {
         // If they didn't set a name, we can't save it to savedViewerModes, but we still apply it
         setTimeout(() => changeInputMode(msg.viewerId, 'kbm_emulated'), 200);
       }
-      if (currentStream) {
+      if (currentStream === 'gstreamer') {
+        // Native C++ daemon handles its own WebRTC signaling via backend
+      } else if (currentStream) {
         await sendOfferToViewer(msg.viewerId);
       } else {
         ws.send(JSON.stringify({ type: 'host-not-streaming', viewerId: msg.viewerId }));
@@ -1137,6 +1139,7 @@ async function sendOfferToViewer(viewerId) {
 }
 
 let selectedSourceId = null;
+let selectedSourceName = null;
 let activeSourceId = null;
 
 // Hydrate select values from localStorage once the DOM is ready.
@@ -1209,6 +1212,18 @@ function hydrateSelectsFromStorage() {
         if (cfg && cfg.vpsEnabled) {
           log('VPS SFU mode enabled — connecting to ' + cfg.vpsUrl, 'ok');
           connectVps(cfg);
+        }
+      })
+      .catch(() => {});
+  }
+
+  if (window.electronAPI && typeof window.electronAPI.checkGstreamerDeps === 'function') {
+    window.electronAPI
+      .checkGstreamerDeps()
+      .then((hasDeps) => {
+        if (hasDeps) {
+          const opt = document.getElementById('optGstreamer');
+          if (opt) opt.style.display = 'block';
         }
       })
       .catch(() => {});
@@ -1367,11 +1382,15 @@ function saveCaptureMethod(method) {
 
   // Determine what the CURRENT active pipeline is based on URL params
   const urlParams = new URLSearchParams(window.location.search);
-  let activeMethod = 'native';
-  if (urlParams.get('wc') === '1') activeMethod = 'webcodecs';
-  else if (urlParams.get('wc') === '2') activeMethod = 'custom_webcodecs';
-  else if (urlParams.get('ff') === '1' || (typeof process !== 'undefined' && process.argv?.includes('--ffmpeg')))
-    activeMethod = 'ffmpeg';
+  let activeMethod = urlParams.get('pipeline');
+  if (!activeMethod) {
+    if (urlParams.get('wc') === '1') activeMethod = 'webcodecs';
+    else if (urlParams.get('wc') === '2') activeMethod = 'custom_webcodecs';
+    else if (urlParams.get('ff') === '1' || (typeof process !== 'undefined' && process.argv?.includes('--ffmpeg')))
+      activeMethod = 'ffmpeg';
+    else if (urlParams.get('gst') === '1') activeMethod = 'gstreamer_webrtc';
+    else activeMethod = 'native';
+  }
 
   if (window.electronAPI && window.electronAPI.saveSettings) {
     // Let the user know they need to restart
@@ -1397,10 +1416,16 @@ function hydratePipelineSelect() {
   if (!pSelect) return;
 
   const urlParams = new URLSearchParams(window.location.search);
-  if (urlParams.get('wc') === '1') {
+  const pipelineParam = urlParams.get('pipeline');
+
+  if (pipelineParam) {
+    pSelect.value = pipelineParam;
+  } else if (urlParams.get('wc') === '1') {
     pSelect.value = 'webcodecs';
   } else if (urlParams.get('ff') === '1' || (typeof process !== 'undefined' && process.argv?.includes('--ffmpeg'))) {
     pSelect.value = 'ffmpeg';
+  } else if (urlParams.get('gst') === '1') {
+    pSelect.value = 'gstreamer_webrtc';
   } else {
     pSelect.value = 'native';
   }
@@ -2244,7 +2269,7 @@ function addExpDevice(inVal, inText, inEnabled = true) {
   if (list.querySelector(`[data-exp-val="${val}"]`)) return;
 
   // Determine status text based on device type
-  const isImplemented = val === 'tablet' || val === 'guitar' || val === 'eye' || val === 'hotas';
+  const isImplemented = val === 'tablet' || val === 'guitar' || val === 'eye' || val === 'hotas' || val === 'webhid';
   const statusText = isImplemented
     ? '<span style="color:var(--green);">Status: Active</span>'
     : '<span style="color:var(--muted2);">0 Users (Coming Soon)</span>';

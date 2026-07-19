@@ -162,6 +162,45 @@ async function startCapture() {
       displayMediaOptions.audio = false;
     }
 
+    // ── 1. NATIVE GSTREAMER WEBRTC INTERCEPTOR ──
+    if (document.getElementById('pipelineSelect')?.value === 'gstreamer_webrtc') {
+      log('Starting Native C++ GStreamer WebRTC Daemon...', 'warn');
+      try {
+        const res = await fetch('/api/capture/start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            method: 'gstreamer_webrtc',
+            options: { sourceId: selectedSourceId, sourceName: selectedSourceName },
+          }),
+        });
+        const data = await res.json();
+        if (data.ok) {
+          log('GStreamer WebRTC Pipeline Running in Background!', 'ok');
+          setCapDot('live', 'GStreamer WebRTC');
+          ws.send(JSON.stringify({ type: 'host-stream-ready' }));
+          sysChat('Native WebRTC daemon started.');
+
+          // We DO NOT capture screen here for WebRTC. Fake the stream state so the UI knows we are running.
+          currentStream = 'gstreamer'; // Truthy value so toggleStreamState knows to STOP
+          _elDisabled('btnSwitch', false);
+          _elDisabled('btnStop', false);
+          _elDisabled('btnKbmPanic', false);
+          if (typeof updatePlaygroundToolbarState === 'function') updatePlaygroundToolbarState(true);
+          return;
+        } else {
+          log('Failed to start GStreamer: ' + data.message, 'err');
+          _elDisabled('btnStart', false);
+          return;
+        }
+      } catch (err) {
+        console.error(err);
+        log('Network error starting GStreamer', 'err');
+        _elDisabled('btnStart', false);
+        return;
+      }
+    }
+
     // ── 1. FFMPEG EXPERIMENTAL INTERCEPTOR ──
     // Ask the backend directly if FFmpeg is active, bypassing UI state
     /*
@@ -195,6 +234,7 @@ async function startCapture() {
     else if (!screenStream && selectedSourceId && window.electronAPI) {
       try {
         window._lastSourceId = selectedSourceId;
+        window._lastSourceName = selectedSourceName;
 
         // Windows Audio Capture fallback bug:
         // Chromium on Windows refuses to start a new getUserMedia capture if the
@@ -542,6 +582,16 @@ function stopCapture() {
     clearInterval(window._resInterval);
     window._resInterval = null;
   }
+  if (window._gstPreviewInterval) {
+    clearInterval(window._gstPreviewInterval);
+    window._gstPreviewInterval = null;
+  }
+  if (window._gstPreviewStream) {
+    _forceKillStream(window._gstPreviewStream);
+    window._gstPreviewStream = null;
+  }
+  const localVideo = document.getElementById('localVideo');
+  if (localVideo) localVideo.poster = '';
   _stopStatsHud();
   stopAudioMeter();
 
@@ -566,8 +616,8 @@ function stopCapture() {
   const wcCanvas = document.getElementById('webcodecs-preview-canvas');
   if (wcCanvas) wcCanvas.remove();
 
-  // Stop FFmpeg experimental pipeline if it was running
-  // fetch(`/api/capture/stop`, { method: 'POST' }).catch(() => {});
+  // Stop backend pipeline if it was running (FFmpeg/GStreamer/WiVRn)
+  fetch(`/api/capture/stop`, { method: 'POST' }).catch(() => {});
   if (window._ffmpegHealthInterval) {
     clearInterval(window._ffmpegHealthInterval);
     window._ffmpegHealthInterval = null;

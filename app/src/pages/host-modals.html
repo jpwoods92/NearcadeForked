@@ -914,6 +914,9 @@
           </div>
           <select id="pipelineSelect" class="form-select" onchange="saveCaptureMethod(this.value)">
             <option value="native" selected>WebRTC (Standard / Stable)</option>
+            <option id="optGstreamer" value="gstreamer_webrtc" style="color: var(--warn); display: none">
+              GStreamer WebRTC (NOT-FUNCTIONING)
+            </option>
             <option value="webcodecs">WebCodecs Experimental (Latency Focused)</option>
             <option value="custom_webcodecs" style="color: var(--warn)">
               Custom WebCodecs + WebGL (Unstable / High Reward)
@@ -1570,6 +1573,7 @@
         >
           <option value="flight">Flight Sticks (HOTAS)</option>
           <option value="tablet">Drawing Tablets (Stylus)</option>
+          <option value="webhid">Raw WebHID DualSense (1000Hz)</option>
           <option value="guitar">Guitars / Rhythm</option>
           <option value="hotas">Flight Stick / HOTAS</option>
           <option value="vr">VR Headsets (OpenVR)</option>
