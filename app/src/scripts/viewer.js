@@ -2457,5 +2457,6 @@ if (typeof module !== 'undefined' && module.exports) {
     _showMentionDropdown,
     _hideMentionDropdown,
     _applyMention,
+    detectViewerPlatform,
   };
 }
