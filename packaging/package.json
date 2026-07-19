@@ -1,0 +1,11 @@
+{
+  "name": "nearcade-packaging",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Capacitor project root for Nearcade's Android build. The Capacitor CLI discovers plugins from this file's own dependencies (not the repo root's), but the actual packages still resolve from the repo root's node_modules via Node's normal upward module resolution — nothing gets installed here.",
+  "dependencies": {
+    "@capacitor/android": "^8.4.1",
+    "@capacitor/core": "^8.4.1",
+    "@capacitor/filesystem": "^8.1.2"
+  }
+}
