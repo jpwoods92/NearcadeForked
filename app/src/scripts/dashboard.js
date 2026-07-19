@@ -9,6 +9,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   await applySystemAccent();
 
+  // Handle ?tab= URL parameter for deep-linking from web viewer
+  const urlParams = new URLSearchParams(window.location.search);
+  const tabParam = urlParams.get('tab');
+  if (tabParam && typeof switchTab === 'function') {
+    // Delay slightly to ensure tabs are initialized
+    setTimeout(() => switchTab(tabParam), 100);
+  }
+
   // Random brand color: purple, orange, or white (upstream v3.0.2)
   const brandColors = [
     { color: '#c084fc', stroke: 'rgba(192,132,252,0.3)', shadow: 'rgba(192,132,252,' },
